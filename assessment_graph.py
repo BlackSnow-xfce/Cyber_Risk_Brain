@@ -12,7 +12,8 @@ class AssessmentGraph:
         criticality="LOW",
         detection=False,
         threat_intel=False,
-        mitre="UNKNOWN"
+        mitre="UNKNOWN",
+        owner="UNKNOWN"
     ):
 
         self.nodes.append({
@@ -22,7 +23,8 @@ class AssessmentGraph:
             "criticality": criticality,
             "detection": detection,
             "threat_intel": threat_intel,
-            "mitre": mitre
+            "mitre": mitre,
+            "owner": owner
         })
 
     def add_edge(self, source, target):
@@ -235,3 +237,98 @@ class AssessmentGraph:
 
         else:
             print("Environment currently stable")
+
+    def show_mitre_techniques(self):
+
+        print("MITRE ATT&CK Techniques:")
+
+        techniques = set()
+
+        for node in self.nodes:
+
+            techniques.add(node["mitre"])
+
+        for technique in techniques:
+
+            print(f"- {technique}")
+
+    def mitre_detection_analysis(self):
+
+        print("MITRE Detection Analysis:")
+
+        for node in self.nodes:
+
+            technique = node["mitre"]
+
+            if node["detection"]:
+
+                print(
+                    f"{technique}: Detection coverage available"
+                )
+
+            else:
+
+                print(
+                    f"{technique}: NO detection coverage"
+                )
+
+    def crown_jewel_analysis(self):
+
+        print("Crown Jewel Analysis:")
+
+        for edge in self.edges:
+
+            source, target = edge
+
+            if target == "Tier0 Asset":
+
+                print(
+                    f"Crown Jewel reachable through: {source}"
+                )
+
+                for second_edge in self.edges:
+
+                    second_source, second_target = second_edge
+
+                    if second_target == source:
+
+                        print(
+                            f"Attack chain: "
+                            f"{second_source} --> "
+                            f"{source} --> "
+                            f"{target}"
+                        )
+
+    def remediation_recommendations(self):
+
+        print("Remediation Recommendations:")
+
+        for node in self.nodes:
+
+            if (
+                node["severity"] == "CRITICAL"
+                and node["exposed"]
+            ):
+
+                print(
+                    f"Immediate remediation required: "
+                    f"{node['name']}"
+                )
+
+            elif (
+                node["severity"] == "HIGH"
+                and not node["detection"]
+            ):
+
+                print(
+                    f"Improve detection coverage for: "
+                    f"{node['name']}"
+                )
+
+            elif node["threat_intel"]:
+
+                print(
+                    f"Monitor active threat exposure: "
+                    f"{node['name']}"
+                )
+

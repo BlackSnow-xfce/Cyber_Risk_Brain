@@ -12,7 +12,8 @@ findings = [
         "CRITICAL",
         False,
         True,
-        "Privilege Escalation"
+        "Privilege Escalation",
+        "Cloud Team"
     ),
 
     (
@@ -22,7 +23,8 @@ findings = [
         "HIGH",
         True,
         False,
-        "Collection"
+        "Collection",
+        "Storage Team"
     ),
 
     (
@@ -32,7 +34,8 @@ findings = [
         "MEDIUM",
         False,
         False,
-        "Lateral Movement"
+        "Lateral Movement",
+        "Infrastructure Team"
     ),
 
     (
@@ -42,7 +45,8 @@ findings = [
         "LOW",
         False,
         True,
-        "Initial Access"
+        "Initial Access",
+        "Server Team"
     )
 ]
 
@@ -53,7 +57,8 @@ for (
     criticality,
     detection,
     threat_intel,
-    mitre
+    mitre,
+    owner
 ) in findings:
 
     graph.add_node(
@@ -63,7 +68,8 @@ for (
     criticality=criticality,
     detection=detection,
     threat_intel=threat_intel,
-    mitre=mitre
+    mitre=mitre,
+    owner=owner
     )
 
     if finding == "Exposed VM":
@@ -108,3 +114,11 @@ graph.detect_detection_gaps()
 graph.detection_coverage_score()
 
 graph.executive_summary()
+
+graph.show_mitre_techniques()
+
+graph.mitre_detection_analysis()
+
+graph.crown_jewel_analysis()
+
+graph.remediation_recommendations()
