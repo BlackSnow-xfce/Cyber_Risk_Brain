@@ -5,22 +5,75 @@ from risk_scorer import RiskScorer
 graph = AssessmentGraph()
 
 findings = [
-    ("Wiz Finding", "CRITICAL", True, "CRITICAL"),
-    ("Public S3 Bucket", "HIGH", True, "HIGH"),
-    ("Internal Admin Panel", "HIGH", False, "MEDIUM"),
-    ("Exposed VM", "MEDIUM", True, "LOW")
+    (
+        "Wiz Finding",
+        "CRITICAL",
+        True,
+        "CRITICAL",
+        False,
+        True,
+        "Privilege Escalation"
+    ),
+
+    (
+        "Public S3 Bucket",
+        "HIGH",
+        True,
+        "HIGH",
+        True,
+        False,
+        "Collection"
+    ),
+
+    (
+        "Internal Admin Panel",
+        "HIGH",
+        False,
+        "MEDIUM",
+        False,
+        False,
+        "Lateral Movement"
+    ),
+
+    (
+        "Exposed VM",
+        "MEDIUM",
+        True,
+        "LOW",
+        False,
+        True,
+        "Initial Access"
+    )
 ]
 
-for finding, severity, exposed, criticality in findings:
+for (
+    finding,
+    severity,
+    exposed,
+    criticality,
+    detection,
+    threat_intel,
+    mitre
+) in findings:
 
     graph.add_node(
     finding,
     severity,
     exposed=exposed,
-    criticality=criticality
-)
-if severity == "CRITICAL":
-    graph.add_edge(finding, "Tier0 Asset")
+    criticality=criticality,
+    detection=detection,
+    threat_intel=threat_intel,
+    mitre=mitre
+    )
+
+    if finding == "Exposed VM":
+        graph.add_edge("Internet", finding)
+
+    if finding == "Internal Admin Panel":
+        graph.add_edge("Exposed VM", finding)
+
+    if finding == "Wiz Finding":
+        graph.add_edge(finding, "Tier0 Asset")
 
 graph.show_graph()
 
@@ -41,3 +94,17 @@ print("Graph Risk:", graph_risk)
 print(graph.calculate_risk())
 
 print(graph.get_risk_level())
+
+graph.show_attack_paths()
+
+graph.find_exposed_paths()
+
+graph.detect_critical_paths()
+
+graph.prioritize_findings()
+
+graph.detect_detection_gaps()
+
+graph.detection_coverage_score()
+
+graph.executive_summary()
