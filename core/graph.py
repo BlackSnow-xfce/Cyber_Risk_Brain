@@ -1,38 +1,23 @@
 class AssessmentGraph:
 
     def __init__(self):
+
         self.nodes = []
         self.edges = []
 
-    def add_node(
-        self,
-        node,
-        severity="LOW",
-        exposed=False,
-        criticality="LOW",
-        detection=False,
-        threat_intel=False,
-        mitre="UNKNOWN",
-        owner="UNKNOWN",
-        sla_days=30
-    ):
+    def add_node(self, node, **kwargs):
 
         self.nodes.append({
             "name": node,
-            "severity": severity,
-            "exposed": exposed,
-            "criticality": criticality,
-            "detection": detection,
-            "threat_intel": threat_intel,
-            "mitre": mitre,
-            "owner": owner,
-            "sla_days": sla_days
+            **kwargs
         })
 
     def add_edge(self, source, target):
+
         self.edges.append((source, target))
 
     def show_graph(self):
+
         print("Nodes:", self.nodes)
         print("Edges:", self.edges)
 
@@ -42,36 +27,17 @@ class AssessmentGraph:
 
         for node in self.nodes:
 
-            severity = node["severity"]
-            exposed = node["exposed"]
-            threat_intel = node["threat_intel"]
-
-            if severity == "CRITICAL":
+            if node["criticality"] == "CRITICAL":
                 score += 10
 
-            elif severity == "HIGH":
+            elif node["criticality"] == "HIGH":
                 score += 7
 
-            elif severity == "MEDIUM":
+            elif node["criticality"] == "MEDIUM":
                 score += 4
 
             else:
                 score += 1
-
-            if exposed:
-                score += 3
-
-            if threat_intel:
-                score += 5
-
-        score += len(self.edges)
-
-        for edge in self.edges:
-
-            source, target = edge
-
-            if target == "Tier0 Asset":
-                score += 15
 
         return score
 
@@ -79,16 +45,15 @@ class AssessmentGraph:
 
         risk = self.calculate_risk()
 
-        if risk >= 25:
+        if risk >= 20:
             return "CRITICAL"
 
-        elif risk >= 15:
+        elif risk >= 10:
             return "HIGH"
 
         elif risk >= 5:
             return "MEDIUM"
 
-        return "LOW"
     def show_attack_paths(self):
 
         print("Attack Paths:")
@@ -117,13 +82,19 @@ class AssessmentGraph:
 
                     if next_source == target:
 
-                        chain = f"Internet --> {target} --> {next_target}"
+                        chain = (
+                            f"Internet --> "
+                            f"{target} --> "
+                            f"{next_target}"
+                        )
 
                         print(chain)
 
                         if next_target == "Internal Admin Panel":
 
-                            print("Potential lateral movement detected")
+                            print(
+                                "Potential lateral movement detected"
+                            )
 
     def detect_critical_paths(self):
 
@@ -135,7 +106,10 @@ class AssessmentGraph:
 
             if target == "Tier0 Asset":
 
-                print(f"Critical path detected: {source} --> {target}")
+                print(
+                    f"Critical path detected: "
+                    f"{source} --> {target}"
+                )
 
     def prioritize_findings(self):
 
@@ -143,25 +117,32 @@ class AssessmentGraph:
 
         for node in self.nodes:
 
-            severity = node["severity"]
-            exposed = node["exposed"]
             criticality = node["criticality"]
+            detection = node["detection"]
 
             if (
-                severity == "CRITICAL"
-                and exposed
-                and criticality == "CRITICAL"
+                criticality == "CRITICAL"
+                and not detection
             ):
 
-                print(f"HIGHEST PRIORITY: {node['name']}")
+                print(
+                    f"HIGHEST PRIORITY: "
+                    f"{node['name']}"
+                )
 
-            elif severity == "HIGH" and exposed:
+            elif criticality == "HIGH":
 
-                print(f"HIGH PRIORITY: {node['name']}")
+                print(
+                    f"HIGH PRIORITY: "
+                    f"{node['name']}"
+                )
 
             else:
 
-                print(f"NORMAL PRIORITY: {node['name']}")
+                print(
+                    f"NORMAL PRIORITY: "
+                    f"{node['name']}"
+                )
 
     def detect_detection_gaps(self):
 
@@ -169,10 +150,14 @@ class AssessmentGraph:
 
         for node in self.nodes:
 
-            if node["exposed"] and not node["detection"]:
+            if (
+                node["exposed"]
+                and not node["detection"]
+            ):
 
                 print(
-                    f"No detection coverage for exposed asset: {node['name']}"
+                    f"No detection coverage for exposed asset: "
+                    f"{node['name']}"
                 )
 
     def detection_coverage_score(self):
@@ -188,16 +173,28 @@ class AssessmentGraph:
 
         coverage = (covered / total) * 100
 
-        print(f"Detection Coverage: {coverage:.2f}%")
+        print(
+            f"Detection Coverage: "
+            f"{coverage:.2f}%"
+        )
 
         if coverage < 50:
-            print("WARNING: Poor detection coverage")
+
+            print(
+                "WARNING: Poor detection coverage"
+            )
 
         elif coverage < 80:
-            print("Detection coverage could be improved")
+
+            print(
+                "Detection coverage could be improved"
+            )
 
         else:
-            print("Detection coverage looks good")
+
+            print(
+                "Detection coverage looks good"
+            )
 
     def executive_summary(self):
 
@@ -211,7 +208,10 @@ class AssessmentGraph:
 
         print(f"Overall Risk Score: {risk}")
 
-        print(f"Overall Risk Level: {self.get_risk_level()}")
+        print(
+            f"Overall Risk Level: "
+            f"{self.get_risk_level()}"
+        )
 
         exposed_assets = 0
 
@@ -220,25 +220,40 @@ class AssessmentGraph:
             if node["exposed"]:
                 exposed_assets += 1
 
-        print(f"Internet Exposed Assets: {exposed_assets}")
+        print(
+            f"Internet Exposed Assets: "
+            f"{exposed_assets}"
+        )
 
         critical_findings = 0
 
         for node in self.nodes:
 
-            if node["severity"] == "CRITICAL":
+            if node["criticality"] == "CRITICAL":
                 critical_findings += 1
 
-        print(f"Critical Findings: {critical_findings}")
+        print(
+            f"Critical Findings: "
+            f"{critical_findings}"
+        )
 
         if risk >= 50:
-            print("Immediate remediation recommended")
+
+            print(
+                "Immediate remediation recommended"
+            )
 
         elif risk >= 25:
-            print("High remediation priority")
+
+            print(
+                "High remediation priority"
+            )
 
         else:
-            print("Environment currently stable")
+
+            print(
+                "Environment currently stable"
+            )
 
     def show_mitre_techniques(self):
 
@@ -265,13 +280,15 @@ class AssessmentGraph:
             if node["detection"]:
 
                 print(
-                    f"{technique}: Detection coverage available"
+                    f"{technique}: "
+                    f"Detection coverage available"
                 )
 
             else:
 
                 print(
-                    f"{technique}: NO detection coverage"
+                    f"{technique}: "
+                    f"NO detection coverage"
                 )
 
     def crown_jewel_analysis(self):
@@ -285,7 +302,8 @@ class AssessmentGraph:
             if target == "Tier0 Asset":
 
                 print(
-                    f"Crown Jewel reachable through: {source}"
+                    f"Crown Jewel reachable through: "
+                    f"{source}"
                 )
 
                 for second_edge in self.edges:
@@ -308,7 +326,7 @@ class AssessmentGraph:
         for node in self.nodes:
 
             if (
-                node["severity"] == "CRITICAL"
+                node["criticality"] == "CRITICAL"
                 and node["exposed"]
             ):
 
@@ -318,7 +336,7 @@ class AssessmentGraph:
                 )
 
             elif (
-                node["severity"] == "HIGH"
+                node["criticality"] == "HIGH"
                 and not node["detection"]
             ):
 
@@ -333,4 +351,3 @@ class AssessmentGraph:
                     f"Monitor active threat exposure: "
                     f"{node['name']}"
                 )
-
