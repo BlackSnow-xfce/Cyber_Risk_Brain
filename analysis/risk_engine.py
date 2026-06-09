@@ -68,3 +68,53 @@ class RiskEngine:
             return "MEDIUM"
 
         return "LOW"
+
+    def explain_business_risk(self, node):
+
+        reasons = []
+
+        if node["exposed"]:
+            reasons.append("Internet exposed")
+
+        if not node["detection"]:
+            reasons.append("No detection coverage")
+
+        if node["threat_intel"]:
+            reasons.append("Threat intelligence match")
+
+        if node["criticality"] == "CRITICAL":
+            reasons.append("Business critical asset")
+
+        if node["criticality"] == "HIGH":
+            reasons.append("High business criticality")
+
+        if not reasons:
+            reasons.append("No major risk amplifiers detected")
+
+        return reasons
+
+    def recommend_actions(self, node):
+
+        recommendations = []
+
+        if node["exposed"]:
+            recommendations.append(
+                "Patch exposed asset"
+            )
+
+        if not node["detection"]:
+            recommendations.append(
+                "Enable detection coverage"
+            )
+
+        if node["threat_intel"]:
+            recommendations.append(
+                "Investigate active threat exposure"
+            )
+
+        if not recommendations:
+            recommendations.append(
+                "Continue monitoring"
+            )
+
+        return recommendations

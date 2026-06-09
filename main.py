@@ -53,7 +53,7 @@ for finding in findings:
         universal_finding
     )
 
-    print("\nUniversal Findings:")
+print("\nUniversal Findings:")
 
 for finding in universal_findings:
 
@@ -141,11 +141,27 @@ for node in graph.nodes:
 
     business_risk = risk_engine.calculate_business_risk(node)
 
+    reasons = risk_engine.explain_business_risk(node)
+
+    recommendations = risk_engine.recommend_actions(node)
+
     print(
         f"{node['name']} | "
         f"Vendor Severity: {node['severity']} | "
         f"Business Risk: {business_risk}"
     )
+
+    print("Reasons:")
+
+    for reason in reasons:
+        print(f"- {reason}")
+
+    print("Recommendations:")
+
+    for recommendation in recommendations:
+        print(f"- {recommendation}")
+
+    print()
 
 detection_analyzer = DetectionAnalyzer()
 
