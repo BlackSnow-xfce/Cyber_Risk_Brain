@@ -13,7 +13,8 @@ class AssessmentGraph:
         detection=False,
         threat_intel=False,
         mitre="UNKNOWN",
-        owner="UNKNOWN"
+        owner="UNKNOWN",
+        sla_days=30
     ):
 
         self.nodes.append({
@@ -24,7 +25,8 @@ class AssessmentGraph:
             "detection": detection,
             "threat_intel": threat_intel,
             "mitre": mitre,
-            "owner": owner
+            "owner": owner,
+            "sla_days": sla_days
         })
 
     def add_edge(self, source, target):

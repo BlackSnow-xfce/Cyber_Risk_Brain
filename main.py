@@ -1,77 +1,31 @@
-from assessment_graph import AssessmentGraph
+from connectors.wiz_connector import WizConnector
+from core.models import Finding
+from analysis.attack_path_analyzer import AttackPathAnalyzer
+from analysis.mitre_analyzer import MitreAnalyzer
+from analysis.detection_analyzer import DetectionAnalyzer
+from analysis.risk_engine import RiskEngine
 from wiz_client import WizClient
 from risk_scorer import RiskScorer
+from core.graph import AssessmentGraph
 
 graph = AssessmentGraph()
 
-findings = [
-    (
-        "Wiz Finding",
-        "CRITICAL",
-        True,
-        "CRITICAL",
-        False,
-        True,
-        "Privilege Escalation",
-        "Cloud Team"
-    ),
+wiz_connector = WizConnector()
 
-    (
-        "Public S3 Bucket",
-        "HIGH",
-        True,
-        "HIGH",
-        True,
-        False,
-        "Collection",
-        "Storage Team"
-    ),
+findings = wiz_connector.get_findings()
 
-    (
-        "Internal Admin Panel",
-        "HIGH",
-        False,
-        "MEDIUM",
-        False,
-        False,
-        "Lateral Movement",
-        "Infrastructure Team"
-    ),
-
-    (
-        "Exposed VM",
-        "MEDIUM",
-        True,
-        "LOW",
-        False,
-        True,
-        "Initial Access",
-        "Server Team"
-    )
-]
-
-for (
-    finding,
-    severity,
-    exposed,
-    criticality,
-    detection,
-    threat_intel,
-    mitre,
-    owner
-) in findings:
-
+for finding in findings:
     graph.add_node(
-    finding,
-    severity,
-    exposed=exposed,
-    criticality=criticality,
-    detection=detection,
-    threat_intel=threat_intel,
-    mitre=mitre,
-    owner=owner
-    )
-
+    finding.name,
+    severity=finding.severity,
+    exposed=finding.exposed,
+    criticality=finding.criticality,
+    detection=finding.detection,
+    threat_intel=finding.threat_intel,
+    mitre=finding.mitre,
+    owner=finding.owner,
+    sla_days=finding.sla_days
+)
     if finding == "Exposed VM":
         graph.add_edge("Internet", finding)
 
@@ -93,32 +47,60 @@ score = scorer.calculate_score("critical")
 
 print("Risk Score:", score)
 
-graph_risk = graph.calculate_risk()
+risk_engine = RiskEngine()
+
+graph_risk = risk_engine.calculate_risk(
+    graph.nodes
+)
 
 print("Graph Risk:", graph_risk)
 
 print(graph.calculate_risk())
 
-print(graph.get_risk_level())
+print(
+    risk_engine.get_risk_level(graph_risk)
+)
 
-graph.show_attack_paths()
+attack_path_analyzer = AttackPathAnalyzer()
 
-graph.find_exposed_paths()
+attack_path_analyzer.show_attack_paths(
+    graph.edges
+)
 
-graph.detect_critical_paths()
+attack_path_analyzer.find_exposed_paths(
+    graph.edges
+)
+
+attack_path_analyzer.detect_critical_paths(
+    graph.edges
+)
 
 graph.prioritize_findings()
 
-graph.detect_detection_gaps()
+detection_analyzer = DetectionAnalyzer()
 
-graph.detection_coverage_score()
+detection_analyzer.detect_detection_gaps(
+    graph.nodes
+)
+
+detection_analyzer.detection_coverage_score(
+    graph.nodes
+)
+
+mitre_analyzer = MitreAnalyzer()
+
+mitre_analyzer.show_mitre_techniques(
+    graph.nodes
+)
 
 graph.executive_summary()
 
-graph.show_mitre_techniques()
+mitre_analyzer.mitre_detection_analysis(
+    graph.nodes
+)
 
-graph.mitre_detection_analysis()
-
-graph.crown_jewel_analysis()
+attack_path_analyzer.crown_jewel_analysis(
+    graph.edges
+)
 
 graph.remediation_recommendations()
