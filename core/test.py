@@ -1,5 +1,6 @@
-from normalizer.nessus import normalize
-from asset_resolver import AssetResolver
+from .normalizer.nessus import normalize
+from .pipeline import Pipeline
+
 
 raw1 = {
     "host": "10.0.0.5",
@@ -19,6 +20,7 @@ raw1 = {
 raw2 = {
     "host": "10.0.0.5",
     "hostname": "Server01",
+    "internet_facing": True,
     "software": "OpenSSH",
     "version": "8.2",
     "cve": "CVE-2024-6387",
@@ -33,10 +35,13 @@ raw2 = {
 raw3 = {
     "host": "10.0.0.8",
     "hostname": "Fileserver",
+    "internet_facing": False,
     "software": "SMB",
+    "version": "3.1",
     "plugin_name": "SMB Signing Disabled",
     "severity": "medium",
     "cvss": 5.3,
+    "exploit_available": False,
     "port": 445,
     "protocol": "tcp"
 }
@@ -47,21 +52,17 @@ findings = [
     normalize(raw3)
 ]
 
-resolver = AssetResolver()
+pipeline = Pipeline()
 
-assets = resolver.resolve(findings)
+results = pipeline.process(findings)
 
-for asset, asset_findings in assets.items():
+for result in results:
 
-    print("=" * 50)
+    print("=" * 60)
 
-    print(asset)
+    print("Asset      :", result["risk"].asset)
+    print("Priority   :", result["risk"].priority)
+    print("Risk Score :", result["risk"].score)
+    print()
 
-    print(f"Findings: {len(asset_findings)}")
-
-    for finding in asset_findings:
-
-        print(
-            finding.vulnerability.title,
-            finding.vulnerability.severity
-        )
+    print(result["story"])

@@ -1,37 +1,24 @@
-from models import NormalizedFinding
+from ..context_builder import ContextBuilder
+from .rules import RULES
 
 
 class CorrelationEngine:
 
-    def analyze(self, finding: NormalizedFinding):
+    def __init__(self):
 
-        score = 0
-        reasons = []
+        self.builder = ContextBuilder()
 
-        # Internet Facing
-        if finding.asset.internet_facing:
-            score += 20
-            reasons.append("Asset is internet-facing.")
+    def correlate(self, findings):
 
-        # Critical Severity
-        if finding.vulnerability.severity.lower() == "critical":
-            score += 30
-            reasons.append("Critical vulnerability detected.")
+        context = self.builder.build(findings)
 
-        # Public Exploit
-        if finding.vulnerability.exploit_available:
-            score += 25
-            reasons.append("Public exploit available.")
+        correlations = []
 
-        # High CVSS
-        if finding.vulnerability.cvss >= 9.0:
-            score += 15
-            reasons.append("CVSS >= 9.0")
+        for rule in RULES:
 
-        score = min(score, 100)
+            result = rule(context)
 
-        return {
-            "asset": finding.asset.hostname or finding.asset.ip,
-            "score": score,
-            "reasons": reasons
-        }
+            if result:
+                correlations.extend(result)
+
+        return correlations

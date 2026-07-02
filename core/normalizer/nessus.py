@@ -1,4 +1,4 @@
-from models import Asset, Software, Vulnerability, NormalizedFinding
+from ..models import Asset, Software, Vulnerability, NormalizedFinding
 
 
 def normalize(raw):
