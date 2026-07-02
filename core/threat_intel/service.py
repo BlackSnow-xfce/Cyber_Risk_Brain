@@ -1,16 +1,21 @@
 from typing import Dict, Iterable, List
 
+from .merger import ThreatIntelMerger
 from .models import ThreatIntelResult
 from .providers import ThreatIntelProvider
 
 
 class ThreatIntelService:
 
-    def __init__(self, providers: List[ThreatIntelProvider] | None = None):
+    def __init__(
+        self,
+        providers: List[ThreatIntelProvider] | None = None,
+        merger: ThreatIntelMerger | None = None,
+    ):
         self.providers = providers or []
+        self.merger = merger or ThreatIntelMerger()
 
     def lookup(self, cves: Iterable[str]) -> Dict[str, ThreatIntelResult]:
-        results: Dict[str, ThreatIntelResult] = {}
 
         normalized_cves = sorted({
             cve.strip().upper()
@@ -18,34 +23,12 @@ class ThreatIntelService:
             if cve
         })
 
-        for cve in normalized_cves:
-            results[cve] = ThreatIntelResult(cve=cve)
+        partial_results: List[ThreatIntelResult] = []
 
         for provider in self.providers:
-            provider_results = provider.lookup(normalized_cves)
+            partial_results.extend(provider.lookup(normalized_cves))
 
-            for provider_result in provider_results:
-                cve = provider_result.cve.upper()
-
-                if cve not in results:
-                    results[cve] = ThreatIntelResult(cve=cve)
-
-                current = results[cve]
-
-                if provider_result.epss_score is not None:
-                    current.epss_score = provider_result.epss_score
-
-                if provider_result.epss_percentile is not None:
-                    current.epss_percentile = provider_result.epss_percentile
-
-                if provider_result.known_exploited:
-                    current.known_exploited = True
-
-                if provider_result.exploit_available:
-                    current.exploit_available = True
-
-                current.sources = sorted(set(
-                    current.sources + provider_result.sources
-                ))
-
-        return results
+        return self.merger.merge_many(
+            cves=normalized_cves,
+            partial_results=partial_results,
+        )
