@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from connectors.connector_manager import ConnectorManager
-from core.mapper import finding_to_universal
-from analysis.risk_engine import RiskEngine
+
+from core.predator_engine import PredatorEngine
 
 app = FastAPI(
-    title="Cyber Risk Brain"
+    title="Cyber Risk Brain",
+    version="2.0",
 )
 
 app.add_middleware(
@@ -14,78 +14,84 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-
 )
+
+
+engine = PredatorEngine()
+
 
 @app.get("/")
 def root():
     return {
-        "status": "Cyber Risk Brain Online"
+        "status": "Cyber Risk Brain Online",
+        "engine": "PredatorAI v2",
     }
 
 
+@app.get("/api/analyze")
+def analyze():
+
+    return engine.run()
+
+
 @app.get("/api/findings")
-def get_findings():
+def findings():
 
-    connector_manager = ConnectorManager()
-    connector_manager.load_connectors()
+    return engine.run().get(
+        "universal_findings",
+        [],
+    )
 
-    findings = []
 
-    for connector in connector_manager.connectors:
-        findings.extend(
-            connector.get_findings()
-        )
+@app.get("/api/decisions")
+def decisions():
 
-    risk_engine = RiskEngine()
+    return engine.run().get(
+        "decisions",
+        [],
+    )
 
-    result = []
 
-    for finding in findings:
+@app.get("/api/reasoning")
+def reasoning():
 
-        universal_finding = finding_to_universal(
-            finding
-        )
+    return engine.run().get(
+        "reasoning_results",
+        [],
+    )
 
-        business_risk = risk_engine.calculate_business_risk(
-            finding.__dict__
-        )
 
-        risk_score = risk_engine.calculate_risk_score(
-            finding.__dict__
-        )
+@app.get("/api/story-bundles")
+def story_bundles():
 
-        reasons = risk_engine.explain_business_risk(
-            finding.__dict__
-        )
+    return engine.run().get(
+        "story_bundles",
+        [],
+    )
 
-        recommendations = risk_engine.recommend_actions(
-            finding.__dict__
-        )
 
-        result.append(
-            {
-                "source": universal_finding.source,
-                "title": universal_finding.title,
-                "vendor_severity": universal_finding.vendor_severity,
-                "business_risk": business_risk,
-                "risk_score": risk_score,
-                "reasons": reasons,
-                "recommendations": recommendations,
-                "owner": finding.owner,
-                "sla_days": finding.sla_days
-            }
-        )
+@app.get("/api/reports")
+def reports():
 
-    return result
+    return engine.run().get(
+        "reports",
+        [],
+    )
+
+
+@app.get("/api/graph-summary")
+def graph_summary():
+
+    return engine.run().get(
+        "graph_summary",
+        {},
+    )
+
 
 @app.get("/api/team-risk")
-def get_team_risk():
+def team_risk():
 
-    findings = get_findings()
-
-    risk_engine = RiskEngine()
-
-    return risk_engine.calculate_team_risk(
-        findings
+    return engine.run().get(
+        "team_risk",
+        {},
     )

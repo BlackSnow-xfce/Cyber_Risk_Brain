@@ -1,36 +1,66 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from core.decision.models import AttackReasoning
+from core.decision.models import DecisionResult
 
 
 class DashboardDataBuilder:
     """
-    Converts AttackReasoning objects into a dashboard-friendly structure.
+    Adapts the PredatorEngine.run() result to a dashboard-friendly
+    JSON structure. No business logic is calculated here.
     """
 
-    def build(self, findings: list[AttackReasoning]) -> dict[str, Any]:
-        total = len(findings)
+    def build(
+        self,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
 
-        critical = sum(1 for f in findings if f.score >= 90)
-        high = sum(1 for f in findings if 75 <= f.score < 90)
-        medium = sum(1 for f in findings if 50 <= f.score < 75)
-        low = sum(1 for f in findings if f.score < 50)
-
-        highest = None
-        if findings:
-            highest = max(findings, key=lambda x: x.score)
+        decisions: list[DecisionResult] = result.get(
+            "decisions",
+            [],
+        )
 
         return {
-            "summary": {
-                "total_findings": total,
-                "critical": critical,
-                "high": high,
-                "medium": medium,
-                "low": low,
-            },
-            "highest_risk": asdict(highest) if highest else None,
-            "findings": [asdict(f) for f in findings],
+            "summary": result.get("graph_summary", {}),
+            "graph_summary": result.get("graph_summary", {}),
+            "team_risk": result.get("team_risk", {}),
+            "decision_count": len(decisions),
+            "decisions": [
+                self._decision_to_dict(d)
+                for d in decisions
+            ],
+            "reasoning_results": result.get(
+                "reasoning_results",
+                [],
+            ),
+            "story_bundles": result.get(
+                "story_bundles",
+                [],
+            ),
+            "reports": result.get(
+                "reports",
+                [],
+            ),
         }
+
+    def _decision_to_dict(
+        self,
+        decision: DecisionResult,
+    ) -> dict[str, Any]:
+
+        if hasattr(decision, "to_dict"):
+            data = decision.to_dict()
+        elif is_dataclass(decision):
+            data = asdict(decision)
+        else:
+            data = dict(decision)
+
+        data["risk_score"] = decision.metadata.get(
+            "risk_score",
+            0,
+        )
+
+        return data
+    

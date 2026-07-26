@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from connectors.connector_manager import ConnectorManager
@@ -12,6 +13,11 @@ from analysis.attack_path_analyzer import AttackPathAnalyzer
 from analysis.mitre_analyzer import MitreAnalyzer
 from analysis.detection_analyzer import DetectionAnalyzer
 
+from llm.reasoning_service import ReasoningService
+
+from output.story_bundle import StoryBundleGenerator
+from output.report_generator import ReportGenerator
+
 
 class PredatorEngine:
     """
@@ -20,7 +26,10 @@ class PredatorEngine:
     Responsible for executing the complete reasoning pipeline.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        reasoning_service: ReasoningService | None = None,
+    ) -> None:
 
         self.connector_manager = ConnectorManager()
 
@@ -34,6 +43,12 @@ class PredatorEngine:
 
         self.detection = DetectionAnalyzer()
 
+        self.reasoning_service = reasoning_service
+
+        self.story_bundle_generator = StoryBundleGenerator()
+
+        self.report_generator = ReportGenerator()
+
         self.findings: list[Any] = []
 
         self.universal_findings: list[Any] = []
@@ -41,6 +56,12 @@ class PredatorEngine:
         self.graph_nodes: list[dict[str, Any]] = []
 
         self.graph_edges: list[tuple[str, str]] = []
+
+        self.reasoning_results: list[str] = []
+
+        self.story_bundles: list[dict[str, Any]] = []
+
+        self.reports: list[dict[str, Path]] = []
 
     # -----------------------------------------------------
     # Connector Stage
@@ -142,7 +163,7 @@ class PredatorEngine:
 
         self.graph_edges = self.graph.edges
 
-            # -----------------------------------------------------
+    # -----------------------------------------------------
     # Risk & Decision Stage
     # -----------------------------------------------------
 
@@ -179,6 +200,71 @@ class PredatorEngine:
         return self.risk_engine.calculate_team_risk(
             findings
         )
+
+    # -----------------------------------------------------
+    # LLM Reasoning Stage
+    # -----------------------------------------------------
+
+    def generate_reasoning(
+        self,
+        decisions,
+    ) -> list[str]:
+
+        reasoning_results: list[str] = []
+
+        if self.reasoning_service is None:
+
+            self.reasoning_results = reasoning_results
+
+            return reasoning_results
+
+        for decision in decisions:
+
+            reasoning_results.append(
+                self.reasoning_service.generate(
+                    decision
+                )
+            )
+
+        self.reasoning_results = reasoning_results
+
+        return reasoning_results
+
+    # -----------------------------------------------------
+    # Story Bundle Stage
+    # -----------------------------------------------------
+
+    def generate_story_bundles(
+        self,
+        decisions,
+    ) -> list[dict[str, Any]]:
+
+        story_bundles = (
+            self.story_bundle_generator.generate_many(
+                decisions
+            )
+        )
+
+        self.story_bundles = story_bundles
+
+        return story_bundles
+
+    # -----------------------------------------------------
+    # Report Stage
+    # -----------------------------------------------------
+
+    def generate_reports(
+        self,
+        decisions,
+    ) -> list[dict[str, Path]]:
+
+        reports = self.report_generator.generate_many(
+            decisions
+        )
+
+        self.reports = reports
+
+        return reports
 
     # -----------------------------------------------------
     # Detection Analysis
@@ -294,7 +380,40 @@ class PredatorEngine:
 
                 print(line)
 
-                    # -----------------------------------------------------
+    def print_reasoning_summary(
+        self,
+        decisions,
+        reasoning_results: list[str],
+    ) -> None:
+
+        if not reasoning_results:
+
+            return
+
+        print()
+
+        print("PredatorAI LLM Reasoning")
+
+        print("------------------------------")
+
+        for decision, reasoning in zip(
+            decisions,
+            reasoning_results,
+        ):
+
+            print()
+
+            print(
+                decision.finding_id
+            )
+
+            print()
+
+            print(
+                reasoning
+            )
+
+    # -----------------------------------------------------
     # Main Pipeline
     # -----------------------------------------------------
 
@@ -325,6 +444,18 @@ class PredatorEngine:
 
         team_risk = self.analyze_team_risk()
 
+        reasoning_results = self.generate_reasoning(
+            decisions
+        )
+
+        story_bundles = self.generate_story_bundles(
+            decisions
+        )
+
+        reports = self.generate_reports(
+            decisions
+        )
+
         self.analyze_detection()
 
         self.analyze_mitre()
@@ -341,6 +472,11 @@ class PredatorEngine:
             decisions
         )
 
+        self.print_reasoning_summary(
+            decisions,
+            reasoning_results,
+        )
+
         return {
             "findings": self.findings,
             "universal_findings": self.universal_findings,
@@ -348,6 +484,9 @@ class PredatorEngine:
             "graph_summary": graph_summary,
             "team_risk": team_risk,
             "decisions": decisions,
+            "reasoning_results": reasoning_results,
+            "story_bundles": story_bundles,
+            "reports": reports,
         }
 
     # -----------------------------------------------------
@@ -386,6 +525,24 @@ class PredatorEngine:
             )
         )
 
+    def reasoning_count(self) -> int:
+
+        return len(
+            self.reasoning_results
+        )
+
+    def story_bundle_count(self) -> int:
+
+        return len(
+            self.story_bundles
+        )
+
+    def report_count(self) -> int:
+
+        return len(
+            self.reports
+        )
+
     def export(self) -> dict[str, Any]:
 
         return self.run()
@@ -396,6 +553,10 @@ class PredatorEngine:
             "PredatorEngine("
             f"findings={self.findings_count()}, "
             f"nodes={self.graph_nodes_count()}, "
-            f"risk='{self.graph_risk_level()}'"
+            f"risk='{self.graph_risk_level()}', "
+            f"reasoning={self.reasoning_count()}, "
+            f"story_bundles={self.story_bundle_count()}, "
+            f"reports={self.report_count()}"
             ")"
         )
+    

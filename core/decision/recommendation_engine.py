@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from core.decision.models import (
     DecisionAction,
     DecisionPriority,
@@ -9,46 +11,97 @@ from core.decision.models import (
 
 class RecommendationEngine:
     """
-    Generates prioritized remediation recommendations.
+    Generates deterministic remediation recommendations
+    from graph node data.
     """
 
-    def analyze(self, finding) -> list[Recommendation]:
-        recommendations: list[Recommendation] = []
+    def analyze(
+        self,
+        node: dict[str, Any],
+    ) -> list[Recommendation]:
 
-        internet_facing = getattr(finding.asset, "internet_facing", False)
-        kev = getattr(finding, "kev", False)
-        exploit = getattr(finding, "public_exploit", False)
+        recommendations: list[Recommendation] = []
 
         order = 1
 
-        if internet_facing:
+        exposed = bool(
+            node.get("exposed", False)
+        )
+
+        threat_intel = bool(
+            node.get("threat_intel", False)
+        )
+
+        detection = bool(
+            node.get("detection", False)
+        )
+
+        criticality = str(
+            node.get("criticality", "LOW")
+        ).upper()
+
+        if exposed:
             recommendations.append(
                 Recommendation(
                     title="Restrict Internet Exposure",
-                    description="Limit or remove external access until remediation is complete.",
+                    description="Remove or limit external access until remediation has been verified.",
                     action=DecisionAction.MITIGATE,
                     priority=DecisionPriority.CRITICAL,
                     order=order,
                     target_time_hours=4,
                     verification_steps=[
-                        "Verify service is no longer externally reachable."
+                        "Verify the service is no longer Internet reachable."
                     ],
                 )
             )
             order += 1
 
-        if kev or exploit:
+        if threat_intel:
             recommendations.append(
                 Recommendation(
-                    title="Patch Vulnerability",
-                    description="Apply the latest vendor security update.",
+                    title="Investigate Threat Intelligence",
+                    description="Validate whether active exploitation affects this finding.",
+                    action=DecisionAction.INVESTIGATE,
+                    priority=DecisionPriority.HIGH,
+                    order=order,
+                    target_time_hours=8,
+                    verification_steps=[
+                        "Review SIEM events.",
+                        "Review EDR telemetry.",
+                    ],
+                )
+            )
+            order += 1
+
+        if not detection:
+            recommendations.append(
+                Recommendation(
+                    title="Improve Detection Coverage",
+                    description="Deploy monitoring and alerting before remediation is completed.",
+                    action=DecisionAction.MONITOR,
+                    priority=DecisionPriority.HIGH,
+                    order=order,
+                    target_time_hours=24,
+                    verification_steps=[
+                        "Generate a test alert.",
+                        "Verify telemetry reaches the SIEM.",
+                    ],
+                )
+            )
+            order += 1
+
+        if criticality == "CRITICAL":
+            recommendations.append(
+                Recommendation(
+                    title="Immediate Remediation",
+                    description="Business critical asset requires immediate remediation.",
                     action=DecisionAction.REMEDIATE_NOW,
                     priority=DecisionPriority.CRITICAL,
                     order=order,
                     target_time_hours=24,
                     verification_steps=[
-                        "Confirm installed version.",
-                        "Run vulnerability scan.",
+                        "Apply mitigation.",
+                        "Run validation scan.",
                     ],
                 )
             )
@@ -56,31 +109,17 @@ class RecommendationEngine:
 
         recommendations.append(
             Recommendation(
-                title="Increase Monitoring",
-                description="Enable enhanced monitoring and alerting for the affected asset.",
-                action=DecisionAction.MONITOR,
-                priority=DecisionPriority.MEDIUM,
-                order=order,
-                verification_steps=[
-                    "Verify SIEM receives telemetry.",
-                    "Verify alerts are triggered.",
-                ],
-            )
-        )
-        order += 1
-
-        recommendations.append(
-            Recommendation(
                 title="Validate Remediation",
-                description="Perform a verification scan after mitigation.",
+                description="Confirm that the finding is fully resolved after mitigation.",
                 action=DecisionAction.INVESTIGATE,
                 priority=DecisionPriority.MEDIUM,
                 order=order,
                 verification_steps=[
-                    "Re-run scanner.",
-                    "Verify finding is closed.",
+                    "Re-run scan.",
+                    "Confirm finding closure.",
                 ],
             )
         )
 
         return recommendations
+    

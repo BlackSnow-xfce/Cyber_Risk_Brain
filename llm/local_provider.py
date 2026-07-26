@@ -19,3 +19,4 @@ class LocalProvider(LLMProvider):
         raise NotImplementedError(
             "LocalProvider has not been implemented yet."
         )
+    

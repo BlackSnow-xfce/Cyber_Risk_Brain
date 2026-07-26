@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from core.decision.models import AttackReasoning
+from core.predator_engine import PredatorEngine
 from dashboard.dashboard_data import DashboardDataBuilder
 
 app = FastAPI(title="PredatorAI Dashboard")
@@ -21,46 +21,14 @@ if STATIC_DIR.exists():
         name="static",
     )
 
-
+engine = PredatorEngine()
 builder = DashboardDataBuilder()
-
-# Temporäre Beispieldaten bis die API angebunden wird.
-_demo_findings = [
-    AttackReasoning(
-        title="Critical Internet-facing Vulnerability",
-        score=98,
-        risk_level="Critical",
-        asset="SRV-WEB-01",
-        vendor="OpenSSH",
-        product="OpenSSH",
-        version="8.9p1",
-        cve="CVE-2024-6387",
-        reasons=[
-            "Internet-facing asset",
-            "Public exploit available",
-            "High EPSS",
-            "CISA KEV listed",
-        ],
-        recommendations=[
-            "Apply vendor patch immediately",
-            "Restrict external access",
-            "Validate remediation",
-        ],
-        business_impact="Remote compromise of a critical business service.",
-        technical_impact="Unauthenticated remote code execution may be possible.",
-        internet_exposed=True,
-        crown_jewel=True,
-        public_exploit=True,
-        known_exploited=True,
-        high_epss=True,
-        high_cvss=True,
-    )
-]
 
 
 @app.get("/api/dashboard")
 def dashboard() -> dict:
-    return builder.build(_demo_findings)
+    result = engine.run()
+    return builder.build(result)
 
 
 @app.get("/")
@@ -81,4 +49,5 @@ def index():
 def health() -> dict:
     return {
         "status": "ok",
+        "engine": "PredatorAI v2",
     }

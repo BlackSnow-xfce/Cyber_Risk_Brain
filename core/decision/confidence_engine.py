@@ -3,147 +3,147 @@ from __future__ import annotations
 from typing import Any
 
 from core.decision.models import (
-    DecisionAction,
-    DecisionPriority,
-    Recommendation,
+    Confidence,
+    ConfidenceLevel,
 )
 
 
-class RecommendationEngine:
+class ConfidenceEngine:
     """
-    Generates deterministic remediation recommendations
-    based on graph node attributes.
+    Calculates a deterministic confidence assessment
+    from the available graph node attributes.
     """
 
     def analyze(
         self,
         node: dict[str, Any],
-    ) -> list[Recommendation]:
+    ) -> Confidence:
 
-        recommendations: list[Recommendation] = []
+        score = 40.0
 
-        order = 1
+        reasons: list[str] = []
 
-        criticality = str(
-            node.get("criticality", "LOW")
-        ).upper()
+        missing_information: list[str] = []
 
-        exposed = bool(
-            node.get("exposed", False)
+        required_fields = (
+            "name",
+            "severity",
+            "criticality",
+            "exposed",
+            "detection",
+            "threat_intel",
+            "mitre",
         )
 
-        detection = bool(
-            node.get("detection", False)
+        available_fields = 0
+
+        for field_name in required_fields:
+
+            value = node.get(field_name)
+
+            if value is None or value == "":
+
+                missing_information.append(
+                    f"Missing value for '{field_name}'."
+                )
+
+            else:
+
+                available_fields += 1
+
+        completeness_score = (
+            available_fields
+            / len(required_fields)
+        ) * 30.0
+
+        score += completeness_score
+
+        if node.get("severity"):
+
+            score += 5.0
+
+            reasons.append(
+                "Vendor severity information is available."
+            )
+
+        if node.get("criticality"):
+
+            score += 5.0
+
+            reasons.append(
+                "Asset criticality information is available."
+            )
+
+        if node.get("exposed") is not None:
+
+            score += 5.0
+
+            reasons.append(
+                "Exposure information is available."
+            )
+
+        if node.get("detection") is not None:
+
+            score += 5.0
+
+            reasons.append(
+                "Detection coverage information is available."
+            )
+
+        if node.get("threat_intel"):
+
+            score += 5.0
+
+            reasons.append(
+                "Threat intelligence supports the decision."
+            )
+
+        if node.get("mitre"):
+
+            score += 5.0
+
+            reasons.append(
+                "MITRE ATT&CK context supports the decision."
+            )
+
+        score = min(
+            round(score, 2),
+            100.0,
         )
 
-        threat_intel = bool(
-            node.get("threat_intel", False)
+        level = self._determine_level(
+            score
         )
 
-        if exposed:
+        if not reasons:
 
-            recommendations.append(
-                Recommendation(
-                    title="Remove Internet Exposure",
-                    description=(
-                        "Restrict or remove external access "
-                        "until remediation is completed."
-                    ),
-                    action=DecisionAction.MITIGATE,
-                    priority=DecisionPriority.CRITICAL,
-                    order=order,
-                    target_time_hours=4,
-                    verification_steps=[
-                        "Verify asset is no longer reachable from the Internet."
-                    ],
-                )
+            reasons.append(
+                "Confidence is based on the available finding attributes."
             )
 
-            order += 1
-
-        if threat_intel:
-
-            recommendations.append(
-                Recommendation(
-                    title="Investigate Threat Intelligence",
-                    description=(
-                        "Review threat intelligence and determine "
-                        "whether exploitation has already occurred."
-                    ),
-                    action=DecisionAction.INVESTIGATE,
-                    priority=DecisionPriority.HIGH,
-                    order=order,
-                    target_time_hours=8,
-                    verification_steps=[
-                        "Search SIEM.",
-                        "Review EDR telemetry.",
-                        "Check authentication logs.",
-                    ],
-                )
-            )
-
-            order += 1
-
-        if not detection:
-
-            recommendations.append(
-                Recommendation(
-                    title="Improve Detection Coverage",
-                    description=(
-                        "Deploy detection rules and ensure the "
-                        "asset is monitored."
-                    ),
-                    action=DecisionAction.MITIGATE,
-                    priority=DecisionPriority.HIGH,
-                    order=order,
-                    target_time_hours=24,
-                    verification_steps=[
-                        "Verify telemetry.",
-                        "Generate test alert.",
-                    ],
-                )
-            )
-
-            order += 1
-
-        if criticality == "CRITICAL":
-
-            recommendations.append(
-                Recommendation(
-                    title="Immediate Remediation",
-                    description=(
-                        "Critical business asset requires immediate "
-                        "remediation and validation."
-                    ),
-                    action=DecisionAction.REMEDIATE_NOW,
-                    priority=DecisionPriority.CRITICAL,
-                    order=order,
-                    target_time_hours=24,
-                    verification_steps=[
-                        "Apply mitigation.",
-                        "Run verification scan.",
-                        "Confirm finding closure.",
-                    ],
-                )
-            )
-
-            order += 1
-
-        recommendations.append(
-            Recommendation(
-                title="Continuous Monitoring",
-                description=(
-                    "Continue monitoring until the finding "
-                    "has been fully remediated."
-                ),
-                action=DecisionAction.MONITOR,
-                priority=DecisionPriority.MEDIUM,
-                order=order,
-                verification_steps=[
-                    "Review SIEM alerts.",
-                    "Verify no new indicators appear.",
-                ],
-            )
+        return Confidence(
+            score=score,
+            level=level,
+            reasons=reasons,
+            missing_information=missing_information,
         )
 
-        return recommendations
+    @staticmethod
+    def _determine_level(
+        score: float,
+    ) -> ConfidenceLevel:
+
+        if score >= 90:
+            return ConfidenceLevel.VERY_HIGH
+
+        if score >= 75:
+            return ConfidenceLevel.HIGH
+
+        if score >= 50:
+            return ConfidenceLevel.MEDIUM
+
+        if score >= 25:
+            return ConfidenceLevel.LOW
+
+        return ConfidenceLevel.VERY_LOW
+    

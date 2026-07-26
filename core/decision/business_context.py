@@ -7,7 +7,7 @@ from core.decision.models import BusinessImpact
 
 class BusinessContextEngine:
     """
-    Evaluates the business impact of a graph node.
+    Creates a deterministic business impact assessment from graph node data.
     """
 
     def analyze(
@@ -19,89 +19,76 @@ class BusinessContextEngine:
             node.get("criticality", "LOW")
         ).upper()
 
-        owner = node.get(
-            "owner",
-            "Unknown",
+        owner = node.get("owner")
+
+        exposed = bool(
+            node.get("exposed", False)
         )
 
-        service = node.get(
-            "business_service",
-            owner,
+        service = (
+            "Business Critical Service"
+            if criticality in ("CRITICAL", "HIGH")
+            else "Standard Service"
         )
 
-        confidentiality = "LOW"
-        integrity = "LOW"
-        availability = "LOW"
+        affected_processes = []
 
-        financial = "LOW"
-        operational = "LOW"
-        regulatory = "LOW"
-        reputational = "LOW"
+        if exposed:
+            affected_processes.append(
+                "External Service Delivery"
+            )
 
-        affected_processes: list[str] = []
+        affected_processes.append(
+            "Security Operations"
+        )
 
         if criticality == "CRITICAL":
-
-            confidentiality = "HIGH"
-            integrity = "HIGH"
-            availability = "HIGH"
-
-            financial = "HIGH"
-            operational = "HIGH"
-            regulatory = "HIGH"
-            reputational = "HIGH"
+            summary = (
+                "Compromise of this asset would have a critical business impact."
+            )
+            financial = "High"
+            operational = "High"
+            regulatory = "Possible"
+            reputational = "High"
 
         elif criticality == "HIGH":
-
-            confidentiality = "HIGH"
-            integrity = "HIGH"
-            availability = "MEDIUM"
-
-            financial = "HIGH"
-            operational = "HIGH"
-            reputational = "HIGH"
+            summary = (
+                "Compromise of this asset would have a significant business impact."
+            )
+            financial = "Medium"
+            operational = "High"
+            regulatory = "Possible"
+            reputational = "Medium"
 
         elif criticality == "MEDIUM":
+            summary = (
+                "Compromise of this asset would have a moderate business impact."
+            )
+            financial = "Medium"
+            operational = "Medium"
+            regulatory = "Low"
+            reputational = "Low"
 
-            confidentiality = "MEDIUM"
-            integrity = "MEDIUM"
-            availability = "MEDIUM"
-
-            operational = "MEDIUM"
-
-            financial = "LOW"
-
-        if node.get("exposed", False):
-
-            operational = "HIGH"
-
-            if financial == "LOW":
-                financial = "MEDIUM"
-
-        if node.get("threat_intel", False):
-
-            regulatory = "HIGH"
-
-            reputational = "HIGH"
-
-        affected_processes.append(service)
-
-        summary = (
-            f"The asset belongs to '{service}' "
-            f"and has business criticality "
-            f"'{criticality}'."
-        )
+        else:
+            summary = (
+                "Business impact is currently assessed as limited."
+            )
+            financial = "Low"
+            operational = "Low"
+            regulatory = "Low"
+            reputational = "Low"
 
         return BusinessImpact(
             summary=summary,
             business_service=service,
             asset_criticality=criticality,
-            confidentiality_impact=confidentiality,
-            integrity_impact=integrity,
-            availability_impact=availability,
+            confidentiality_impact=financial,
+            integrity_impact=operational,
+            availability_impact=operational,
             financial_impact=financial,
             operational_impact=operational,
             regulatory_impact=regulatory,
             reputational_impact=reputational,
             affected_processes=affected_processes,
         )
+    
