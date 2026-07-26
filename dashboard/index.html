@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyber Risk Brain</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f4f6f8;
+        }
+
+        h1 { color: #222; }
+
+        button {
+            padding: 10px 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .kpi-container {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .kpi {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 140px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .kpi-title {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        th {
+            background: #222;
+            color: white;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            vertical-align: top;
+        }
+
+        .risk {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .CRITICAL { background: #ffcccc; color: #8b0000; }
+        .HIGH { background: #ffe0b3; color: #9a4d00; }
+        .MEDIUM { background: #fff3b0; color: #7a6500; }
+        .LOW { background: #d4edda; color: #155724; }
+    </style>
+</head>
+
+<body>
+
+<h1>Cyber Risk Brain - Dashboard Alpha</h1>
+
+<button onclick="loadFindings()">Findings laden</button>
+
+<div class="kpi-container">
+    <div class="kpi">
+        <div class="kpi-title">Total Findings</div>
+        <div class="kpi-value" id="totalCount">0</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi-title">Critical</div>
+        <div class="kpi-value" id="criticalCount">0</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi-title">High</div>
+        <div class="kpi-value" id="highCount">0</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi-title">Medium</div>
+        <div class="kpi-value" id="mediumCount">0</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi-title">Riskiest Team</div>
+        <div class="kpi-value" id="riskiestTeam">-</div>
+    </div>
+</div>
+
+<div style="background:white; padding:20px; margin-bottom:20px; border-left:6px solid red; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+    <h2>🔥 Highest Risk</h2>
+    <div id="topRiskContent">Noch keine Daten geladen.</div>
+</div>
+
+<div style="background:white; padding:20px; margin-bottom:20px; border-left:6px solid #0078d4; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+    <h2>📊 Executive Summary</h2>
+    <div id="executiveContent">Noch keine Daten geladen.</div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Source</th>
+            <th>Title</th>
+            <th>Vendor Severity</th>
+            <th>Business Risk</th>
+            <th>Risk Score</th>
+            <th>Owner</th>
+            <th>SLA</th>
+            <th>Recommendations</th>
+            <th>Reasons</th>
+        </tr>
+    </thead>
+
+    <tbody id="findingsTable">
+        <tr>
+            <td colspan="9">Noch keine Daten geladen.</td>
+        </tr>
+    </tbody>
+</table>
+
+<script>
+async function loadFindings() {
+    const response = await fetch("http://127.0.0.1:8000/api/findings");
+    const data = await response.json();
+
+    const teamResponse = await fetch("http://127.0.0.1:8000/api/team-risk");
+    const teamData = await teamResponse.json();
+
+    const sortedData = [...data].sort(
+        (a, b) => b.risk_score - a.risk_score
+    );
+
+    const topRisk = sortedData[0];
+
+    document.getElementById("totalCount").textContent = sortedData.length;
+
+    document.getElementById("criticalCount").textContent =
+        sortedData.filter(x => x.business_risk === "CRITICAL").length;
+
+    document.getElementById("highCount").textContent =
+        sortedData.filter(x => x.business_risk === "HIGH").length;
+
+    document.getElementById("mediumCount").textContent =
+        sortedData.filter(x => x.business_risk === "MEDIUM").length;
+
+    document.getElementById("riskiestTeam").textContent =
+        teamData[0].team;
+
+    document.getElementById("topRiskContent").innerHTML = `
+        <strong>${topRisk.title}</strong><br><br>
+        Risk Score: <strong>${topRisk.risk_score}</strong><br>
+        Business Risk: <strong>${topRisk.business_risk}</strong><br>
+        Owner: <strong>${topRisk.owner}</strong><br>
+        SLA: <strong>${topRisk.sla_days} Days</strong>
+    `;
+
+    document.getElementById("executiveContent").innerHTML = `
+        Critical business risk detected.<br><br>
+        <strong>Highest Priority:</strong> ${topRisk.title}<br>
+        <strong>Responsible Team:</strong> ${topRisk.owner}<br>
+        <strong>Risk Score:</strong> ${topRisk.risk_score}<br>
+        <strong>Immediate Action:</strong> ${topRisk.recommendations[0]}
+    `;
+
+    const table = document.getElementById("findingsTable");
+    table.innerHTML = "";
+
+    sortedData.forEach(finding => {
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td>${finding.source}</td>
+            <td>${finding.title}</td>
+            <td>${finding.vendor_severity}</td>
+            <td><span class="risk ${finding.business_risk}">${finding.business_risk}</span></td>
+            <td><strong>${finding.risk_score}</strong></td>
+            <td>${finding.owner}</td>
+            <td>${finding.sla_days}</td>
+            <td>${finding.recommendations.join("<br>")}</td>
+            <td>${finding.reasons.join("<br>")}</td>
+        `;
+
+        table.appendChild(row);
+    });
+}
+</script>
+
+</body>
+</html>
