@@ -1,29 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 
 from core.decision.models import DecisionResult
 
 from llm.in_memory_repository import InMemoryRepository
+from llm.memory_models import DecisionMemoryEntry
 from llm.memory_repository import MemoryRepository
 from llm.reasoning_result import ReasoningResult
-
-
-@dataclass(slots=True)
-class DecisionMemoryEntry:
-
-    timestamp: datetime
-
-    decision: DecisionResult
-
-    reasoning: ReasoningResult
-
-    human_verdict: str = ""
-
-    incident_occurred: bool = False
-
-    feedback: str = ""
 
 
 class DecisionMemory:
@@ -43,23 +27,15 @@ class DecisionMemory:
         )
 
     def add(
-
         self,
-
         decision: DecisionResult,
-
         reasoning: ReasoningResult,
-
     ) -> None:
 
         entry = DecisionMemoryEntry(
-
             timestamp=datetime.utcnow(),
-
             decision=decision,
-
             reasoning=reasoning,
-
         )
 
         self.repository.save(entry)
@@ -74,9 +50,7 @@ class DecisionMemory:
         self,
     ) -> int:
 
-        return len(
-            self.repository.load()
-        )
+        return len(self.repository.load())
 
     def clear(
         self,

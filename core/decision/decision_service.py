@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from core.ai.reasoning_engine import ReasoningEngine
-from core.ai.reasoning_result import ReasoningResult
 
+from core.decision.decision_context import DecisionContext
+from core.decision.decision_explainer import DecisionExplainer
 from core.decision.decision_trace import DecisionTrace
 from core.decision.decision_trace_builder import DecisionTraceBuilder
 from core.decision.models import DecisionResult
@@ -10,14 +11,29 @@ from core.decision.models import DecisionResult
 
 class DecisionService:
     """
-    PredatorAI Decision Orchestrator.
+    Central orchestration layer of PredatorAI.
 
-    Coordinates the Decision Engine,
-    AI Layer and Decision Trace.
+    Pipeline
 
-    This is the primary entry point for
-    consumers like the Dashboard,
-    Story Engine and REST API.
+    DecisionResult
+            │
+            ▼
+      AI Reasoning
+            │
+            ▼
+     DecisionContext
+            │
+            ▼
+    DecisionTraceBuilder
+            │
+            ▼
+      DecisionTrace
+            │
+            ▼
+    DecisionExplainer
+            │
+            ▼
+      Final DecisionTrace
     """
 
     def __init__(
@@ -26,21 +42,52 @@ class DecisionService:
 
         self.reasoning = ReasoningEngine()
 
-        self.trace_builder = DecisionTraceBuilder()
+        self.trace_builder = (
+            DecisionTraceBuilder()
+        )
+
+        self.explainer = (
+            DecisionExplainer()
+        )
 
     def build_trace(
         self,
         decision: DecisionResult,
     ) -> DecisionTrace:
 
-        reasoning: ReasoningResult = (
-            self.reasoning.enhance(
-                decision
+        reasoning = self.reasoning.enhance(
+            decision
+        )
+
+        context = DecisionContext(
+
+            decision=decision,
+
+            reasoning=reasoning,
+
+        )
+
+        trace = self.trace_builder.build(
+            context
+        )
+
+        trace.executive_summary = (
+            self.explainer.executive(
+                trace
             )
         )
 
-        return self.trace_builder.build(
-            decision,
-            reasoning,
+        trace.soc_summary = (
+            self.explainer.soc(
+                trace
+            )
         )
+
+        trace.technical_summary = (
+            self.explainer.technical(
+                trace
+            )
+        )
+
+        return trace
     

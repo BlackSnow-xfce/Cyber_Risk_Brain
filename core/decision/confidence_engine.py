@@ -1,149 +1,145 @@
 from __future__ import annotations
 
-from typing import Any
-
-from core.decision.models import (
-    Confidence,
-    ConfidenceLevel,
+from core.decision.confidence_factor import (
+    ConfidenceFactor,
+)
+from core.decision.confidence_result import (
+    ConfidenceResult,
+)
+from core.decision.decision_context import (
+    DecisionContext,
 )
 
 
 class ConfidenceEngine:
     """
-    Calculates a deterministic confidence assessment
-    from the available graph node attributes.
+    Calculates explainable confidence.
+
+    Every confidence point can later be
+    displayed inside the Dashboard.
     """
 
-    def analyze(
+    def calculate(
         self,
-        node: dict[str, Any],
-    ) -> Confidence:
+        context: DecisionContext,
+    ) -> ConfidenceResult:
 
-        score = 40.0
+        attack = context.decision.attack_reasoning
 
-        reasons: list[str] = []
+        score = 0.0
 
-        missing_information: list[str] = []
+        factors: list[
+            ConfidenceFactor
+        ] = []
 
-        required_fields = (
-            "name",
-            "severity",
-            "criticality",
-            "exposed",
-            "detection",
-            "threat_intel",
-            "mitre",
-        )
+        def add(
+            name: str,
+            description: str,
+            weight: float,
+        ) -> None:
 
-        available_fields = 0
+            nonlocal score
 
-        for field_name in required_fields:
+            score += weight
 
-            value = node.get(field_name)
+            factors.append(
 
-            if value is None or value == "":
+                ConfidenceFactor(
 
-                missing_information.append(
-                    f"Missing value for '{field_name}'."
+                    name=name,
+
+                    description=description,
+
+                    weight=weight,
+
+                    positive=True,
+
                 )
 
-            else:
-
-                available_fields += 1
-
-        completeness_score = (
-            available_fields
-            / len(required_fields)
-        ) * 30.0
-
-        score += completeness_score
-
-        if node.get("severity"):
-
-            score += 5.0
-
-            reasons.append(
-                "Vendor severity information is available."
             )
 
-        if node.get("criticality"):
+        if attack.internet_exposed:
 
-            score += 5.0
+            add(
 
-            reasons.append(
-                "Asset criticality information is available."
+                "Internet Facing",
+
+                "Asset is reachable from the Internet.",
+
+                15,
+
             )
 
-        if node.get("exposed") is not None:
+        if attack.known_exploited:
 
-            score += 5.0
+            add(
 
-            reasons.append(
-                "Exposure information is available."
+                "KEV",
+
+                "Known exploited vulnerability.",
+
+                25,
+
             )
 
-        if node.get("detection") is not None:
+        if attack.public_exploit:
 
-            score += 5.0
+            add(
 
-            reasons.append(
-                "Detection coverage information is available."
+                "Public Exploit",
+
+                "Exploit code is publicly available.",
+
+                15,
+
             )
 
-        if node.get("threat_intel"):
+        if attack.high_epss:
 
-            score += 5.0
+            add(
 
-            reasons.append(
-                "Threat intelligence supports the decision."
+                "High EPSS",
+
+                "High probability of exploitation.",
+
+                15,
+
             )
 
-        if node.get("mitre"):
+        if attack.high_cvss:
 
-            score += 5.0
+            add(
 
-            reasons.append(
-                "MITRE ATT&CK context supports the decision."
+                "Critical CVSS",
+
+                "Critical severity.",
+
+                10,
+
+            )
+
+        if attack.crown_jewel:
+
+            add(
+
+                "Crown Jewel",
+
+                "Business critical asset.",
+
+                20,
+
             )
 
         score = min(
-            round(score, 2),
+            score,
             100.0,
         )
 
-        level = self._determine_level(
-            score
-        )
+        return ConfidenceResult(
 
-        if not reasons:
-
-            reasons.append(
-                "Confidence is based on the available finding attributes."
-            )
-
-        return Confidence(
             score=score,
-            level=level,
-            reasons=reasons,
-            missing_information=missing_information,
+
+            factors=factors,
+
         )
-
-    @staticmethod
-    def _determine_level(
-        score: float,
-    ) -> ConfidenceLevel:
-
-        if score >= 90:
-            return ConfidenceLevel.VERY_HIGH
-
-        if score >= 75:
-            return ConfidenceLevel.HIGH
-
-        if score >= 50:
-            return ConfidenceLevel.MEDIUM
-
-        if score >= 25:
-            return ConfidenceLevel.LOW
-
-        return ConfidenceLevel.VERY_LOW
     
