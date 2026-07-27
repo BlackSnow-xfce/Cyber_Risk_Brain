@@ -4,29 +4,28 @@ from dataclasses import dataclass, field
 
 from core.decision.business_impact import BusinessImpact
 from core.decision.confidence_result import ConfidenceResult
-from core.decision.evidence import Evidence
 from core.decision.reason import Reason
 from core.decision.recommendation import Recommendation
 
 
 @dataclass(slots=True)
-class DecisionTrace:
+class DecisionCard:
     """
-    Canonical decision object.
+    UI representation of a DecisionTrace.
 
-    Every downstream component consumes
-    DecisionTrace.
+    Used by Dashboard, REST API, PDF and
+    Story Engine.
     """
 
     # -------------------------------------------------
-    # Decision
+    # Header
     # -------------------------------------------------
+
+    title: str
 
     decision: str
 
     priority: str
-
-    action: str
 
     risk_score: float
 
@@ -34,11 +33,15 @@ class DecisionTrace:
     # Confidence
     # -------------------------------------------------
 
-    confidence: ConfidenceResult | None = None
+    confidence: ConfidenceResult
 
-    ai_verdict: str = ""
+    ai_verdict: str
 
-    ai_confidence: float = 0.0
+    # -------------------------------------------------
+    # Business
+    # -------------------------------------------------
+
+    business_impact: BusinessImpact | None = None
 
     # -------------------------------------------------
     # Explainability
@@ -48,19 +51,25 @@ class DecisionTrace:
         default_factory=list
     )
 
-    evidence: list[Evidence] = field(
+    recommendations: list[
+        Recommendation
+    ] = field(
+        default_factory=list
+    )
+
+    counter_arguments: list[str] = field(
         default_factory=list
     )
 
     # -------------------------------------------------
-    # Threat Intelligence
+    # Attack Path
     # -------------------------------------------------
 
-    threat_intelligence: list[str] = field(
+    affected_assets: list[str] = field(
         default_factory=list
     )
 
-    correlations: list[str] = field(
+    attack_path: list[str] = field(
         default_factory=list
     )
 
@@ -80,39 +89,15 @@ class DecisionTrace:
         default_factory=list
     )
 
-    counter_arguments: list[str] = field(
-        default_factory=list
-    )
-
-    assumptions: list[str] = field(
-        default_factory=list
-    )
-
     # -------------------------------------------------
-    # Business
+    # Threat Intelligence
     # -------------------------------------------------
 
-    business_impact: BusinessImpact | None = None
-
-    recommendations: list[
-        Recommendation
-    ] = field(
+    threat_intelligence: list[str] = field(
         default_factory=list
     )
 
-    # -------------------------------------------------
-    # Attack
-    # -------------------------------------------------
-
-    attack_path: list[str] = field(
-        default_factory=list
-    )
-
-    affected_assets: list[str] = field(
-        default_factory=list
-    )
-
-    mitre_techniques: list[str] = field(
+    correlations: list[str] = field(
         default_factory=list
     )
 
@@ -125,28 +110,23 @@ class DecisionTrace:
     )
 
     # -------------------------------------------------
-    # Stories
+    # Story
     # -------------------------------------------------
 
     executive_summary: str = ""
 
-    soc_summary: str = ""
-
     technical_summary: str = ""
 
-    remediation: str = ""
+    remediation_summary: str = ""
 
     # -------------------------------------------------
-    # Metadata
+    # Dashboard
     # -------------------------------------------------
 
-    tags: list[str] = field(
-        default_factory=list
-    )
+    color: str = "critical"
 
-    source: str = ""
+    icon: str = "shield"
 
-    created_by: str = "PredatorAI"
+    expanded: bool = False
 
-    version: str = "3.0"
     

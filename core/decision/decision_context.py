@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from core.ai.reasoning_result import ReasoningResult
+from core.decision.business_impact import BusinessImpact
 from core.decision.confidence_result import ConfidenceResult
 from core.decision.models import DecisionResult
 
@@ -10,41 +11,89 @@ from core.decision.models import DecisionResult
 @dataclass(slots=True)
 class DecisionContext:
     """
-    Central context object shared by all
-    Decision Intelligence components.
+    Shared context passed through the
+    complete Decision Intelligence pipeline.
     """
 
+    # -------------------------------------------------
     # Core
+    # -------------------------------------------------
 
     decision: DecisionResult
 
     reasoning: ReasoningResult
 
+    # -------------------------------------------------
     # Explainability
+    # -------------------------------------------------
 
-    evidence: list = field(default_factory=list)
+    reasons: list = field(
+        default_factory=list
+    )
 
-    recommendations: list = field(default_factory=list)
+    evidence: list = field(
+        default_factory=list
+    )
 
-    business_impact = None
+    recommendations: list = field(
+        default_factory=list
+    )
 
-    attack_path: list = field(default_factory=list)
+    # -------------------------------------------------
+    # Attack Intelligence
+    # -------------------------------------------------
 
-    threat_intelligence: list = field(default_factory=list)
+    attack_path: list[str] = field(
+        default_factory=list
+    )
 
-    correlations: list = field(default_factory=list)
+    threat_intelligence: list[str] = field(
+        default_factory=list
+    )
 
-    # Confidence
+    correlations: list[str] = field(
+        default_factory=list
+    )
+
+    mitre_techniques: list[str] = field(
+        default_factory=list
+    )
+
+    # -------------------------------------------------
+    # Business
+    # -------------------------------------------------
 
     confidence: ConfidenceResult | None = None
 
-    # Future
+    business_impact: BusinessImpact | None = None
 
-    asset_context = None
+    asset_context: dict | None = None
 
-    findings: list = field(default_factory=list)
+    findings: list = field(
+        default_factory=list
+    )
 
-    related_assets: list = field(default_factory=list)
+    related_assets: list[str] = field(
+        default_factory=list
+    )
 
-    tags: list[str] = field(default_factory=list)
+    # -------------------------------------------------
+    # Timeline
+    # -------------------------------------------------
+
+    timeline: list[str] = field(
+        default_factory=list
+    )
+
+    # -------------------------------------------------
+    # Metadata
+    # -------------------------------------------------
+
+    tags: list[str] = field(
+        default_factory=list
+    )
+
+    source: str = "PredatorAI"
+
+    version: str = "3.0"
     

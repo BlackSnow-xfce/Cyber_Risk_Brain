@@ -1,804 +1,1145 @@
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
+    <meta charset="UTF-8">
 
-<meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+    <meta
+        name="description"
+        content="PredatorAI Enterprise Cyber Decision Intelligence"
+    >
 
-<title>
+    <title>PredatorAI Decision Console</title>
 
-PredatorAI Mission Control
-
-</title>
-
-<link
-    rel="stylesheet"
-    href="/static/style.css"
->
-
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
 </head>
 
 <body>
 
-<div class="app">
+    <div class="app">
 
-<aside class="sidebar">
+        <aside class="sidebar">
 
-<div class="logo">
+            <div class="logo">
 
-<h1>PredatorAI</h1>
+                <h1>
+                    PredatorAI
+                </h1>
 
-<span>
-
-Cyber Reasoning Platform
-
-</span>
-
-</div>
-
-<nav>
-
-<a class="active">
-
-Overview
-
-</a>
-
-<a>
-
-Mission
-
-</a>
-
-<a>
-
-Decisions
-
-</a>
-
-<a>
-
-Attack Paths
-
-</a>
-
-<a>
-
-Assets
-
-</a>
-
-<a>
-
-Threat Intel
-
-</a>
-
-<a>
-
-Reports
-
-</a>
-
-<a>
-
-Settings
-
-</a>
-
-</nav>
-
-<div class="sidebar-status">
-
-<div class="status online"></div>
-
-<span>
-
-MISSION ONLINE
-
-</span>
-
-</div>
-
-</aside>
-
-<main>
-
-<header class="topbar">
-
-<div>
-
-<small>
-
-MISSION CONTROL
-
-</small>
-
-<h1>
-
-PredatorAI Command Center
-
-</h1>
-
-</div>
-
-<div class="top-status">
-
-<div>
-
-<span>
-
-Engine
-
-</span>
-
-<strong>
-
-ONLINE
-
-</strong>
-
-</div>
-
-<div>
-
-<span>
-
-Threat Intel
-
-</span>
-
-<strong>
-
-CONNECTED
-
-</strong>
-
-</div>
-
-<div>
-
-<span>
-
-LLM
-
-</span>
-
-<strong>
-
-STANDBY
-
-</strong>
-
-</div>
-
-</div>
-
-</header>
-
-<section class="hero">
-
-<div class="mission-card">
-
-<span class="label">
-
-MISSION STATUS
-
-</span>
-
-<h2>
-
-Overall Risk
-
-</h2>
-
-<div class="risk-circle">
-
-<div class="risk-inner">
-
-<span id="overallRiskScore">
-
-0
-
-</span>
-
-<small>
-
-CRITICAL
-
-</small>
-
-</div>
-
-</div>
-
-<div class="hero-stats">
-
-<div>
-
-<span>
-
-Total Findings
-
-</span>
-
-<strong id="total">
-
-0
-
-</strong>
-
-</div>
-
-<div>
-
-<span>
-
-Critical
-
-</span>
-
-<strong id="critical">
-
-0
-
-</strong>
-
-</div>
-
-<div>
-
-<span>
-
-High
-
-</span>
-
-<strong id="high">
-
-0
-
-</strong>
-
-</div>
-
-<div>
-
-<span>
-
-Confidence
-
-</span>
-
-<strong id="averageConfidence">
-
-0%
-
-</strong>
-
-</div>
-
-</div>
-
-</div>
-
-<div class="brain-card">
-
-    <span class="label">
-
-        PREDATOR CORE
-
-    </span>
-
-    <h2>
-
-        Neural Reasoning Engine
-
-    </h2>
-
-    <div class="brain">
-
-        <span class="node n1"></span>
-        <span class="node n2"></span>
-        <span class="node n3"></span>
-        <span class="node n4"></span>
-        <span class="node n5"></span>
-        <span class="node n6"></span>
-
-        <span class="line l1"></span>
-        <span class="line l2"></span>
-        <span class="line l3"></span>
-        <span class="line l4"></span>
-        <span class="line l5"></span>
-
-        <div class="core">
-
-            AI
-
-        </div>
-
-    </div>
-
-    <div class="brain-footer">
-
-        <div>
-
-            <span>
-
-                Decision Engine
-
-            </span>
-
-            <strong>
-
-                ONLINE
-
-            </strong>
-
-        </div>
-
-        <div>
-
-            <span>
-
-                Threat Intel
-
-            </span>
-
-            <strong>
-
-                ACTIVE
-
-            </strong>
-
-        </div>
-
-        <div>
-
-            <span>
-
-                Story Engine
-
-            </span>
-
-            <strong>
-
-                READY
-
-            </strong>
-
-        </div>
-
-    </div>
-
-</div>
-
-</section>
-
-<section class="dashboard-grid">
-
-<div class="panel highest-risk-panel">
-
-<div class="panel-header">
-
-<span class="label">
-
-PRIORITY TARGET
-
-</span>
-
-<span class="live">
-
-● LIVE
-
-</span>
-
-</div>
-
-<h2>
-
-Highest Risk Decision
-
-</h2>
-
-<div id="highestRisk">
-
-Loading...
-
-</div>
-
-</div>
-
-<div class="panel decision-feed">
-
-<div class="panel-header">
-
-<span class="label">
-
-LIVE DECISIONS
-
-</span>
-
-</div>
-
-<div class="feed">
-
-<div class="feed-item">
-
-<div class="feed-time">
-
-LIVE
-
-</div>
-
-<div>
-
-PredatorAI initialized
-
-</div>
-
-</div>
-
-<div class="feed-item">
-
-<div class="feed-time">
-
-LIVE
-
-</div>
-
-<div>
-
-Waiting for findings...
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-</section>
-
-<section class="cards-grid">
-
-<div class="info-card critical">
-
-<span>
-
-Critical
-
-</span>
-
-<h2 id="criticalCard">
-
-0
-
-</h2>
-
-</div>
-
-<div class="info-card high">
-
-<span>
-
-High
-
-</span>
-
-<h2 id="highCard">
-
-0
-
-</h2>
-
-</div>
-
-<div class="info-card medium">
-
-<span>
-
-Medium
-
-</span>
-
-<h2 id="mediumCard">
-
-0
-
-</h2>
-
-</div>
-
-<div class="info-card low">
-
-<span>
-
-Low
-
-</span>
-
-<h2 id="lowCard">
-
-0
-
-</h2>
-
-</div>
-
-</section>
-
-<section class="panel">
-
-    <div class="panel-header">
-
-        <span class="label">
-
-            DECISION MATRIX
-
-        </span>
-
-    </div>
-
-    <table>
-
-        <thead>
-
-            <tr>
-
-                <th>Asset</th>
-
-                <th>Finding</th>
-
-                <th>Priority</th>
-
-                <th>Risk</th>
-
-                <th>Action</th>
-
-            </tr>
-
-        </thead>
-
-        <tbody id="findingsTable">
-
-        </tbody>
-
-    </table>
-
-</section>
-
-<section class="bottom-grid">
-
-    <div class="panel">
-
-        <div class="panel-header">
-
-            <span class="label">
-
-                ATTACK GRAPH
-
-            </span>
-
-        </div>
-
-        <div class="attack-flow">
-
-            <div class="attack-node internet">
-
-                Internet
+                <span>
+                    Enterprise Cyber Decision Intelligence
+                </span>
 
             </div>
 
-            <div class="arrow">
+            <nav>
 
-                →
+                <a
+                    class="active"
+                    href="#decision-console"
+                >
+                    Decision Console
+                </a>
+
+                <a href="#today-decisions">
+                    Today's Decisions
+                </a>
+
+                <a href="#explainability">
+                    Explainability
+                </a>
+
+                <a href="#attack-paths">
+                    Attack Paths
+                </a>
+
+                <a href="#business-impact">
+                    Business Impact
+                </a>
+
+                <a href="#threat-intelligence">
+                    Threat Intelligence
+                </a>
+
+                <a href="#reports">
+                    Reports
+                </a>
+
+                <a href="#administration">
+                    Administration
+                </a>
+
+            </nav>
+
+            <div class="sidebar-status">
+
+                <div class="status online"></div>
+
+                <div>
+
+                    <strong>
+                        PLATFORM ONLINE
+                    </strong>
+
+                    <span>
+                        PredatorAI v3
+                    </span>
+
+                </div>
 
             </div>
 
-            <div class="attack-node exposed">
+        </aside>
 
-                Exposed VM
+        <main>
 
-            </div>
+            <header class="topbar">
 
-            <div class="arrow">
+                <div>
 
-                →
+                    <small>
+                        DECISION CONSOLE
+                    </small>
 
-            </div>
+                    <h1>
+                        Cyber Decision Command Center
+                    </h1>
 
-            <div class="attack-node internal">
+                    <p class="topbar-description">
+                        From findings to explainable business decisions.
+                    </p>
 
-                Internal Service
+                </div>
 
-            </div>
+                <div class="top-status">
 
-            <div class="arrow">
+                    <div>
 
-                →
+                        <span>
+                            Decision Engine
+                        </span>
 
-            </div>
+                        <strong>
+                            ONLINE
+                        </strong>
 
-            <div class="attack-node crown">
+                    </div>
 
-                Crown Jewel
+                    <div>
 
-            </div>
+                        <span>
+                            Threat Intel
+                        </span>
 
-        </div>
+                        <strong>
+                            CONNECTED
+                        </strong>
 
-        <pre id="graphSummary"></pre>
+                    </div>
+
+                    <div>
+
+                        <span>
+                            AI Review
+                        </span>
+
+                        <strong>
+                            READY
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </header>
+
+            <section
+                id="decision-console"
+                class="decision-hero"
+            >
+
+                <article class="decision-card">
+
+                    <div class="decision-card-header">
+
+                        <div>
+
+                            <span class="label">
+                                DECISION OF THE DAY
+                            </span>
+
+                            <span
+                                id="decisionPriority"
+                                class="priority-badge critical"
+                            >
+                                CRITICAL
+                            </span>
+
+                        </div>
+
+                        <span class="live">
+                            LIVE
+                        </span>
+
+                    </div>
+
+                    <h2 id="decisionTitle">
+                        PATCH IMMEDIATELY
+                    </h2>
+
+                    <p
+                        id="decisionDescription"
+                        class="decision-description"
+                    >
+                        Critical Internet-facing asset with active
+                        exploitation context and insufficient detection
+                        coverage.
+                    </p>
+
+                    <div class="decision-core">
+
+                        <div class="decision-ring">
+
+                            <div class="decision-ring-inner">
+
+                                <span id="decisionRisk">
+                                    98
+                                </span>
+
+                                <small>
+                                    RISK SCORE
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                        <div class="decision-metrics">
+
+                            <div class="decision-metric">
+
+                                <span>
+                                    Confidence
+                                </span>
+
+                                <strong id="decisionConfidence">
+                                    96%
+                                </strong>
+
+                            </div>
+
+                            <div class="decision-metric">
+
+                                <span>
+                                    AI Verdict
+                                </span>
+
+                                <strong
+                                    id="decisionVerdict"
+                                    class="approved"
+                                >
+                                    APPROVED
+                                </strong>
+
+                            </div>
+
+                            <div class="decision-metric">
+
+                                <span>
+                                    Business Risk
+                                </span>
+
+                                <strong id="decisionBusinessRisk">
+                                    €2.8M
+                                </strong>
+
+                            </div>
+
+                            <div class="decision-metric">
+
+                                <span>
+                                    Required Action
+                                </span>
+
+                                <strong id="decisionAction">
+                                    REMEDIATE NOW
+                                </strong>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="decision-action">
+
+                        <div>
+
+                            <span>
+                                Recommended Action
+                            </span>
+
+                            <strong id="recommendedAction">
+                                Patch the affected system within 24 hours.
+                            </strong>
+
+                        </div>
+
+                        <button
+                            id="createJiraButton"
+                            type="button"
+                        >
+                            Create Jira Ticket
+                        </button>
+
+                    </div>
+
+                </article>
+
+                <article class="ai-review-card">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <span class="label">
+                                AI REVIEW
+                            </span>
+
+                            <h2>
+                                Decision Validation
+                            </h2>
+
+                        </div>
+
+                        <span class="review-state">
+                            VERIFIED
+                        </span>
+
+                    </div>
+
+                    <div class="review-list">
+
+                        <div class="review-item">
+
+                            <span>
+                                Reviewer
+                            </span>
+
+                            <strong
+                                id="reviewerVerdict"
+                                class="approved"
+                            >
+                                AGREE
+                            </strong>
+
+                        </div>
+
+                        <div class="review-item">
+
+                            <span>
+                                Reviewer Confidence
+                            </span>
+
+                            <strong id="reviewerConfidence">
+                                96%
+                            </strong>
+
+                        </div>
+
+                        <div class="review-item">
+
+                            <span>
+                                Challenger
+                            </span>
+
+                            <strong id="challengerFindings">
+                                2 objections
+                            </strong>
+
+                        </div>
+
+                        <div class="review-item">
+
+                            <span>
+                                Judge
+                            </span>
+
+                            <strong
+                                id="judgeVerdict"
+                                class="approved"
+                            >
+                                APPROVED
+                            </strong>
+
+                        </div>
+
+                        <div class="review-item">
+
+                            <span>
+                                Similar Decisions
+                            </span>
+
+                            <strong id="similarDecisions">
+                                43
+                            </strong>
+
+                        </div>
+
+                        <div class="review-item">
+
+                            <span>
+                                Historical Accuracy
+                            </span>
+
+                            <strong id="historicalAccuracy">
+                                91%
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+            </section>
+
+                        <section
+                id="explainability"
+                class="why-section"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="label">
+
+                            WHY?
+
+                        </span>
+
+                        <h2>
+
+                            Explainable Decision
+
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <div class="reason-grid">
+
+                    <div class="reason-card">
+
+                        <div class="reason-top">
+
+                            <span class="reason-title">
+
+                                Internet Facing
+
+                            </span>
+
+                            <span class="reason-score">
+
+                                +15
+
+                            </span>
+
+                        </div>
+
+                        <p>
+
+                            Asset is directly reachable from the Internet.
+
+                        </p>
+
+                        <small>
+
+                            Source: Asset Registry
+
+                        </small>
+
+                    </div>
+
+                    <div class="reason-card">
+
+                        <div class="reason-top">
+
+                            <span class="reason-title">
+
+                                CISA KEV
+
+                            </span>
+
+                            <span class="reason-score">
+
+                                +25
+
+                            </span>
+
+                        </div>
+
+                        <p>
+
+                            Vulnerability is listed in the Known Exploited Vulnerabilities catalog.
+
+                        </p>
+
+                        <small>
+
+                            Source: Threat Intelligence
+
+                        </small>
+
+                    </div>
+
+                    <div class="reason-card">
+
+                        <div class="reason-top">
+
+                            <span class="reason-title">
+
+                                Public Exploit
+
+                            </span>
+
+                            <span class="reason-score">
+
+                                +20
+
+                            </span>
+
+                        </div>
+
+                        <p>
+
+                            Public exploit code is available.
+
+                        </p>
+
+                        <small>
+
+                            Source: Exploit Intelligence
+
+                        </small>
+
+                    </div>
+
+                    <div class="reason-card">
+
+                        <div class="reason-top">
+
+                            <span class="reason-title">
+
+                                High EPSS
+
+                            </span>
+
+                            <span class="reason-score">
+
+                                +15
+
+                            </span>
+
+                        </div>
+
+                        <p>
+
+                            Exploitation probability is extremely high.
+
+                        </p>
+
+                        <small>
+
+                            Source: FIRST EPSS
+
+                        </small>
+
+                    </div>
+
+                    <div class="reason-card">
+
+                        <div class="reason-top">
+
+                            <span class="reason-title">
+
+                                Crown Jewel
+
+                            </span>
+
+                            <span class="reason-score">
+
+                                +30
+
+                            </span>
+
+                        </div>
+
+                        <p>
+
+                            Business critical asset.
+
+                        </p>
+
+                        <small>
+
+                            Source: Asset Registry
+
+                        </small>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <section
+                id="attack-paths"
+                class="attack-section panel"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="label">
+
+                            ATTACK PATH
+
+                        </span>
+
+                        <h2>
+
+                            Potential Attack Chain
+
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <div class="attack-path">
+
+                    <div class="attack-step">
+
+                        Internet
+
+                    </div>
+
+                    <div class="attack-arrow">
+
+                        →
+
+                    </div>
+
+                    <div class="attack-step">
+
+                        DMZ
+
+                    </div>
+
+                    <div class="attack-arrow">
+
+                        →
+
+                    </div>
+
+                    <div class="attack-step">
+
+                        API
+
+                    </div>
+
+                    <div class="attack-arrow">
+
+                        →
+
+                    </div>
+
+                    <div class="attack-step">
+
+                        Application
+
+                    </div>
+
+                    <div class="attack-arrow">
+
+                        →
+
+                    </div>
+
+                    <div class="attack-step crown">
+
+                        Crown Jewel
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <section
+                id="business-impact"
+                class="business-grid"
+            >
+
+                <div class="business-card">
+
+                    <span>
+
+                        Revenue at Risk
+
+                    </span>
+
+                    <strong>
+
+                        €2.8M
+
+                    </strong>
+
+                </div>
+
+                <div class="business-card">
+
+                    <span>
+
+                        Affected Users
+
+                    </span>
+
+                    <strong>
+
+                        42,371
+
+                    </strong>
+
+                </div>
+
+                <div class="business-card">
+
+                    <span>
+
+                        Critical Services
+
+                    </span>
+
+                    <strong>
+
+                        3
+
+                    </strong>
+
+                </div>
+
+                <div class="business-card">
+
+                    <span>
+
+                        Estimated Downtime
+
+                    </span>
+
+                    <strong>
+
+                        4 Hours
+
+                    </strong>
+
+                </div>
+
+            </section>
+
+            <section
+                id="today-decisions"
+                class="panel"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="label">
+
+                            TODAY'S DECISIONS
+
+                        </span>
+
+                        <h2>
+
+                            Decision Queue
+
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <table>
+
+                    <thead>
+
+                        <tr>
+
+                            <th>
+
+                                Decision
+
+                            </th>
+
+                            <th>
+
+                                Priority
+
+                            </th>
+
+                            <th>
+
+                                Confidence
+
+                            </th>
+
+                            <th>
+
+                                Action
+
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="decisionTable">
+
+                    </tbody>
+
+                </table>
+
+            </section>
+
+                  <section
+                id="threat-intelligence"
+                class="intel-grid"
+            >
+
+                <article class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <span class="label">
+
+                                THREAT INTELLIGENCE
+
+                            </span>
+
+                            <h2>
+
+                                Intelligence Sources
+
+                            </h2>
+
+                        </div>
+
+                    </div>
+
+                    <div class="intel-list">
+
+                        <div class="intel-item">
+
+                            <span>CISA KEV</span>
+
+                            <strong>ACTIVE</strong>
+
+                        </div>
+
+                        <div class="intel-item">
+
+                            <span>FIRST EPSS</span>
+
+                            <strong>99.5%</strong>
+
+                        </div>
+
+                        <div class="intel-item">
+
+                            <span>NVD</span>
+
+                            <strong>CONNECTED</strong>
+
+                        </div>
+
+                        <div class="intel-item">
+
+                            <span>Exploit Intelligence</span>
+
+                            <strong>AVAILABLE</strong>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+                <article class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <span class="label">
+
+                                COUNTER ARGUMENTS
+
+                            </span>
+
+                            <h2>
+
+                                Challenger Findings
+
+                            </h2>
+
+                        </div>
+
+                    </div>
+
+                    <ul class="counter-list">
+
+                        <li>
+
+                            Firewall segmentation unknown
+
+                        </li>
+
+                        <li>
+
+                            Patch window not confirmed
+
+                        </li>
+
+                        <li>
+
+                            Compensating controls not verified
+
+                        </li>
+
+                    </ul>
+
+                </article>
+
+            </section>
+
+            <section
+                class="panel"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="label">
+
+                            DECISION TIMELINE
+
+                        </span>
+
+                        <h2>
+
+                            Lifecycle
+
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <div class="timeline">
+
+                    <div class="timeline-item">
+
+                        <strong>10:14</strong>
+
+                        <span>Finding imported</span>
+
+                    </div>
+
+                    <div class="timeline-item">
+
+                        <strong>10:15</strong>
+
+                        <span>Threat Intelligence merged</span>
+
+                    </div>
+
+                    <div class="timeline-item">
+
+                        <strong>10:16</strong>
+
+                        <span>Decision calculated</span>
+
+                    </div>
+
+                    <div class="timeline-item">
+
+                        <strong>10:17</strong>
+
+                        <span>Reviewer completed</span>
+
+                    </div>
+
+                    <div class="timeline-item">
+
+                        <strong>10:18</strong>
+
+                        <span>Judge approved</span>
+
+                    </div>
+
+                    <div class="timeline-item">
+
+                        <strong>10:19</strong>
+
+                        <span>Jira ticket created</span>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <section
+                id="reports"
+                class="panel"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="label">
+
+                            REPORT OUTPUT
+
+                        </span>
+
+                        <h2>
+
+                            Generated Reports
+
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <div class="report-grid">
+
+                    <div class="report-card">
+
+                        <h3>
+
+                            Executive
+
+                        </h3>
+
+                        <p>
+
+                            Board-ready summary
+
+                        </p>
+
+                    </div>
+
+                    <div class="report-card">
+
+                        <h3>
+
+                            SOC
+
+                        </h3>
+
+                        <p>
+
+                            Operational assessment
+
+                        </p>
+
+                    </div>
+
+                    <div class="report-card">
+
+                        <h3>
+
+                            Technical
+
+                        </h3>
+
+                        <p>
+
+                            Engineering report
+
+                        </p>
+
+                    </div>
+
+                    <div class="report-card">
+
+                        <h3>
+
+                            Jira
+
+                        </h3>
+
+                        <p>
+
+                            Ticket export
+
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <footer class="footer">
+
+                <span>
+
+                    PredatorAI
+
+                </span>
+
+                <span>
+
+                    Enterprise Cyber Decision Intelligence Platform
+
+                </span>
+
+                <span>
+
+                    Version 3.0
+
+                </span>
+
+            </footer>
+
+        </main>
 
     </div>
 
-    <div class="panel">
-
-        <div class="panel-header">
-
-            <span class="label">
-
-                TEAM RISK
-
-            </span>
-
-        </div>
-
-        <pre id="teamRisk"></pre>
-
-    </div>
-
-</section>
-
-<section class="panel">
-
-    <div class="panel-header">
-
-        <span class="label">
-
-            GENERATED REPORTS
-
-        </span>
-
-    </div>
-
-    <div class="report-grid">
-
-        <div class="report-card">
-
-            <h3>
-
-                Executive
-
-            </h3>
-
-            <p>
-
-                Board Summary
-
-            </p>
-
-        </div>
-
-        <div class="report-card">
-
-            <h3>
-
-                SOC
-
-            </h3>
-
-            <p>
-
-                Security Operations
-
-            </p>
-
-        </div>
-
-        <div class="report-card">
-
-            <h3>
-
-                Technical
-
-            </h3>
-
-            <p>
-
-                Technical Analysis
-
-            </p>
-
-        </div>
-
-        <div class="report-card">
-
-            <h3>
-
-                Jira
-
-            </h3>
-
-            <p>
-
-                Ticket Export
-
-            </p>
-
-        </div>
-
-    </div>
-
-</section>
-
-<section class="panel">
-
-    <div class="panel-header">
-
-        <span class="label">
-
-            STORY BUNDLES
-
-        </span>
-
-    </div>
-
-    <pre id="storyBundles"></pre>
-
-</section>
-
-<section class="panel">
-
-    <div class="panel-header">
-
-        <span class="label">
-
-            REPORT OUTPUT
-
-        </span>
-
-    </div>
-
-    <pre id="reports"></pre>
-
-</section>
-
-<footer class="footer">
-
-    <span>
-
-        PredatorAI Mission Control
-
-    </span>
-
-    <span>
-
-        Cyber Reasoning Platform
-
-    </span>
-
-    <span>
-
-        Version 2.0
-
-    </span>
-
-</footer>
-
-</main>
-
-</div>
-
-<script src="/static/app.js"></script>
+    <script src="/static/app.js"></script>
 
 </body>
 
-</html>
+</html>      

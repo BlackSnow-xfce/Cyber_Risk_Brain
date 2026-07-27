@@ -12,28 +12,6 @@ from core.decision.models import DecisionResult
 class DecisionService:
     """
     Central orchestration layer of PredatorAI.
-
-    Pipeline
-
-    DecisionResult
-            │
-            ▼
-      AI Reasoning
-            │
-            ▼
-     DecisionContext
-            │
-            ▼
-    DecisionTraceBuilder
-            │
-            ▼
-      DecisionTrace
-            │
-            ▼
-    DecisionExplainer
-            │
-            ▼
-      Final DecisionTrace
     """
 
     def __init__(
@@ -71,6 +49,32 @@ class DecisionService:
             context
         )
 
+        self._enrich(trace)
+
+        return trace
+
+    def build_many(
+        self,
+        decisions: list[DecisionResult],
+    ) -> list[DecisionTrace]:
+
+        traces: list[DecisionTrace] = []
+
+        for decision in decisions:
+
+            traces.append(
+                self.build_trace(
+                    decision
+                )
+            )
+
+        return traces
+
+    def _enrich(
+        self,
+        trace: DecisionTrace,
+    ) -> None:
+
         trace.executive_summary = (
             self.explainer.executive(
                 trace
@@ -88,6 +92,4 @@ class DecisionService:
                 trace
             )
         )
-
-        return trace
-    
+        

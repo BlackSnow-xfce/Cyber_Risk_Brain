@@ -5,10 +5,8 @@ from core.decision.decision_trace import DecisionTrace
 
 class DecisionExplainer:
     """
-    Creates human-readable explanations from a DecisionTrace.
-
-    Every explanation is generated from the
-    same canonical DecisionTrace object.
+    Generates human-readable explanations
+    from a DecisionTrace.
     """
 
     def executive(
@@ -18,10 +16,10 @@ class DecisionExplainer:
 
         return (
             f"{trace.decision} "
-            f"(Priority: {trace.priority}) "
-            f"because {len(trace.evidence)} "
-            f"high-confidence indicators support "
-            f"this assessment."
+            f"(Priority: {trace.priority}, "
+            f"Risk Score: {trace.risk_score}) "
+            f"based on {len(trace.reasons)} reasoning factors "
+            f"and {len(trace.evidence)} supporting evidence items."
         )
 
     def soc(
@@ -31,18 +29,20 @@ class DecisionExplainer:
 
         evidence = ", ".join(
 
-            item.name
+            evidence.name
 
-            for item in trace.evidence
+            for evidence in trace.evidence
 
         )
 
         return (
-            "SOC Assessment:\n\n"
-            f"Decision: {trace.decision}\n"
-            f"Evidence: {evidence}\n"
-            f"AI Verdict: {trace.ai_verdict}\n"
-            f"Confidence: {trace.ai_confidence:.1f}%"
+            "SOC Assessment\n\n"
+            f"Decision : {trace.decision}\n"
+            f"Priority : {trace.priority}\n"
+            f"Risk     : {trace.risk_score}\n"
+            f"Evidence : {evidence}\n"
+            f"Verdict  : {trace.ai_verdict}\n"
+            f"Confidence : {trace.ai_confidence:.1f}%"
         )
 
     def technical(
@@ -52,19 +52,34 @@ class DecisionExplainer:
 
         lines = [
 
-            "Technical Explanation",
+            "Technical Assessment",
 
             "",
 
-            f"Decision: {trace.decision}",
+            f"Decision : {trace.decision}",
 
-            f"Priority: {trace.priority}",
+            f"Priority : {trace.priority}",
+
+            f"Risk Score : {trace.risk_score}",
 
             "",
 
-            "Evidence:",
+            "Reasons:",
 
         ]
+
+        for reason in trace.reasons:
+
+            lines.append(
+
+                f"- {reason.name}: "
+                f"{reason.description}"
+
+            )
+
+        lines.append("")
+
+        lines.append("Evidence:")
 
         for evidence in trace.evidence:
 
@@ -87,6 +102,22 @@ class DecisionExplainer:
 
                 lines.append(
                     f"- {argument}"
+                )
+
+        if trace.recommendations:
+
+            lines.append("")
+
+            lines.append(
+                "Recommendations:"
+            )
+
+            for recommendation in trace.recommendations:
+
+                lines.append(
+
+                    f"- {recommendation.title}"
+
                 )
 
         return "\n".join(lines)

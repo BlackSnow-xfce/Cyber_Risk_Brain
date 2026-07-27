@@ -1,38 +1,35 @@
 from __future__ import annotations
 
-from core.decision.models import DecisionResult
+from core.decision.ai.challenger import Challenger
+from core.decision.ai.decision_memory import (
+    DecisionMemory,
+)
+from core.decision.ai.factory import LLMFactory
+from core.decision.ai.judge import Judge
+from core.decision.ai.reasoning_result import (
+    ReasoningResult,
+)
+from core.decision.ai.reasoning_service import (
+    ReasoningService,
+)
+from core.decision.ai.reviewer import Reviewer
 
-from core.ai.decision_memory import DecisionMemory
-from core.ai.factory import LLMFactory
-from core.ai.judge import Judge
-from core.ai.reasoning_result import ReasoningResult
-from core.ai.reasoning_service import ReasoningService
-from core.ai.reviewer import Reviewer
-from core.ai.challenger import Challenger
+from core.decision.models import DecisionResult
 
 
 class ReasoningEngine:
     """
     PredatorAI AI Orchestrator.
 
-    Workflow
-
-        Decision
-            │
-            ▼
-        Reviewer
-            │
-            ▼
-        Challenger
-            │
-            ▼
-          Judge
-            │
-            ▼
-     Decision Memory
-            │
-            ▼
-     Final ReasoningResult
+    Decision
+        ↓
+    Reviewer
+        ↓
+    Challenger
+        ↓
+    Judge
+        ↓
+    Memory
     """
 
     def __init__(
@@ -40,12 +37,12 @@ class ReasoningEngine:
         provider: str = "local",
     ) -> None:
 
-        llm_provider = LLMFactory.create(
+        llm = LLMFactory.create(
             provider
         )
 
         service = ReasoningService(
-            llm_provider
+            llm
         )
 
         self.reviewer = Reviewer(
@@ -65,12 +62,16 @@ class ReasoningEngine:
         decision: DecisionResult,
     ) -> ReasoningResult:
 
-        reviewer_result = self.reviewer.review(
-            decision
+        reviewer_result = (
+            self.reviewer.review(
+                decision
+            )
         )
 
-        challenger_result = self.challenger.review(
-            decision
+        challenger_result = (
+            self.challenger.review(
+                decision
+            )
         )
 
         final_result = self.judge.evaluate(
@@ -93,8 +94,12 @@ class ReasoningEngine:
 
     def enhance_many(
         self,
-        decisions: list[DecisionResult],
-    ) -> list[ReasoningResult]:
+        decisions: list[
+            DecisionResult
+        ],
+    ) -> list[
+        ReasoningResult
+    ]:
 
         return [
 
@@ -110,11 +115,19 @@ class ReasoningEngine:
 
         return self.memory.all()
 
-    def history_count(self) -> int:
+    def latest(self):
+
+        return self.memory.latest()
+
+    def history_count(
+        self,
+    ) -> int:
 
         return self.memory.count()
 
-    def clear_history(self) -> None:
+    def clear_history(
+        self,
+    ) -> None:
 
         self.memory.clear()
         
