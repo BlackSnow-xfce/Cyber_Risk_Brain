@@ -1,95 +1,155 @@
 from __future__ import annotations
 
-from typing import Any
-
-from core.decision.models import Evidence, EvidenceType
+from core.decision.evidence import Evidence
+from core.decision.models import DecisionResult
 
 
 class EvidenceBuilder:
     """
-    Collects all evidence used during the decision process.
+    Converts DecisionResult into explainable evidence.
     """
 
     def build(
         self,
-        node: dict[str, Any],
+        decision: DecisionResult,
     ) -> list[Evidence]:
 
         evidence: list[Evidence] = []
 
-        self._add(
-            evidence,
-            EvidenceType.ASSET,
-            "asset_name",
-            node.get("name"),
-        )
+        attack = decision.attack_reasoning
 
-        self._add(
-            evidence,
-            EvidenceType.BUSINESS_CONTEXT,
-            "owner",
-            node.get("owner"),
-        )
+        if attack.internet_exposed:
 
-        self._add(
-            evidence,
-            EvidenceType.BUSINESS_CONTEXT,
-            "criticality",
-            node.get("criticality"),
-        )
+            evidence.append(
 
-        self._add(
-            evidence,
-            EvidenceType.EXPOSURE,
-            "internet_exposed",
-            node.get("exposed"),
-        )
+                Evidence(
 
-        self._add(
-            evidence,
-            EvidenceType.CONTROL,
-            "detection",
-            node.get("detection"),
-        )
+                    name="Internet Facing",
 
-        self._add(
-            evidence,
-            EvidenceType.THREAT_INTELLIGENCE,
-            "threat_intel",
-            node.get("threat_intel"),
-        )
+                    source="Asset Registry",
 
-        self._add(
-            evidence,
-            EvidenceType.ATTACK_PATH,
-            "mitre",
-            node.get("mitre"),
-        )
+                    description=(
+                        "Asset is directly reachable "
+                        "from the Internet."
+                    ),
 
-        self._add(
-            evidence,
-            EvidenceType.BUSINESS_CONTEXT,
-            "sla_days",
-            node.get("sla_days"),
-        )
+                    impact=15.0,
+
+                    confidence=1.0,
+
+                )
+
+            )
+
+        if attack.known_exploited:
+
+            evidence.append(
+
+                Evidence(
+
+                    name="CISA KEV",
+
+                    source="Threat Intelligence",
+
+                    description=(
+                        "Known exploited vulnerability."
+                    ),
+
+                    impact=25.0,
+
+                    confidence=1.0,
+
+                )
+
+            )
+
+        if attack.public_exploit:
+
+            evidence.append(
+
+                Evidence(
+
+                    name="Public Exploit",
+
+                    source="Exploit Intelligence",
+
+                    description=(
+                        "Public exploit is available."
+                    ),
+
+                    impact=20.0,
+
+                    confidence=0.95,
+
+                )
+
+            )
+
+        if attack.high_epss:
+
+            evidence.append(
+
+                Evidence(
+
+                    name="High EPSS",
+
+                    source="FIRST EPSS",
+
+                    description=(
+                        "High exploitation probability."
+                    ),
+
+                    impact=15.0,
+
+                    confidence=0.98,
+
+                )
+
+            )
+
+        if attack.high_cvss:
+
+            evidence.append(
+
+                Evidence(
+
+                    name="High CVSS",
+
+                    source="NVD",
+
+                    description=(
+                        "Critical CVSS severity."
+                    ),
+
+                    impact=10.0,
+
+                    confidence=0.95,
+
+                )
+
+            )
+
+        if attack.crown_jewel:
+
+            evidence.append(
+
+                Evidence(
+
+                    name="Crown Jewel",
+
+                    source="Asset Registry",
+
+                    description=(
+                        "Business critical asset."
+                    ),
+
+                    impact=30.0,
+
+                    confidence=1.0,
+
+                )
+
+            )
 
         return evidence
-
-    @staticmethod
-    def _add(
-        evidence: list[Evidence],
-        evidence_type: EvidenceType,
-        key: str,
-        value: Any,
-    ) -> None:
-
-        if value is None:
-            return
-
-        evidence.append(
-            Evidence(
-                evidence_type=evidence_type,
-                key=key,
-                value=value,
-            )
-        )
+    

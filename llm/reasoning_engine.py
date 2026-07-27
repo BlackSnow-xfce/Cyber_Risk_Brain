@@ -2,18 +2,29 @@ from __future__ import annotations
 
 from core.decision.models import DecisionResult
 
+from llm.challenger import Challenger
+from llm.consensus import Consensus
 from llm.factory import LLMFactory
 from llm.reasoning_result import ReasoningResult
 from llm.reasoning_service import ReasoningService
+from llm.reviewer import Reviewer
 
 
 class ReasoningEngine:
     """
-    PredatorAI AI Reasoning Layer.
+    PredatorAI AI Reasoning Orchestrator.
 
-    Enhances DecisionResults with an external
-    language model while keeping the original
-    decision completely untouched.
+    Workflow
+
+    Decision
+        ↓
+    Reviewer
+        ↓
+    Challenger
+        ↓
+    Consensus
+        ↓
+    Final ReasoningResult
     """
 
     def __init__(
@@ -21,29 +32,40 @@ class ReasoningEngine:
         provider: str = "local",
     ) -> None:
 
-        self.provider = LLMFactory.create(
+        llm_provider = LLMFactory.create(
             provider
         )
 
-        self.service = ReasoningService(
-            self.provider
+        service = ReasoningService(
+            llm_provider
         )
+
+        self.reviewer = Reviewer(
+            service
+        )
+
+        self.challenger = Challenger(
+            service
+        )
+
+        self.consensus = Consensus()
 
     def enhance(
         self,
         decision: DecisionResult,
     ) -> ReasoningResult:
 
-        response = self.service.generate(
+        review = self.reviewer.review(
             decision
         )
 
-        return ReasoningResult(
-            summary=response,
-            technical_analysis=response,
-            executive_summary=response,
-            remediation_strategy=response,
-            confidence=decision.confidence.score,
+        challenge = self.challenger.review(
+            decision
+        )
+
+        return self.consensus.combine(
+            review,
+            challenge,
         )
 
     def enhance_many(
@@ -51,15 +73,10 @@ class ReasoningEngine:
         decisions: list[DecisionResult],
     ) -> list[ReasoningResult]:
 
-        results: list[ReasoningResult] = []
-
-        for decision in decisions:
-
-            results.append(
-                self.enhance(
-                    decision
-                )
+        return [
+            self.enhance(
+                decision
             )
-
-        return results
+            for decision in decisions
+        ]
     

@@ -1,131 +1,801 @@
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>PredatorAI Dashboard</title>
+<title>
 
-<link rel="stylesheet"
-      href="/static/style.css">
+PredatorAI Mission Control
+
+</title>
+
+<link
+    rel="stylesheet"
+    href="/static/style.css"
+>
 
 </head>
 
 <body>
 
-<h1>PredatorAI — Cyber Reasoning Platform</h1>
+<div class="app">
 
-<div class="kpi-grid">
+<aside class="sidebar">
 
-    <div class="card">
+<div class="logo">
 
-        <h3>Total Findings</h3>
+<h1>PredatorAI</h1>
 
-        <h2 id="total">0</h2>
+<span>
+
+Cyber Reasoning Platform
+
+</span>
+
+</div>
+
+<nav>
+
+<a class="active">
+
+Overview
+
+</a>
+
+<a>
+
+Mission
+
+</a>
+
+<a>
+
+Decisions
+
+</a>
+
+<a>
+
+Attack Paths
+
+</a>
+
+<a>
+
+Assets
+
+</a>
+
+<a>
+
+Threat Intel
+
+</a>
+
+<a>
+
+Reports
+
+</a>
+
+<a>
+
+Settings
+
+</a>
+
+</nav>
+
+<div class="sidebar-status">
+
+<div class="status online"></div>
+
+<span>
+
+MISSION ONLINE
+
+</span>
+
+</div>
+
+</aside>
+
+<main>
+
+<header class="topbar">
+
+<div>
+
+<small>
+
+MISSION CONTROL
+
+</small>
+
+<h1>
+
+PredatorAI Command Center
+
+</h1>
+
+</div>
+
+<div class="top-status">
+
+<div>
+
+<span>
+
+Engine
+
+</span>
+
+<strong>
+
+ONLINE
+
+</strong>
+
+</div>
+
+<div>
+
+<span>
+
+Threat Intel
+
+</span>
+
+<strong>
+
+CONNECTED
+
+</strong>
+
+</div>
+
+<div>
+
+<span>
+
+LLM
+
+</span>
+
+<strong>
+
+STANDBY
+
+</strong>
+
+</div>
+
+</div>
+
+</header>
+
+<section class="hero">
+
+<div class="mission-card">
+
+<span class="label">
+
+MISSION STATUS
+
+</span>
+
+<h2>
+
+Overall Risk
+
+</h2>
+
+<div class="risk-circle">
+
+<div class="risk-inner">
+
+<span id="overallRiskScore">
+
+0
+
+</span>
+
+<small>
+
+CRITICAL
+
+</small>
+
+</div>
+
+</div>
+
+<div class="hero-stats">
+
+<div>
+
+<span>
+
+Total Findings
+
+</span>
+
+<strong id="total">
+
+0
+
+</strong>
+
+</div>
+
+<div>
+
+<span>
+
+Critical
+
+</span>
+
+<strong id="critical">
+
+0
+
+</strong>
+
+</div>
+
+<div>
+
+<span>
+
+High
+
+</span>
+
+<strong id="high">
+
+0
+
+</strong>
+
+</div>
+
+<div>
+
+<span>
+
+Confidence
+
+</span>
+
+<strong id="averageConfidence">
+
+0%
+
+</strong>
+
+</div>
+
+</div>
+
+</div>
+
+<div class="brain-card">
+
+    <span class="label">
+
+        PREDATOR CORE
+
+    </span>
+
+    <h2>
+
+        Neural Reasoning Engine
+
+    </h2>
+
+    <div class="brain">
+
+        <span class="node n1"></span>
+        <span class="node n2"></span>
+        <span class="node n3"></span>
+        <span class="node n4"></span>
+        <span class="node n5"></span>
+        <span class="node n6"></span>
+
+        <span class="line l1"></span>
+        <span class="line l2"></span>
+        <span class="line l3"></span>
+        <span class="line l4"></span>
+        <span class="line l5"></span>
+
+        <div class="core">
+
+            AI
+
+        </div>
 
     </div>
 
-    <div class="card">
+    <div class="brain-footer">
 
-        <h3>Critical</h3>
+        <div>
 
-        <h2 id="critical">0</h2>
+            <span>
 
-    </div>
+                Decision Engine
 
-    <div class="card">
+            </span>
 
-        <h3>High</h3>
+            <strong>
 
-        <h2 id="high">0</h2>
+                ONLINE
 
-    </div>
+            </strong>
 
-    <div class="card">
+        </div>
 
-        <h3>Medium</h3>
+        <div>
 
-        <h2 id="medium">0</h2>
+            <span>
 
-    </div>
+                Threat Intel
 
-    <div class="card">
+            </span>
 
-        <h3>Low</h3>
+            <strong>
 
-        <h2 id="low">0</h2>
+                ACTIVE
+
+            </strong>
+
+        </div>
+
+        <div>
+
+            <span>
+
+                Story Engine
+
+            </span>
+
+            <strong>
+
+                READY
+
+            </strong>
+
+        </div>
 
     </div>
 
 </div>
 
-<hr>
+</section>
 
-<h2>Highest Risk Decision</h2>
+<section class="dashboard-grid">
 
-<div
-    id="highestRisk"
-    class="card">
+<div class="panel highest-risk-panel">
+
+<div class="panel-header">
+
+<span class="label">
+
+PRIORITY TARGET
+
+</span>
+
+<span class="live">
+
+● LIVE
+
+</span>
+
+</div>
+
+<h2>
+
+Highest Risk Decision
+
+</h2>
+
+<div id="highestRisk">
 
 Loading...
 
 </div>
 
-<hr>
+</div>
 
-<h2>PredatorAI Decisions</h2>
+<div class="panel decision-feed">
 
-<table>
+<div class="panel-header">
 
-<thead>
+<span class="label">
 
-<tr>
+LIVE DECISIONS
 
-<th>Finding</th>
+</span>
 
-<th>Priority</th>
+</div>
 
-<th>Risk Score</th>
+<div class="feed">
 
-<th>Action</th>
+<div class="feed-item">
 
-</tr>
+<div class="feed-time">
 
-</thead>
+LIVE
 
-<tbody id="findingsTable">
+</div>
 
-</tbody>
+<div>
 
-</table>
+PredatorAI initialized
 
-<hr>
+</div>
 
-<h2>Graph Summary</h2>
+</div>
 
-<pre id="graphSummary"></pre>
+<div class="feed-item">
 
-<hr>
+<div class="feed-time">
 
-<h2>Team Risk</h2>
+LIVE
 
-<pre id="teamRisk"></pre>
+</div>
 
-<hr>
+<div>
 
-<h2>Story Bundles</h2>
+Waiting for findings...
 
-<pre id="storyBundles"></pre>
+</div>
 
-<hr>
+</div>
 
-<h2>Reports</h2>
+</div>
 
-<pre id="reports"></pre>
+</div>
+
+</section>
+
+<section class="cards-grid">
+
+<div class="info-card critical">
+
+<span>
+
+Critical
+
+</span>
+
+<h2 id="criticalCard">
+
+0
+
+</h2>
+
+</div>
+
+<div class="info-card high">
+
+<span>
+
+High
+
+</span>
+
+<h2 id="highCard">
+
+0
+
+</h2>
+
+</div>
+
+<div class="info-card medium">
+
+<span>
+
+Medium
+
+</span>
+
+<h2 id="mediumCard">
+
+0
+
+</h2>
+
+</div>
+
+<div class="info-card low">
+
+<span>
+
+Low
+
+</span>
+
+<h2 id="lowCard">
+
+0
+
+</h2>
+
+</div>
+
+</section>
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <span class="label">
+
+            DECISION MATRIX
+
+        </span>
+
+    </div>
+
+    <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Asset</th>
+
+                <th>Finding</th>
+
+                <th>Priority</th>
+
+                <th>Risk</th>
+
+                <th>Action</th>
+
+            </tr>
+
+        </thead>
+
+        <tbody id="findingsTable">
+
+        </tbody>
+
+    </table>
+
+</section>
+
+<section class="bottom-grid">
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <span class="label">
+
+                ATTACK GRAPH
+
+            </span>
+
+        </div>
+
+        <div class="attack-flow">
+
+            <div class="attack-node internet">
+
+                Internet
+
+            </div>
+
+            <div class="arrow">
+
+                →
+
+            </div>
+
+            <div class="attack-node exposed">
+
+                Exposed VM
+
+            </div>
+
+            <div class="arrow">
+
+                →
+
+            </div>
+
+            <div class="attack-node internal">
+
+                Internal Service
+
+            </div>
+
+            <div class="arrow">
+
+                →
+
+            </div>
+
+            <div class="attack-node crown">
+
+                Crown Jewel
+
+            </div>
+
+        </div>
+
+        <pre id="graphSummary"></pre>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <span class="label">
+
+                TEAM RISK
+
+            </span>
+
+        </div>
+
+        <pre id="teamRisk"></pre>
+
+    </div>
+
+</section>
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <span class="label">
+
+            GENERATED REPORTS
+
+        </span>
+
+    </div>
+
+    <div class="report-grid">
+
+        <div class="report-card">
+
+            <h3>
+
+                Executive
+
+            </h3>
+
+            <p>
+
+                Board Summary
+
+            </p>
+
+        </div>
+
+        <div class="report-card">
+
+            <h3>
+
+                SOC
+
+            </h3>
+
+            <p>
+
+                Security Operations
+
+            </p>
+
+        </div>
+
+        <div class="report-card">
+
+            <h3>
+
+                Technical
+
+            </h3>
+
+            <p>
+
+                Technical Analysis
+
+            </p>
+
+        </div>
+
+        <div class="report-card">
+
+            <h3>
+
+                Jira
+
+            </h3>
+
+            <p>
+
+                Ticket Export
+
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <span class="label">
+
+            STORY BUNDLES
+
+        </span>
+
+    </div>
+
+    <pre id="storyBundles"></pre>
+
+</section>
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <span class="label">
+
+            REPORT OUTPUT
+
+        </span>
+
+    </div>
+
+    <pre id="reports"></pre>
+
+</section>
+
+<footer class="footer">
+
+    <span>
+
+        PredatorAI Mission Control
+
+    </span>
+
+    <span>
+
+        Cyber Reasoning Platform
+
+    </span>
+
+    <span>
+
+        Version 2.0
+
+    </span>
+
+</footer>
+
+</main>
+
+</div>
 
 <script src="/static/app.js"></script>
 

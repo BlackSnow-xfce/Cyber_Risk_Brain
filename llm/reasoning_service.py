@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from core.decision.models import DecisionResult
-
 from llm.llm_provider import LLMProvider
-from llm.prompt_builder import PromptBuilder
 
 
 class ReasoningService:
     """
-    Executes LLM reasoning.
+    Executes prompts against the configured LLM.
+
+    The service does not know anything about
+    PredatorAI decisions.
     """
 
     def __init__(
@@ -18,16 +18,10 @@ class ReasoningService:
 
         self.provider = provider
 
-        self.builder = PromptBuilder()
-
-    def generate(
+    def generate_prompt(
         self,
-        decision: DecisionResult,
+        prompt: str,
     ) -> str:
-
-        prompt = self.builder.build(
-            decision
-        )
 
         return self.provider.generate(
             prompt
