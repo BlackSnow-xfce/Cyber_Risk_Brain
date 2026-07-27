@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.ai.reasoning_engine import ReasoningEngine
+from llm.reasoning_engine import ReasoningEngine
 
 from core.decision.decision_context import DecisionContext
 from core.decision.decision_explainer import DecisionExplainer

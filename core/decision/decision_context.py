@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from core.ai.reasoning_result import ReasoningResult
+from core.decision.ai.reasoning_result import ReasoningResult
 from core.decision.business_impact import BusinessImpact
 from core.decision.confidence_result import ConfidenceResult
 from core.decision.models import DecisionResult

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.ai.reasoning_result import ReasoningResult
+from core.decision.ai.reasoning_result import ReasoningResult
 
 from core.decision.business_impact_builder import (
     BusinessImpactBuilder,

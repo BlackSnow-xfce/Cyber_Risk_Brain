@@ -6,31 +6,29 @@ from core.decision.confidence_factor import (
 from core.decision.confidence_result import (
     ConfidenceResult,
 )
-from core.decision.decision_context import (
-    DecisionContext,
+from core.decision.models import (
+    AttackReasoning,
+    ConfidenceLevel,
 )
 
 
 class ConfidenceEngine:
     """
     Calculates explainable confidence.
-
-    Every confidence point can later be
-    displayed inside the Dashboard.
     """
 
     def calculate(
         self,
-        context: DecisionContext,
+        attack: AttackReasoning,
     ) -> ConfidenceResult:
-
-        attack = context.decision.attack_reasoning
 
         score = 0.0
 
         factors: list[
             ConfidenceFactor
         ] = []
+
+        reasons: list[str] = []
 
         def add(
             name: str,
@@ -41,6 +39,8 @@ class ConfidenceEngine:
             nonlocal score
 
             score += weight
+
+            reasons.append(name)
 
             factors.append(
 
@@ -58,7 +58,7 @@ class ConfidenceEngine:
 
             )
 
-        if attack.internet_exposed:
+        if attack.attack_vector == "External Attack Surface":
 
             add(
 
@@ -70,63 +70,41 @@ class ConfidenceEngine:
 
             )
 
-        if attack.known_exploited:
+        if attack.exploitation_probability in (
+
+            "High",
+
+            "Very High",
+
+        ):
 
             add(
 
-                "KEV",
+                "High Exploitation Probability",
 
-                "Known exploited vulnerability.",
+                "Attack probability is elevated.",
 
                 25,
 
             )
 
-        if attack.public_exploit:
+        if attack.supporting_factors:
 
             add(
 
-                "Public Exploit",
+                "Supporting Evidence",
 
-                "Exploit code is publicly available.",
+                "Multiple supporting indicators available.",
 
-                15,
+                min(
 
-            )
+                    len(
+                        attack.supporting_factors
+                    ) * 5,
 
-        if attack.high_epss:
+                    30,
 
-            add(
-
-                "High EPSS",
-
-                "High probability of exploitation.",
-
-                15,
-
-            )
-
-        if attack.high_cvss:
-
-            add(
-
-                "Critical CVSS",
-
-                "Critical severity.",
-
-                10,
-
-            )
-
-        if attack.crown_jewel:
-
-            add(
-
-                "Crown Jewel",
-
-                "Business critical asset.",
-
-                20,
+                ),
 
             )
 
@@ -135,11 +113,27 @@ class ConfidenceEngine:
             100.0,
         )
 
+        if score >= 90:
+            level = ConfidenceLevel.VERY_HIGH
+        elif score >= 75:
+            level = ConfidenceLevel.HIGH
+        elif score >= 50:
+            level = ConfidenceLevel.MEDIUM
+        elif score >= 25:
+            level = ConfidenceLevel.LOW
+        else:
+            level = ConfidenceLevel.VERY_LOW
+
         return ConfidenceResult(
 
             score=score,
 
+            level=level,
+
+            reasons=reasons,
+
+            missing_information=[],
+
             factors=factors,
 
         )
-    

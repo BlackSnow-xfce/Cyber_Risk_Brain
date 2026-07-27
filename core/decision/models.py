@@ -145,7 +145,6 @@ class DecisionResult:
     confidence: Confidence
     recommendations: list[Recommendation] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
-    explanation: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -228,6 +227,5 @@ class DecisionResult:
                 }
                 for item in self.evidence
             ],
-            "explanation": self.explanation,
             "metadata": self.metadata,
         }

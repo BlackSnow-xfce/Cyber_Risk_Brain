@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 from core.decision.evidence import Evidence
-from core.decision.models import DecisionResult
+from core.decision.models import AttackReasoning
 
 
 class EvidenceBuilder:
     """
-    Converts DecisionResult into explainable evidence.
+    Converts AttackReasoning into explainable evidence.
     """
 
     def build(
         self,
-        decision: DecisionResult,
+        attack: AttackReasoning,
     ) -> list[Evidence]:
 
         evidence: list[Evidence] = []
 
-        attack = decision.attack_reasoning
-
-        if attack.internet_exposed:
+        if attack.attack_vector == "External Attack Surface":
 
             evidence.append(
 
@@ -28,10 +26,7 @@ class EvidenceBuilder:
 
                     source="Asset Registry",
 
-                    description=(
-                        "Asset is directly reachable "
-                        "from the Internet."
-                    ),
+                    description="Asset is directly reachable from the Internet.",
 
                     impact=15.0,
 
@@ -41,19 +36,23 @@ class EvidenceBuilder:
 
             )
 
-        if attack.known_exploited:
+        if attack.exploitation_probability in (
+
+            "High",
+
+            "Very High",
+
+        ):
 
             evidence.append(
 
                 Evidence(
 
-                    name="CISA KEV",
+                    name="High Exploitation Probability",
 
-                    source="Threat Intelligence",
+                    source="PredatorAI",
 
-                    description=(
-                        "Known exploited vulnerability."
-                    ),
+                    description="Multiple indicators support exploitation.",
 
                     impact=25.0,
 
@@ -63,89 +62,21 @@ class EvidenceBuilder:
 
             )
 
-        if attack.public_exploit:
+        for factor in attack.supporting_factors:
 
             evidence.append(
 
                 Evidence(
 
-                    name="Public Exploit",
+                    name=factor,
 
-                    source="Exploit Intelligence",
+                    source="PredatorAI",
 
-                    description=(
-                        "Public exploit is available."
-                    ),
+                    description=factor,
 
-                    impact=20.0,
+                    impact=5.0,
 
-                    confidence=0.95,
-
-                )
-
-            )
-
-        if attack.high_epss:
-
-            evidence.append(
-
-                Evidence(
-
-                    name="High EPSS",
-
-                    source="FIRST EPSS",
-
-                    description=(
-                        "High exploitation probability."
-                    ),
-
-                    impact=15.0,
-
-                    confidence=0.98,
-
-                )
-
-            )
-
-        if attack.high_cvss:
-
-            evidence.append(
-
-                Evidence(
-
-                    name="High CVSS",
-
-                    source="NVD",
-
-                    description=(
-                        "Critical CVSS severity."
-                    ),
-
-                    impact=10.0,
-
-                    confidence=0.95,
-
-                )
-
-            )
-
-        if attack.crown_jewel:
-
-            evidence.append(
-
-                Evidence(
-
-                    name="Crown Jewel",
-
-                    source="Asset Registry",
-
-                    description=(
-                        "Business critical asset."
-                    ),
-
-                    impact=30.0,
-
-                    confidence=1.0,
+                    confidence=0.9,
 
                 )
 
