@@ -1,0 +1,59 @@
+.pa-dashboard-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+}
+
+.pa-dashboard-layout__kpis {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.pa-dashboard-layout__main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-areas:
+        "decision risk"
+        "explain threat"
+        "timeline timeline";
+    gap: 24px;
+}
+
+.pa-dashboard-layout__decision {
+    grid-area: decision;
+    min-height: 360px;
+}
+
+.pa-dashboard-layout__risk {
+    grid-area: risk;
+    min-height: 360px;
+}
+
+.pa-dashboard-layout__explainability {
+    grid-area: explain;
+    min-height: 300px;
+}
+
+.pa-dashboard-layout__threat {
+    grid-area: threat;
+    min-height: 300px;
+}
+
+.pa-dashboard-layout__timeline {
+    grid-area: timeline;
+    min-height: 240px;
+}
+
+@media (max-width: 1200px) {
+    .pa-dashboard-layout__main {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "decision"
+            "risk"
+            "explain"
+            "threat"
+            "timeline";
+    }
+}

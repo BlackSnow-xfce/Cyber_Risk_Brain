@@ -1,0 +1,43 @@
+.pa-kpi-card {
+    min-height: 160px;
+
+    justify-content: center;
+}
+
+.pa-kpi-card__label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #9ca7b5;
+
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.pa-kpi-card__value {
+    margin-top: 0.4rem;
+
+    font-size: 2.35rem;
+    font-weight: 700;
+    line-height: 1.1;
+
+    color: #f5f7fa;
+}
+
+.pa-kpi-card__trend {
+    margin-top: auto;
+
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.pa-kpi-card__trend--up {
+    color: #22c55e;
+}
+
+.pa-kpi-card__trend--down {
+    color: #ef4444;
+}
+
+.pa-kpi-card__trend--neutral {
+    color: #9ca7b5;
+}

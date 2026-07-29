@@ -1,0 +1,52 @@
+.decision-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.decision-workspace section {
+    padding: 1rem 1.25rem;
+
+    border: 1px solid rgba(255,255,255,.08);
+
+    border-radius: 12px;
+
+    background: rgba(255,255,255,.02);
+}
+
+.decision-workspace h2,
+.decision-workspace h3 {
+    margin: 0 0 .75rem;
+
+    font-size: .95rem;
+
+    font-weight: 600;
+}
+
+.decision-workspace p {
+    margin: 0;
+
+    opacity: .8;
+
+    line-height: 1.5;
+}
+
+.decision-workspace__decision {
+    border-left: 4px solid #d32f2f;
+}
+
+.decision-workspace__recommendation {
+    border-left: 4px solid #1976d2;
+}
+
+.decision-workspace__evidence {
+    border-left: 4px solid #2e7d32;
+}
+
+.decision-workspace__business {
+    border-left: 4px solid #ef6c00;
+}
+
+.decision-workspace__actions {
+    border-left: 4px solid #6a1b9a;
+}

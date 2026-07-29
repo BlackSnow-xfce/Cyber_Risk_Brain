@@ -1,0 +1,127 @@
+.topbar {
+    height: 76px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 0 28px;
+
+    background: #0f1524;
+
+    border-bottom: 1px solid #20283b;
+}
+
+.topbar-left,
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.topbar-title {
+    font-size: 34px;
+    font-weight: 700;
+
+    color: white;
+}
+
+.workspace-select,
+.time-select {
+    height: 40px;
+
+    padding: 0 14px;
+
+    border: 1px solid #273146;
+    border-radius: 10px;
+
+    background: #161f31;
+
+    color: white;
+}
+
+.topbar-icon {
+    width: 40px;
+    height: 40px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid #273146;
+    border-radius: 10px;
+
+    background: #161f31;
+
+    color: white;
+
+    cursor: pointer;
+
+    transition: .2s;
+}
+
+.topbar-icon:hover {
+    background: #1f2a40;
+}
+
+.explain-button {
+    height: 40px;
+
+    padding: 0 18px;
+
+    border: none;
+    border-radius: 10px;
+
+    background: #7c3aed;
+
+    color: white;
+
+    font-weight: 600;
+
+    cursor: pointer;
+
+    transition: .2s;
+}
+
+.explain-button:hover {
+    background: #8b5cf6;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.user-role {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.avatar {
+    width: 42px;
+    height: 42px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: linear-gradient(
+        135deg,
+        #7c3aed,
+        #5b21b6
+    );
+
+    color: white;
+
+    font-size: 13px;
+    font-weight: 700;
+}

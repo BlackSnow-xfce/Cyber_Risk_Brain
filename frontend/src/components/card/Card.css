@@ -1,0 +1,153 @@
+.pa-card {
+    display: flex;
+    flex-direction: column;
+
+    background: #161b22;
+
+    border: 1px solid #262f3d;
+    border-radius: 14px;
+
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.22);
+
+    overflow: hidden;
+
+    transition:
+        border-color 180ms ease,
+        transform 180ms ease,
+        box-shadow 180ms ease;
+}
+
+.pa-card:hover {
+    border-color: #2f81f7;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.30);
+}
+
+.pa-card__header {
+    display: flex;
+
+    justify-content: space-between;
+    align-items: flex-start;
+
+    gap: 1rem;
+
+    padding: 1.25rem 1.5rem;
+
+    border-bottom: 1px solid #262f3d;
+}
+
+.pa-card__titles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.pa-card__title {
+    margin: 0;
+
+    font-size: 1rem;
+    font-weight: 600;
+
+    color: #f5f7fa;
+}
+
+.pa-card__subtitle {
+    margin: 0;
+
+    font-size: 0.85rem;
+
+    color: #9ca7b5;
+}
+
+.pa-card__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pa-card__content {
+    display: flex;
+    flex-direction: column;
+
+    padding: 1.5rem;
+
+    gap: 1rem;
+
+    flex: 1;
+}
+
+/* ==========================================================
+   Grid Utilities
+   ========================================================== */
+
+.col-span-12 {
+    grid-column: span 12;
+}
+
+.col-span-8 {
+    grid-column: span 8;
+}
+
+.col-span-6 {
+    grid-column: span 6;
+}
+
+.col-span-4 {
+    grid-column: span 4;
+}
+
+.col-span-3 {
+    grid-column: span 3;
+}
+
+.col-span-2 {
+    grid-column: span 2;
+}
+
+.col-span-1 {
+    grid-column: span 1;
+}
+
+/* Tablet */
+
+@media (max-width: 1600px) {
+    .col-span-12,
+    .col-span-8,
+    .col-span-6,
+    .col-span-4,
+    .col-span-3,
+    .col-span-2,
+    .col-span-1 {
+        grid-column: span 8;
+    }
+}
+
+/* Mobile */
+
+@media (max-width: 1200px) {
+    .col-span-12,
+    .col-span-8,
+    .col-span-6,
+    .col-span-4,
+    .col-span-3,
+    .col-span-2,
+    .col-span-1 {
+        grid-column: span 4;
+    }
+}
+
+@media (max-width: 768px) {
+    .col-span-12,
+    .col-span-8,
+    .col-span-6,
+    .col-span-4,
+    .col-span-3,
+    .col-span-2,
+    .col-span-1 {
+        grid-column: span 1;
+    }
+}

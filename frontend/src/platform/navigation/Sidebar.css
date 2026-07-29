@@ -1,0 +1,150 @@
+.sidebar {
+    width: 270px;
+    min-width: 270px;
+    height: 100vh;
+
+    display: flex;
+    flex-direction: column;
+
+    background: #0f172a;
+    border-right: 1px solid #1f2937;
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    padding: 22px 20px;
+
+    border-bottom: 1px solid #1f2937;
+}
+
+.sidebar-logo-image {
+    width: 46px;
+    height: 46px;
+
+    object-fit: contain;
+
+    flex-shrink: 0;
+}
+
+.sidebar-logo-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-logo-text div {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+
+    line-height: 1.1;
+}
+
+.sidebar-logo-text small {
+    color: #8b97ad;
+    font-size: 12px;
+}
+
+.sidebar-section {
+    padding: 22px 14px 0;
+}
+
+.sidebar-title {
+    display: block;
+
+    margin: 0 10px 12px;
+
+    color: #64748b;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: .08em;
+}
+
+.sidebar-item {
+    width: 100%;
+    height: 44px;
+
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+
+    padding: 0 14px;
+
+    border: none;
+    border-radius: 10px;
+
+    background: transparent;
+
+    color: #cbd5e1;
+
+    cursor: pointer;
+
+    transition:
+        background .2s,
+        color .2s;
+}
+
+.sidebar-item span {
+    flex: 1;
+    text-align: left;
+
+    font-size: 14px;
+}
+
+.sidebar-item svg:last-child {
+    opacity: .45;
+}
+
+.sidebar-item:hover {
+    background: #182235;
+    color: white;
+}
+
+.sidebar-item-active {
+    background: linear-gradient(
+        90deg,
+        #7c3aed,
+        #8b5cf6
+    );
+
+    color: white;
+
+    box-shadow: 0 0 18px rgba(124, 58, 237, .35);
+}
+
+.sidebar-item-active svg:last-child {
+    opacity: 1;
+}
+
+.sidebar-spacer {
+    flex: 1;
+}
+
+.sidebar-collapse {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    margin: 18px;
+    padding: 12px 14px;
+
+    border: none;
+    border-radius: 10px;
+
+    background: #182235;
+
+    color: #cbd5e1;
+
+    cursor: pointer;
+
+    transition: .2s;
+}
+
+.sidebar-collapse:hover {
+    background: #212d44;
+}
