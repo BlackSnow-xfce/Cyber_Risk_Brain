@@ -1,19 +1,43 @@
+import type { PropsWithChildren } from "react";
+
+import Box from "@mui/material/Box";
+
 import { Sidebar } from "../navigation/Sidebar";
 import { Topbar } from "../navigation/Topbar";
-import WorkspaceOutlet from "../workspace/WorkspaceOutlet";
 
-export function PlatformLayout() {
+export default function PlatformLayout({
+    children,
+}: PropsWithChildren) {
     return (
-        <div className="platform-layout">
+        <Box
+            sx={{
+                display: "grid",
+                gridTemplateColumns: "280px 1fr",
+                minHeight: "100vh",
+                bgcolor: "background.default",
+            }}
+        >
             <Sidebar />
 
-            <div className="platform-content">
+            <Box
+                sx={{
+                    display: "grid",
+                    gridTemplateRows: "72px 1fr",
+                    minHeight: "100vh",
+                }}
+            >
                 <Topbar />
 
-                <main className="workspace-container">
-                    <WorkspaceOutlet />
-                </main>
-            </div>
-        </div>
+                <Box
+                    component="main"
+                    sx={{
+                        p: 3,
+                        overflow: "auto",
+                    }}
+                >
+                    {children}
+                </Box>
+            </Box>
+        </Box>
     );
 }

@@ -1,7 +1,12 @@
-import { PlatformShell } from "./platform/shell/PlatformShell";
+import PlatformLayout from "./platform/layout/PlatformLayout";
+import WorkspaceOutlet from "./platform/workspace/WorkspaceOutlet";
 
 function App() {
-    return <PlatformShell />;
+    return (
+        <PlatformLayout>
+            <WorkspaceOutlet />
+        </PlatformLayout>
+    );
 }
 
 export default App;

@@ -1,52 +1,128 @@
+.decision-center-panel {
+    height: 100%;
+}
+
 .decision-workspace {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
 }
 
-.decision-workspace section {
-    padding: 1rem 1.25rem;
+.decision-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
 
-    border: 1px solid rgba(255,255,255,.08);
+    padding: 1.5rem;
 
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
 
-    background: rgba(255,255,255,.02);
+    background: rgba(255, 255, 255, 0.02);
 }
 
-.decision-workspace h2,
-.decision-workspace h3 {
-    margin: 0 0 .75rem;
+.decision-hero h2 {
+    margin: 0 0 0.75rem 0;
 
-    font-size: .95rem;
+    font-size: 1.45rem;
+    font-weight: 700;
 
-    font-weight: 600;
+    color: #f5f7fa;
 }
 
-.decision-workspace p {
+.decision-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+.decision-badge {
+    padding: 0.35rem 0.9rem;
+
+    border-radius: 999px;
+
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.decision-badge--critical {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+.decision-confidence {
+    width: 180px;
+}
+
+.decision-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+}
+
+.decision-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    padding: 1.25rem;
+
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.decision-section--full {
+    width: 100%;
+}
+
+.decision-section h3 {
     margin: 0;
 
-    opacity: .8;
+    font-size: 1rem;
+    font-weight: 600;
 
-    line-height: 1.5;
+    color: #f5f7fa;
 }
 
-.decision-workspace__decision {
-    border-left: 4px solid #d32f2f;
+.decision-placeholder {
+    margin: 0;
+
+    line-height: 1.6;
+
+    color: #b8c1cc;
 }
 
-.decision-workspace__recommendation {
-    border-left: 4px solid #1976d2;
+.decision-list {
+    margin: 0;
+    padding-left: 1.2rem;
+
+    color: #b8c1cc;
 }
 
-.decision-workspace__evidence {
-    border-left: 4px solid #2e7d32;
+.decision-list li + li {
+    margin-top: 0.5rem;
 }
 
-.decision-workspace__business {
-    border-left: 4px solid #ef6c00;
-}
+@media (max-width: 960px) {
+    .decision-hero {
+        flex-direction: column;
+        align-items: stretch;
+    }
 
-.decision-workspace__actions {
-    border-left: 4px solid #6a1b9a;
+    .decision-status {
+        align-items: flex-start;
+    }
+
+    .decision-confidence {
+        width: 100%;
+    }
+
+    .decision-grid {
+        grid-template-columns: 1fr;
+    }
 }

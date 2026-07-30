@@ -1,0 +1,20 @@
+.risk-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.risk-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.risk-row span {
+    color: #d6dbe3;
+}
+
+.risk-row strong {
+    font-size: 1rem;
+    color: #f5f7fa;
+}
