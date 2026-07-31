@@ -2,10 +2,10 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { DecisionResponse } from "@/types/decision";
+import type { Decision } from "@/types/decision";
 
 interface EvidenceChipsProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function EvidenceChips({
@@ -35,7 +35,7 @@ export default function EvidenceChips({
             </Stack>
 
             <Stack spacing={2}>
-                {decision.evidence.map((item) => (
+                {decision.evidence.items.map((item) => (
                     <Paper
                         key={item.id}
                         variant="outlined"
@@ -49,32 +49,41 @@ export default function EvidenceChips({
                             direction="row"
                             sx={{
                                 justifyContent: "space-between",
-                                alignItems: "center",
+                                alignItems: "flex-start",
                             }}
                         >
-                            <Stack spacing={0.5}>
+                            <Stack spacing={0.75}>
                                 <Typography
                                     variant="subtitle1"
                                     sx={{
                                         fontWeight: 600,
                                     }}
                                 >
-                                    {item.title}
+                                    {item.summary}
                                 </Typography>
 
                                 <Typography
                                     variant="body2"
                                     color="text.secondary"
                                 >
-                                    {item.value}
+                                    {item.source}
                                 </Typography>
+
+                                {item.facts.length > 0 && (
+                                    <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                    >
+                                        {item.facts.join(" • ")}
+                                    </Typography>
+                                )}
                             </Stack>
 
                             <Typography
                                 variant="overline"
                                 color="primary"
                             >
-                                EVIDENCE
+                                {item.type}
                             </Typography>
                         </Stack>
                     </Paper>

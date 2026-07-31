@@ -2,16 +2,18 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { DecisionResponse } from "@/types/decision/DecisionResponse";
+import type { Decision } from "@/types/decision";
 
 interface RecommendedActionsProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function RecommendedActions({
     decision,
 }: RecommendedActionsProps) {
-    if (decision.recommendations.length === 0) {
+    const actions = decision.actions.actions;
+
+    if (actions.length === 0) {
         return (
             <Stack spacing={3}>
                 <Stack spacing={0.5}>
@@ -61,101 +63,96 @@ export default function RecommendedActions({
             </Stack>
 
             <Stack spacing={2}>
-                {decision.recommendations.map(
-                    (recommendation, index) => (
-                        <Paper
-                            key={recommendation.id}
-                            variant="outlined"
+                {actions.map((action, index) => (
+                    <Paper
+                        key={action.id}
+                        variant="outlined"
+                        sx={{
+                            p: 2.5,
+                            borderRadius: 2,
+                        }}
+                    >
+                        <Stack
+                            direction="row"
+                            spacing={2}
                             sx={{
-                                p: 2.5,
-                                borderRadius: 2,
+                                alignItems: "flex-start",
                             }}
                         >
                             <Stack
-                                direction="row"
-                                spacing={2}
                                 sx={{
-                                    alignItems: "flex-start",
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: "50%",
+                                    bgcolor: "primary.main",
+                                    color:
+                                        "primary.contrastText",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <Typography variant="subtitle2">
+                                    {index + 1}
+                                </Typography>
+                            </Stack>
+
+                            <Stack
+                                spacing={0.75}
+                                sx={{
+                                    flex: 1,
                                 }}
                             >
                                 <Stack
-                                    sx={{
-                                        width: 36,
-                                        height: 36,
-                                        borderRadius: "50%",
-                                        bgcolor:
-                                            "primary.main",
-                                        color:
-                                            "primary.contrastText",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        flexShrink: 0,
-                                    }}
-                                >
+    direction="row"
+    sx={{
+        justifyContent: "space-between",
+        alignItems: "center",
+    }}
+>
                                     <Typography
-                                        variant="subtitle2"
-                                    >
-                                        {index + 1}
-                                    </Typography>
-                                </Stack>
-
-                                <Stack
-                                    spacing={0.75}
-                                    sx={{
-                                        flex: 1,
-                                    }}
-                                >
-                                    <Stack
-                                        direction="row"
+                                        variant="subtitle1"
                                         sx={{
-                                            justifyContent:
-                                                "space-between",
-                                            alignItems:
-                                                "center",
+                                            fontWeight: 600,
                                         }}
                                     >
-                                        <Typography
-                                            variant="subtitle1"
-                                            sx={{
-                                                fontWeight:
-                                                    600,
-                                            }}
-                                        >
-                                            {
-                                                recommendation.title
-                                            }
-                                        </Typography>
-
-                                        <Typography
-                                            variant="overline"
-                                            color={
-                                                recommendation.automated
-                                                    ? "success.main"
-                                                    : "warning.main"
-                                            }
-                                        >
-                                            {recommendation.automated
-                                                ? "AUTOMATED"
-                                                : "MANUAL"}
-                                        </Typography>
-                                    </Stack>
+                                        {action.title}
+                                    </Typography>
 
                                     <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                    >
-                                        {
-                                            recommendation.description
+                                        variant="overline"
+                                        color={
+                                            action.automation
+                                                ? "success.main"
+                                                : "warning.main"
                                         }
+                                    >
+                                        {action.automation
+                                            ? "AUTOMATED"
+                                            : "MANUAL"}
                                     </Typography>
                                 </Stack>
+
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                >
+                                    {action.description}
+                                </Typography>
                             </Stack>
-                        </Paper>
-                    )
-                )}
+                        </Stack>
+                    </Paper>
+                ))}
             </Stack>
+
+            {decision.actions.executionSummary && (
+                <Typography
+                    variant="body2"
+                    color="text.secondary"
+                >
+                    {decision.actions.executionSummary}
+                </Typography>
+            )}
         </Stack>
     );
 }

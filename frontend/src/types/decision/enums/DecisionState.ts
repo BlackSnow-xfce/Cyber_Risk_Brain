@@ -1,0 +1,12 @@
+export enum DecisionState {
+    NEW = "NEW",
+    ANALYZING = "ANALYZING",
+    READY = "READY",
+    REVIEW = "REVIEW",
+    APPROVED = "APPROVED",
+    REJECTED = "REJECTED",
+    EXECUTING = "EXECUTING",
+    COMPLETED = "COMPLETED",
+    FAILED = "FAILED",
+    ARCHIVED = "ARCHIVED",
+}

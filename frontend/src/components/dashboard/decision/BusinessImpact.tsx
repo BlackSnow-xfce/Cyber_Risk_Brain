@@ -2,16 +2,16 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { DecisionResponse } from "@/types/decision/DecisionResponse";
+import type { Decision } from "@/types/decision";
 
 interface BusinessImpactProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function BusinessImpact({
     decision,
 }: BusinessImpactProps) {
-    const impact = decision.businessImpact;
+    const impact = decision.impact;
 
     return (
         <Stack spacing={3}>
@@ -47,9 +47,7 @@ export default function BusinessImpact({
                     <Stack spacing={0.5}>
                         <Typography
                             variant="subtitle1"
-                            sx={{
-                                fontWeight: 600,
-                            }}
+                            sx={{ fontWeight: 600 }}
                         >
                             Operational Impact
                         </Typography>
@@ -58,7 +56,126 @@ export default function BusinessImpact({
                             variant="body2"
                             color="text.secondary"
                         >
-                            {impact.operations}
+                            {impact.operational}
+                        </Typography>
+                    </Stack>
+                </Paper>
+
+                {impact.financial && (
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            p: 2.5,
+                            borderRadius: 2,
+                        }}
+                    >
+                        <Stack spacing={0.5}>
+                            <Typography
+                                variant="subtitle1"
+                                sx={{ fontWeight: 600 }}
+                            >
+                                Financial Impact
+                            </Typography>
+
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                            >
+                                {impact.financial}
+                            </Typography>
+                        </Stack>
+                    </Paper>
+                )}
+
+                {impact.regulatory && (
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            p: 2.5,
+                            borderRadius: 2,
+                        }}
+                    >
+                        <Stack spacing={0.5}>
+                            <Typography
+                                variant="subtitle1"
+                                sx={{ fontWeight: 600 }}
+                            >
+                                Regulatory Impact
+                            </Typography>
+
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                            >
+                                {impact.regulatory}
+                            </Typography>
+                        </Stack>
+                    </Paper>
+                )}
+
+                {impact.reputational && (
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            p: 2.5,
+                            borderRadius: 2,
+                        }}
+                    >
+                        <Stack spacing={0.5}>
+                            <Typography
+                                variant="subtitle1"
+                                sx={{ fontWeight: 600 }}
+                            >
+                                Reputational Impact
+                            </Typography>
+
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                            >
+                                {impact.reputational}
+                            </Typography>
+                        </Stack>
+                    </Paper>
+                )}
+
+                <Paper
+                    variant="outlined"
+                    sx={{
+                        p: 2.5,
+                        borderRadius: 2,
+                    }}
+                >
+                    <Stack spacing={0.5}>
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ fontWeight: 600 }}
+                        >
+                            CIA Impact
+                        </Typography>
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            <strong>Confidentiality:</strong>{" "}
+                            {impact.confidentiality}
+                        </Typography>
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            <strong>Integrity:</strong>{" "}
+                            {impact.integrity}
+                        </Typography>
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            <strong>Availability:</strong>{" "}
+                            {impact.availability}
                         </Typography>
                     </Stack>
                 </Paper>
@@ -73,70 +190,16 @@ export default function BusinessImpact({
                     <Stack spacing={0.5}>
                         <Typography
                             variant="subtitle1"
-                            sx={{
-                                fontWeight: 600,
-                            }}
+                            sx={{ fontWeight: 600 }}
                         >
-                            Financial Impact
+                            Overall Assessment
                         </Typography>
 
                         <Typography
                             variant="body2"
                             color="text.secondary"
                         >
-                            {impact.financial}
-                        </Typography>
-                    </Stack>
-                </Paper>
-
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        p: 2.5,
-                        borderRadius: 2,
-                    }}
-                >
-                    <Stack spacing={0.5}>
-                        <Typography
-                            variant="subtitle1"
-                            sx={{
-                                fontWeight: 600,
-                            }}
-                        >
-                            Compliance Impact
-                        </Typography>
-
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                        >
-                            {impact.compliance}
-                        </Typography>
-                    </Stack>
-                </Paper>
-
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        p: 2.5,
-                        borderRadius: 2,
-                    }}
-                >
-                    <Stack spacing={0.5}>
-                        <Typography
-                            variant="subtitle1"
-                            sx={{
-                                fontWeight: 600,
-                            }}
-                        >
-                            Reputation Impact
-                        </Typography>
-
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                        >
-                            {impact.reputation}
+                            {impact.narrative}
                         </Typography>
                     </Stack>
                 </Paper>

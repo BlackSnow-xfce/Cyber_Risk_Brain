@@ -4,10 +4,10 @@ import Typography from "@mui/material/Typography";
 
 import ReasoningStep from "@/components/dashboard/ui/ReasoningStep";
 
-import type { DecisionResponse } from "@/types/decision/DecisionResponse";
+import type { Decision } from "@/types/decision";
 
 interface ExplainabilityProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function Explainability({
@@ -42,7 +42,7 @@ export default function Explainability({
                         fontWeight: 700,
                     }}
                 >
-                    {decision.explainability.confidence}%
+                    {decision.confidence.score}%
                 </Typography>
 
                 <Typography
@@ -58,9 +58,7 @@ export default function Explainability({
             <Divider />
 
             <Stack spacing={2}>
-                <Typography
-                    variant="h6"
-                >
+                <Typography variant="h6">
                     Reasoning
                 </Typography>
 
@@ -76,9 +74,7 @@ export default function Explainability({
             <Divider />
 
             <Stack spacing={1}>
-                <Typography
-                    variant="h6"
-                >
+                <Typography variant="h6">
                     Decision Metadata
                 </Typography>
 
@@ -86,28 +82,28 @@ export default function Explainability({
                     variant="body2"
                     color="text.secondary"
                 >
-                    Engine: {decision.metadata.engine}
+                    Engine: {decision.metadata.engineVersion}
                 </Typography>
 
                 <Typography
                     variant="body2"
                     color="text.secondary"
                 >
-                    Model: {decision.metadata.model}
+                    Model: {decision.metadata.modelVersion}
                 </Typography>
 
                 <Typography
                     variant="body2"
                     color="text.secondary"
                 >
-                    Status: {decision.status}
+                    Status: {decision.status.state}
                 </Typography>
 
                 <Typography
                     variant="body2"
                     color="text.secondary"
                 >
-                    Priority: {decision.priority}
+                    Confidence Level: {decision.confidence.level}
                 </Typography>
             </Stack>
         </Stack>

@@ -9,10 +9,10 @@ import ExecutiveSummary from "./ExecutiveSummary";
 import Explainability from "./Explainability";
 import RecommendedActions from "./RecommendedActions";
 
-import type { DecisionResponse } from "@/types/decision";
+import type { Decision } from "@/types/decision";
 
 interface DecisionWorkspaceProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function DecisionWorkspace({

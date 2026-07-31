@@ -3,10 +3,10 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { DecisionResponse } from "@/types/decision/DecisionResponse";
+import type { Decision } from "@/types/decision";
 
 interface DecisionHeroProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function DecisionHero({
@@ -44,7 +44,7 @@ export default function DecisionHero({
                             fontWeight: 700,
                         }}
                     >
-                        {decision.decision.title}
+                        {decision.summary.title}
                     </Typography>
 
                     <Typography
@@ -55,7 +55,7 @@ export default function DecisionHero({
                             lineHeight: 1.8,
                         }}
                     >
-                        {decision.decision.description}
+                        {decision.summary.description}
                     </Typography>
                 </Stack>
 
@@ -66,7 +66,7 @@ export default function DecisionHero({
                     }}
                 >
                     <Chip
-                        label={decision.status.toUpperCase()}
+                        label={decision.status.state}
                         color="primary"
                     />
 
@@ -105,7 +105,7 @@ export default function DecisionHero({
                     </Typography>
 
                     <Typography variant="h6">
-                        {decision.priority.toUpperCase()}
+                        {decision.risk.priority}
                     </Typography>
                 </Stack>
 
@@ -126,7 +126,7 @@ export default function DecisionHero({
                     </Typography>
 
                     <Typography variant="h6">
-                        {decision.confidence}%
+                        {decision.confidence.score}%
                     </Typography>
                 </Stack>
 
@@ -147,7 +147,7 @@ export default function DecisionHero({
                     </Typography>
 
                     <Typography variant="h6">
-                        {decision.metadata.engine}
+                        {decision.metadata.engineVersion}
                     </Typography>
                 </Stack>
 
@@ -168,7 +168,7 @@ export default function DecisionHero({
                     </Typography>
 
                     <Typography variant="h6">
-                        {decision.metadata.model}
+                        {decision.metadata.modelVersion}
                     </Typography>
                 </Stack>
             </Stack>
@@ -187,7 +187,7 @@ export default function DecisionHero({
                     variant="body1"
                     color="text.secondary"
                 >
-                    {decision.summary}
+                    {decision.explainability.summary}
                 </Typography>
             </Stack>
 
