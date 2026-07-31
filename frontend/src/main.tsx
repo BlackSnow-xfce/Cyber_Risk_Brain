@@ -3,18 +3,23 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
+
+import { WorkspaceProvider } from "@/context/WorkspaceContext";
+
 import PredatorThemeProvider from "./ui/theme/PredatorThemeProvider";
 
 import "./styles/global.css";
 
 ReactDOM.createRoot(
-    document.getElementById("root") as HTMLElement
+    document.getElementById("root") as HTMLElement,
 ).render(
     <React.StrictMode>
         <PredatorThemeProvider>
-            <BrowserRouter>
-                <App />
-            </BrowserRouter>
+            <WorkspaceProvider>
+                <BrowserRouter>
+                    <App />
+                </BrowserRouter>
+            </WorkspaceProvider>
         </PredatorThemeProvider>
-    </React.StrictMode>
+    </React.StrictMode>,
 );

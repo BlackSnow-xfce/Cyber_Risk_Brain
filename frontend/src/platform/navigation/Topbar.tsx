@@ -1,3 +1,5 @@
+import { WorkspaceSelector } from "@/components/topbar";
+
 import "./Topbar.css";
 
 export function Topbar() {
@@ -8,9 +10,7 @@ export function Topbar() {
                     Dashboard
                 </h1>
 
-                <select className="workspace-select">
-                    <option>Default Workspace</option>
-                </select>
+                <WorkspaceSelector />
             </div>
 
             <div className="topbar-right">
