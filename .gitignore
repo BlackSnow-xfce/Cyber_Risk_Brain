@@ -21,3 +21,11 @@ frontend/.DS_Store
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+# TypeScript
+frontend/*.tsbuildinfo
+
+# Debug
+frontend/status.txt
+# Frontend build artifacts
+frontend/*.tsbuildinfo
+frontend/status.txt
