@@ -1,93 +1,102 @@
-import { ActionStatus, ActionType, ConfidenceLevel, DecisionState, DecisionType, EvidenceType, Priority, RiskBand, Severity, Urgency } from "@/types/decision/enums";
 import type { Decision } from "@/types/decision";
 
-const now = new Date().toISOString();
+import {
+    ActionStatus,
+    ActionType,
+    ConfidenceLevel,
+    DecisionState,
+    DecisionType,
+    EvidenceType,
+    Priority,
+    RiskBand,
+    Severity,
+    Urgency,
+} from "@/types/decision";
 
 export const mockDecision: Decision = {
     metadata: {
         id: "decision-001",
-        key: "DEC-2026-0001",
+        key: "ATTACK_PATH_CRITICAL_001",
         version: 1,
-        tenantId: "predatorai-demo",
-        workspace: "soc-analyst",
+        tenantId: "predatorai",
+        workspace: "SOC_ANALYST",
         engineVersion: "3.0.0",
-        modelVersion: "Predator Reasoning Model",
+        modelVersion: "predator-reasoning-v1",
         correlationId: "corr-001",
-        createdAt: now,
-        updatedAt: now,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
     },
 
     status: {
-        state: DecisionState.COMPLETED,
-        previousState: DecisionState.EXECUTING,
-        reason: "Decision execution finished successfully.",
-        changedBy: "PredatorAI",
-        changedAt: now,
+        state: DecisionState.READY,
+        reason: "Critical attack path identified",
+        changedBy: "Decision Engine",
+        changedAt: new Date().toISOString(),
     },
 
     summary: {
         title: "Critical Attack Path Detected",
-        subtitle: "Internet-facing asset threatens crown jewels",
+        subtitle:
+            "Internet-facing vulnerability enables lateral movement",
         description:
-            "PredatorAI identified an exploitable attack path from an exposed asset to critical business systems.",
-        category: "Attack Path",
-        tags: ["KEV", "EPSS", "Internet Facing", "Lateral Movement"],
-        decisionType: DecisionType.CONTAINMENT,
+            "PredatorAI identified a critical attack path leading towards protected enterprise resources.",
+        category: "CYBER_RISK",
+        tags: [
+            "critical",
+            "attack-path",
+            "internet-facing",
+        ],
+        decisionType: DecisionType.MITIGATION,
     },
 
     recommendation: {
-        action: "Immediately isolate the affected asset.",
-        summary: "Contain the compromised attack path.",
+        action: "Immediate containment recommended.",
+        summary:
+            "Restrict external exposure and initiate remediation workflow.",
         rationale:
-            "Public exploit availability, KEV listing and attack-path correlation significantly increase business risk.",
+            "Exploit availability combined with asset criticality creates elevated risk.",
         expectedOutcome:
-            "Prevent lateral movement while remediation is performed.",
+            "Reduction of attack surface and prevention of lateral movement.",
         urgency: Urgency.IMMEDIATE,
-        estimatedEffort: "30 minutes",
-        rollbackAvailable: true,
-        rollbackDescription:
-            "Reconnect the host after validation and patch verification.",
-        alternatives: [
-            "Restrict network access using firewall rules.",
-            "Disable affected service until remediation is complete.",
-        ],
+        rollbackAvailable: false,
+        alternatives: [],
     },
 
     context: {
         asset: {
-            assetId: "srv-web-001",
-            name: "Customer Portal",
-            type: "Windows Server",
-            owner: "Infrastructure Team",
-            criticality: "Critical",
+            assetId: "asset-001",
+            name: "Production Application Gateway",
+            type: "APPLICATION",
+            owner: "Platform Security",
+            criticality: "HIGH",
             internetFacing: true,
-            operatingSystem: "Windows Server 2022",
-            location: "Frankfurt",
+            operatingSystem: "Linux",
+            location: "Production",
         },
 
         threat: {
-            cves: ["CVE-2025-12345"],
+            cves: [
+                "CVE-2025-0001",
+            ],
             kevListed: true,
-            epss: 0.98,
+            epss: 0.96,
             cvss: 9.8,
             attackPaths: [
-                "Internet → Web Server → AD → Crown Jewel",
+                "Internet → Gateway → Internal Systems",
             ],
             mitreTechniques: [
                 "T1190",
-                "T1021",
-                "T1078",
             ],
             exploitAvailable: true,
         },
 
         business: {
-            businessUnit: "E-Commerce",
-            application: "Customer Portal",
-            process: "Order Processing",
-            criticality: "Critical",
+            businessUnit: "Enterprise IT",
+            application: "Core Platform",
+            process: "Digital Services",
+            criticality: "HIGH",
             complianceFrameworks: [
-                "ISO 27001",
+                "ISO27001",
                 "NIS2",
             ],
         },
@@ -99,167 +108,138 @@ export const mockDecision: Decision = {
         severity: Severity.CRITICAL,
         priority: Priority.P1,
         urgency: Urgency.IMMEDIATE,
-        likelihood: 97,
-        impact: 99,
-        trend: 12,
-        calculatedAt: now,
+        likelihood: 0.95,
+        impact: 0.95,
+        trend: 0.8,
+        calculatedAt: new Date().toISOString(),
         engineVersion: "3.0.0",
     },
 
     confidence: {
         score: 98,
-        level: ConfidenceLevel.VERY_HIGH,
-        evidenceCoverage: 96,
-        sourceCoverage: 94,
-        evidenceQuality: 97,
+        level: ConfidenceLevel.HIGH,
+        evidenceCoverage: 95,
+        sourceCoverage: 90,
+        evidenceQuality: 95,
         modelConfidence: 98,
         missingEvidence: [],
         conflictingEvidence: [],
-        calculatedAt: now,
+        calculatedAt: new Date().toISOString(),
     },
 
     evidence: {
         items: [
             {
-                id: "ev-001",
+                id: "evidence-001",
                 type: EvidenceType.VULNERABILITY,
-                source: "Tenable",
-                sourceReference: "TEN-12345",
-                summary: "Critical internet-facing vulnerability detected.",
-                timestamp: now,
+                source: "Vulnerability Scanner",
+                sourceReference: "finding-001",
+                summary:
+                    "Critical vulnerability detected on internet-facing asset.",
+                timestamp: new Date().toISOString(),
                 confidence: 98,
                 weight: 1,
                 facts: [
-                    "CVSS 9.8",
-                    "EPSS 98%",
                     "Public exploit available",
-                ],
-            },
-            {
-                id: "ev-002",
-                type: EvidenceType.ATTACK_PATH,
-                source: "PredatorAI",
-                sourceReference: "PATH-001",
-                summary: "Attack path to crown jewel confirmed.",
-                timestamp: now,
-                confidence: 96,
-                weight: 1,
-                facts: [
-                    "Lateral movement possible",
-                    "Critical asset reachable",
+                    "Asset externally reachable",
                 ],
             },
         ],
-        coverage: 96,
-        quality: 97,
-        sourceCount: 5,
+        coverage: 95,
+        quality: 95,
+        sourceCount: 3,
         duplicateCount: 0,
     },
 
     explainability: {
         summary:
-            "Multiple independent evidence sources support the decision.",
+            "Decision generated based on exposure, exploitability, business criticality and attack path correlation.",
+
         reasoning:
-            "Attack-path correlation, KEV intelligence and vulnerability context produce a critical containment recommendation.",
-        factors: [
-            {
-                id: "factor-1",
-                label: "Attack Path",
-                contribution: 45,
-                weight: 1,
-                direction: "positive",
-                evidenceIds: ["ev-002"],
-            },
-            {
-                id: "factor-2",
-                label: "KEV Listed",
-                contribution: 35,
-                weight: 1,
-                direction: "positive",
-                evidenceIds: ["ev-001"],
-            },
+            "PredatorAI correlated exposure, threat intelligence and business impact to generate this recommendation.",
+
+        factors: [],
+
+        rules: [],
+
+        assumptions: [
+            "Asset ownership information is current.",
+            "Threat intelligence sources are available.",
         ],
-        rules: [
-            {
-                id: "rule-1",
-                name: "Critical Attack Path",
-                version: "1.0",
-                matched: true,
-                contribution: 90,
-                description:
-                    "Internet-facing exploitable asset reaches crown jewel.",
-            },
-        ],
-        assumptions: [],
+
         uncertainties: [],
-        counterfactuals: [
-            "Without public exploit availability the recommendation would be downgraded.",
-        ],
+
+        counterfactuals: [],
     },
 
     impact: {
-        operational: "High",
-        financial: "High",
-        regulatory: "Medium",
-        reputational: "High",
-        confidentiality: "High",
-        integrity: "High",
-        availability: "High",
+        operational:
+            "Potential disruption of critical services.",
+
+        financial:
+            "High potential business impact.",
+
+        regulatory:
+            "Potential compliance exposure.",
+
+        reputational:
+            "Potential customer trust impact.",
+
+        confidentiality: "HIGH",
+
+        integrity: "HIGH",
+
+        availability: "HIGH",
+
         narrative:
-            "Successful exploitation could interrupt critical business processes.",
+            "Compromise could affect critical enterprise operations.",
     },
 
     actions: {
         actions: [
             {
-                id: "action-1",
-                title: "Isolate Asset",
-                description: "Disconnect affected host from the network.",
+                id: "action-001",
+
+                title: "Restrict Internet Exposure",
+
+                description:
+                    "Remove unnecessary external accessibility.",
+
                 type: ActionType.ISOLATE_ASSET,
+
                 priority: Priority.P1,
+
                 status: ActionStatus.PROPOSED,
-                owner: "SOC",
-                dueDate: now,
+
+                owner: "Security Operations",
+
                 automation: false,
+
+                outcome:
+                    "Reduced attack surface.",
             },
         ],
+
         executionSummary:
-            "One immediate containment action proposed.",
+            "Immediate containment required.",
     },
 
     timeline: {
-        events: [
-            {
-                id: "timeline-1",
-                timestamp: now,
-                actor: "PredatorAI",
-                type: "Decision",
-                title: "Decision created",
-                description:
-                    "Reasoning completed successfully.",
-            },
-        ],
+        events: [],
     },
 
     references: {
-        assets: ["srv-web-001"],
-        findings: ["TEN-12345"],
-        incidents: [],
-        tickets: ["JIRA-123"],
-        playbooks: ["PB-CONTAIN-001"],
-        cves: ["CVE-2025-12345"],
-        kev: ["CISA-KEV"],
-        mitre: ["T1190", "T1021", "T1078"],
-    },
+    assets: [],
+    findings: [],
+    incidents: [],
+    tickets: [],
+    playbooks: [],
+    cves: [],
+    kev: [],
+    mitre: [],
+},
 
     audit: {
-        entries: [
-            {
-                id: "audit-1",
-                actor: "PredatorAI",
-                timestamp: now,
-                action: "Decision Generated",
-            },
-        ],
+        entries: [],
     },
 };
