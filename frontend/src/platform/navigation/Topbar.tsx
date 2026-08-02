@@ -1,28 +1,31 @@
 import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import {
-    WorkspaceSelector,
+    WorkspaceSwitcher,
     TimeRangeSelector,
     TopbarActions,
     UserMenu,
 } from "@/components/topbar";
 
-import "./Topbar.css";
-
-export function Topbar() {
+export default function Topbar() {
     return (
-        <header className="topbar">
-            <Box
-                className="topbar-left"
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 3,
-                }}
-            >
+        <Stack
+            direction="row"
+            sx={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                height: 72,
+                px: 3,
+                borderBottom: 1,
+                borderColor: "divider",
+                bgcolor: "background.paper",
+            }}
+        >
+            <Box>
                 <Typography
-                    variant="h4"
+                    variant="h5"
                     sx={{
                         fontWeight: 700,
                     }}
@@ -30,15 +33,14 @@ export function Topbar() {
                     Dashboard
                 </Typography>
 
-                <WorkspaceSelector />
+                <WorkspaceSwitcher />
             </Box>
 
-            <Box
-                className="topbar-right"
+            <Stack
+                direction="row"
+                spacing={2}
                 sx={{
-                    display: "flex",
                     alignItems: "center",
-                    gap: 2,
                 }}
             >
                 <TimeRangeSelector />
@@ -46,7 +48,7 @@ export function Topbar() {
                 <TopbarActions />
 
                 <UserMenu />
-            </Box>
-        </header>
+            </Stack>
+        </Stack>
     );
 }

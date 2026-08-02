@@ -85,8 +85,7 @@ export default function RecommendedActions({
                                     height: 36,
                                     borderRadius: "50%",
                                     bgcolor: "primary.main",
-                                    color:
-                                        "primary.contrastText",
+                                    color: "primary.contrastText",
                                     alignItems: "center",
                                     justifyContent: "center",
                                     flexShrink: 0,
@@ -104,12 +103,12 @@ export default function RecommendedActions({
                                 }}
                             >
                                 <Stack
-    direction="row"
-    sx={{
-        justifyContent: "space-between",
-        alignItems: "center",
-    }}
->
+                                    direction="row"
+                                    sx={{
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                    }}
+                                >
                                     <Typography
                                         variant="subtitle1"
                                         sx={{

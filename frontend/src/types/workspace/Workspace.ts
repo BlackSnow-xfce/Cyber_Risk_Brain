@@ -7,5 +7,7 @@ export interface Workspace {
 
     description: string;
 
+    order: number;
+
     enabled: boolean;
 }

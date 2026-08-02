@@ -2,8 +2,8 @@ import type { PropsWithChildren } from "react";
 
 import Box from "@mui/material/Box";
 
-import { Sidebar } from "../navigation/Sidebar";
-import { Topbar } from "../navigation/Topbar";
+import Sidebar from "../navigation/Sidebar";
+import Topbar from "../navigation/Topbar";
 
 export default function PlatformLayout({
     children,

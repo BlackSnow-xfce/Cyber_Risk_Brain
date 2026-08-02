@@ -1,5 +1,21 @@
-import DecisionCenterWorkspace from "@/workspaces/decision-center/DecisionCenterWorkspace";
+import { useWorkspace } from "@/hooks/useWorkspace";
+
+import { WorkspaceId } from "@/types/workspace";
+
+import { SOCWorkspace } from "@/workspaces/soc";
+import { ExecutiveWorkspace } from "@/workspaces/executive";
 
 export default function WorkspaceOutlet() {
-    return <DecisionCenterWorkspace />;
+    const { workspace } = useWorkspace();
+
+    switch (workspace) {
+        case WorkspaceId.DECISION_CENTER:
+            return <SOCWorkspace />;
+
+        case WorkspaceId.EXECUTIVE:
+            return <ExecutiveWorkspace />;
+
+        default:
+            return <SOCWorkspace />;
+    }
 }
