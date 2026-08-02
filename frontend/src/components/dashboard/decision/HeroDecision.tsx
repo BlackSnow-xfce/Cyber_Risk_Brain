@@ -5,10 +5,10 @@ import Typography from "@mui/material/Typography";
 import DashboardWidget from "@/components/dashboard/DashboardWidget";
 import ConfidenceBar from "@/components/dashboard/ui/ConfidenceBar/ConfidenceBar";
 
-import type { DecisionResponse } from "@/types/decision/DecisionResponse";
+import type { Decision } from "@/types/decision";
 
 interface HeroDecisionProps {
-    decision: DecisionResponse;
+    decision: Decision;
 }
 
 export default function HeroDecision({
@@ -19,28 +19,27 @@ export default function HeroDecision({
             title="Decision"
             subtitle="Highest priority AI-driven decision"
             status="offline"
-            statusLabel={decision.status.toUpperCase()}
+            statusLabel={decision.status.state.toUpperCase()}
         >
             <Stack spacing={3}>
-
                 <Stack spacing={1}>
                     <Typography
                         variant="h5"
                         sx={{ fontWeight: 700 }}
                     >
-                        {decision.decision.title}
+                        {decision.summary.title}
                     </Typography>
 
                     <Typography
                         variant="body2"
                         color="text.secondary"
                     >
-                        {decision.decision.description}
+                        {decision.summary.description}
                     </Typography>
                 </Stack>
 
                 <ConfidenceBar
-                    value={decision.confidence}
+                    value={decision.confidence.score}
                 />
 
                 <Stack
@@ -55,7 +54,6 @@ export default function HeroDecision({
                         Refresh
                     </Button>
                 </Stack>
-
             </Stack>
         </DashboardWidget>
     );
