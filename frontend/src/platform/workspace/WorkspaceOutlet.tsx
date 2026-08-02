@@ -1,5 +1,5 @@
-import DashboardPage from "@/pages/dashboard/DashboardPage";
+import DecisionCenterWorkspace from "@/workspaces/decision-center/DecisionCenterWorkspace";
 
 export default function WorkspaceOutlet() {
-    return <DashboardPage />;
+    return <DecisionCenterWorkspace />;
 }
