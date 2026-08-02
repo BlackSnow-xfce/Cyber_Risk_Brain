@@ -1,63 +1,52 @@
-import { WorkspaceSelector } from "@/components/topbar";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+
+import {
+    WorkspaceSelector,
+    TimeRangeSelector,
+    TopbarActions,
+    UserMenu,
+} from "@/components/topbar";
 
 import "./Topbar.css";
 
 export function Topbar() {
     return (
         <header className="topbar">
-            <div className="topbar-left">
-                <h1 className="topbar-title">
+            <Box
+                className="topbar-left"
+                sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
+                }}
+            >
+                <Typography
+                    variant="h4"
+                    sx={{
+                        fontWeight: 700,
+                    }}
+                >
                     Dashboard
-                </h1>
+                </Typography>
 
                 <WorkspaceSelector />
-            </div>
+            </Box>
 
-            <div className="topbar-right">
-                <select className="time-select">
-                    <option>Last 7 Days</option>
-                </select>
+            <Box
+                className="topbar-right"
+                sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                }}
+            >
+                <TimeRangeSelector />
 
-                <button className="topbar-icon">
-                    ⟳
-                </button>
+                <TopbarActions />
 
-                <button className="topbar-icon">
-                    ⤴
-                </button>
-
-                <button className="explain-button">
-                    Explain This Dashboard
-                </button>
-
-                <button className="topbar-icon">
-                    🔍
-                </button>
-
-                <button className="topbar-icon">
-                    🔔
-                </button>
-
-                <button className="topbar-icon">
-                    ☾
-                </button>
-
-                <div className="user-profile">
-                    <div>
-                        <div className="user-name">
-                            Max Mustermann
-                        </div>
-
-                        <div className="user-role">
-                            Security Admin
-                        </div>
-                    </div>
-
-                    <div className="avatar">
-                        MM
-                    </div>
-                </div>
-            </div>
+                <UserMenu />
+            </Box>
         </header>
     );
 }
