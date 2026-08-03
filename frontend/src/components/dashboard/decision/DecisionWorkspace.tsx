@@ -42,23 +42,26 @@ export default function DecisionWorkspace({
                     width: "100%",
                 }}
             >
-                <Stack
-                    spacing={5}
+                <Box
+                    component="section"
                     sx={{
                         minWidth: 0,
                     }}
                 >
-                    <ExecutiveSummary decision={decision} />
+                    <Stack spacing={5}>
+                        <ExecutiveSummary decision={decision} />
 
-                    <EvidenceChips decision={decision} />
+                        <EvidenceChips decision={decision} />
 
-                    <BusinessImpact decision={decision} />
+                        <BusinessImpact decision={decision} />
 
-                    <RecommendedActions decision={decision} />
-                </Stack>
+                        <RecommendedActions decision={decision} />
+                    </Stack>
+                </Box>
 
                 <Box
                     component="aside"
+                    aria-label="Analyst sidebar"
                     sx={{
                         minWidth: 0,
                         position: {

@@ -12,6 +12,25 @@ interface DecisionHeroProps {
 export default function DecisionHero({
     decision,
 }: DecisionHeroProps) {
+    const metrics = [
+        {
+            label: "PRIORITY",
+            value: decision.risk.priority,
+        },
+        {
+            label: "CONFIDENCE",
+            value: `${decision.confidence.score}%`,
+        },
+        {
+            label: "ENGINE",
+            value: decision.metadata.engineVersion,
+        },
+        {
+            label: "MODEL",
+            value: decision.metadata.modelVersion,
+        },
+    ];
+
     return (
         <Stack
             spacing={3}
@@ -28,9 +47,16 @@ export default function DecisionHero({
                 sx={{
                     justifyContent: "space-between",
                     alignItems: "flex-start",
+                    gap: 3,
                 }}
             >
-                <Stack spacing={1}>
+                <Stack
+                    spacing={1}
+                    sx={{
+                        minWidth: 0,
+                        flex: 1,
+                    }}
+                >
                     <Typography
                         variant="overline"
                         color="primary"
@@ -63,6 +89,7 @@ export default function DecisionHero({
                     spacing={1}
                     sx={{
                         alignItems: "flex-end",
+                        flexShrink: 0,
                     }}
                 >
                     <Chip
@@ -84,93 +111,40 @@ export default function DecisionHero({
             <Stack
                 direction="row"
                 sx={{
+                    flexWrap: "wrap",
                     border: "1px solid",
                     borderColor: "divider",
                     borderRadius: 2,
                     overflow: "hidden",
                 }}
             >
-                <Stack
-                    spacing={0.5}
-                    sx={{
-                        flex: 1,
-                        p: 2,
-                    }}
-                >
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
+                {metrics.map((metric, index) => (
+                    <Stack
+                        key={metric.label}
+                        spacing={0.5}
+                        sx={{
+                            flex: 1,
+                            minWidth: 180,
+                            p: 2,
+                            borderLeft:
+                                index === 0
+                                    ? "none"
+                                    : "1px solid",
+                            borderColor: "divider",
+                        }}
                     >
-                        PRIORITY
-                    </Typography>
+                        <Typography
+                            variant="caption"
+                            color="text.secondary"
+                        >
+                            {metric.label}
+                        </Typography>
 
-                    <Typography variant="h6">
-                        {decision.risk.priority}
-                    </Typography>
-                </Stack>
-
-                <Stack
-                    spacing={0.5}
-                    sx={{
-                        flex: 1,
-                        p: 2,
-                        borderLeft: "1px solid",
-                        borderColor: "divider",
-                    }}
-                >
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                    >
-                        CONFIDENCE
-                    </Typography>
-
-                    <Typography variant="h6">
-                        {decision.confidence.score}%
-                    </Typography>
-                </Stack>
-
-                <Stack
-                    spacing={0.5}
-                    sx={{
-                        flex: 1,
-                        p: 2,
-                        borderLeft: "1px solid",
-                        borderColor: "divider",
-                    }}
-                >
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                    >
-                        ENGINE
-                    </Typography>
-
-                    <Typography variant="h6">
-                        {decision.metadata.engineVersion}
-                    </Typography>
-                </Stack>
-
-                <Stack
-                    spacing={0.5}
-                    sx={{
-                        flex: 1,
-                        p: 2,
-                        borderLeft: "1px solid",
-                        borderColor: "divider",
-                    }}
-                >
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                    >
-                        MODEL
-                    </Typography>
-
-                    <Typography variant="h6">
-                        {decision.metadata.modelVersion}
-                    </Typography>
-                </Stack>
+                        <Typography variant="h6">
+                            {metric.value}
+                        </Typography>
+                    </Stack>
+                ))}
             </Stack>
 
             <Divider />
@@ -190,16 +164,6 @@ export default function DecisionHero({
                     {decision.explainability.summary}
                 </Typography>
             </Stack>
-
-            <Divider />
-
-            <Typography
-                variant="body2"
-                color="text.secondary"
-            >
-                Continue below for evidence, business impact,
-                recommendations, reasoning and timeline.
-            </Typography>
         </Stack>
     );
 }

@@ -14,11 +14,17 @@ export default function ExecutiveSummary({
 }: ExecutiveSummaryProps) {
     return (
         <DecisionSection
-            title={decision.summary.title}
+            title="Executive Summary"
             subtitle={decision.summary.subtitle}
         >
             <Stack spacing={2}>
-                <Typography variant="body1">
+                <Typography
+                    variant="body1"
+                    color="text.secondary"
+                    sx={{
+                        lineHeight: 1.8,
+                    }}
+                >
                     {decision.summary.description}
                 </Typography>
             </Stack>

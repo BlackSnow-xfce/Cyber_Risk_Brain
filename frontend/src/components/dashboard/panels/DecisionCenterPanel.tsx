@@ -5,6 +5,8 @@ import DecisionWorkspace from "@/components/dashboard/decision/DecisionWorkspace
 import { mockDecision } from "@/mocks/mockDecision";
 
 export default function DecisionCenterPanel() {
+    const decision = mockDecision;
+
     return (
         <DashboardWidget
             title="Decision Workspace"
@@ -12,9 +14,7 @@ export default function DecisionCenterPanel() {
             status="live"
             statusLabel="Decision Engine"
         >
-            <DecisionWorkspace
-                decision={mockDecision}
-            />
+            <DecisionWorkspace decision={decision} />
         </DashboardWidget>
     );
 }

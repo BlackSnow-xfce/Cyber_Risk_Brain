@@ -3,16 +3,26 @@ import { ChevronsLeft } from "lucide-react";
 import "./Sidebar.css";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { WorkspaceId } from "@/types/workspace";
 
 import { getWorkspaceNavigation } from "@/workspaces";
 
 import SidebarSection from "./SidebarSection";
 
 export default function Sidebar() {
-    const { workspace } = useWorkspace();
+    const {
+        workspace,
+        activeNavigationItemId,
+        setActiveNavigationItemId,
+    } = useWorkspace();
 
     const navigation =
         getWorkspaceNavigation(workspace);
+    const isSOCWorkspace =
+        workspace === WorkspaceId.DECISION_CENTER;
+    const activeItemId = isSOCWorkspace
+        ? activeNavigationItemId ?? navigation[0]?.id
+        : undefined;
 
     const sections = [
         ...new Set(
@@ -46,6 +56,12 @@ export default function Sidebar() {
                         (item) =>
                             item.section === section,
                     )}
+                    activeItemId={activeItemId}
+                    onSelect={
+                        isSOCWorkspace
+                            ? setActiveNavigationItemId
+                            : undefined
+                    }
                 />
             ))}
 

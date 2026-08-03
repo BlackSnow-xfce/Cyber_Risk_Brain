@@ -1,3 +1,5 @@
+import Typography from "@mui/material/Typography";
+
 import DashboardWidget from "@/components/dashboard/DashboardWidget";
 
 export default function TimelinePanel() {
@@ -8,7 +10,12 @@ export default function TimelinePanel() {
             status="offline"
             statusLabel="Idle"
         >
-            <p>No events available.</p>
+            <Typography
+                variant="body2"
+                color="text.secondary"
+            >
+                No events available.
+            </Typography>
         </DashboardWidget>
     );
 }

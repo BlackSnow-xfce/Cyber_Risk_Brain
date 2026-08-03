@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from "react";
 
+import Typography from "@mui/material/Typography";
+
 import Card from "@/components/card/Card";
 import StatusBadge, {
     type StatusType,
@@ -32,9 +34,12 @@ export default function DashboardWidget({
                     </h3>
 
                     {subtitle && (
-                        <p className="dashboard-widget__subtitle">
+                        <Typography
+                            component="p"
+                            className="dashboard-widget__subtitle"
+                        >
                             {subtitle}
-                        </p>
+                        </Typography>
                     )}
                 </div>
 

@@ -1,3 +1,5 @@
+import Typography from "@mui/material/Typography";
+
 import DashboardWidget from "@/components/dashboard/DashboardWidget";
 
 export default function ExplainabilityPanel() {
@@ -8,7 +10,12 @@ export default function ExplainabilityPanel() {
             status="ready"
             statusLabel="Ready"
         >
-            <p>Waiting for explainability data.</p>
+            <Typography
+                variant="body2"
+                color="text.secondary"
+            >
+                Waiting for explainability data.
+            </Typography>
         </DashboardWidget>
     );
 }

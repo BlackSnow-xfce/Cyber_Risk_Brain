@@ -1,0 +1,12 @@
+export type CorrelationType =
+    | "RELATED_ASSET"
+    | "RELATED_FINDING"
+    | "RELATED_INVESTIGATION"
+    | "RELATED_THREAT"
+    | "RELATED_EXPOSURE"
+    | "SAME_ATTACK_PATH"
+    | "SAME_CVE"
+    | "SAME_HOST"
+    | "SAME_IDENTITY"
+    | "SAME_APPLICATION"
+    | "SHARED_BUSINESS_SERVICE";

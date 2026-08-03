@@ -2,6 +2,8 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import DecisionSection from "@/components/dashboard/ui/DecisionSection";
+
 import type { Decision } from "@/types/decision";
 
 interface RecommendedActionsProps {
@@ -13,145 +15,116 @@ export default function RecommendedActions({
 }: RecommendedActionsProps) {
     const actions = decision.actions.actions;
 
-    if (actions.length === 0) {
-        return (
-            <Stack spacing={3}>
-                <Stack spacing={0.5}>
-                    <Typography
-                        variant="overline"
-                        color="primary"
-                    >
-                        Response Playbook
-                    </Typography>
-
-                    <Typography variant="h5">
-                        Recommended Actions
-                    </Typography>
-
+    return (
+        <DecisionSection
+            title="Response Playbook"
+            subtitle="Recommended Actions"
+        >
+            <Stack spacing={2}>
+                {actions.length === 0 ? (
                     <Typography
                         variant="body2"
                         color="text.secondary"
                     >
                         No actions are currently required.
                     </Typography>
-                </Stack>
-            </Stack>
-        );
-    }
-
-    return (
-        <Stack spacing={3}>
-            <Stack spacing={0.5}>
-                <Typography
-                    variant="overline"
-                    color="primary"
-                >
-                    Response Playbook
-                </Typography>
-
-                <Typography variant="h5">
-                    Recommended Actions
-                </Typography>
-
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                >
-                    Ordered response steps proposed by the
-                    decision engine.
-                </Typography>
-            </Stack>
-
-            <Stack spacing={2}>
-                {actions.map((action, index) => (
-                    <Paper
-                        key={action.id}
-                        variant="outlined"
-                        sx={{
-                            p: 2.5,
-                            borderRadius: 2,
-                        }}
-                    >
-                        <Stack
-                            direction="row"
-                            spacing={2}
+                ) : (
+                    actions.map((action, index) => (
+                        <Paper
+                            key={action.id}
+                            variant="outlined"
                             sx={{
-                                alignItems: "flex-start",
+                                p: 2.5,
+                                borderRadius: 2,
                             }}
                         >
                             <Stack
+                                direction="row"
+                                spacing={2}
                                 sx={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: "50%",
-                                    bgcolor: "primary.main",
-                                    color: "primary.contrastText",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                }}
-                            >
-                                <Typography variant="subtitle2">
-                                    {index + 1}
-                                </Typography>
-                            </Stack>
-
-                            <Stack
-                                spacing={0.75}
-                                sx={{
-                                    flex: 1,
+                                    alignItems: "flex-start",
                                 }}
                             >
                                 <Stack
-                                    direction="row"
                                     sx={{
-                                        justifyContent: "space-between",
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: "50%",
+                                        bgcolor: "primary.main",
+                                        color: "primary.contrastText",
                                         alignItems: "center",
+                                        justifyContent: "center",
+                                        flexShrink: 0,
                                     }}
                                 >
-                                    <Typography
-                                        variant="subtitle1"
-                                        sx={{
-                                            fontWeight: 600,
-                                        }}
-                                    >
-                                        {action.title}
-                                    </Typography>
-
-                                    <Typography
-                                        variant="overline"
-                                        color={
-                                            action.automation
-                                                ? "success.main"
-                                                : "warning.main"
-                                        }
-                                    >
-                                        {action.automation
-                                            ? "AUTOMATED"
-                                            : "MANUAL"}
+                                    <Typography variant="subtitle2">
+                                        {index + 1}
                                     </Typography>
                                 </Stack>
 
-                                <Typography
-                                    variant="body2"
-                                    color="text.secondary"
+                                <Stack
+                                    spacing={0.75}
+                                    sx={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                    }}
                                 >
-                                    {action.description}
-                                </Typography>
-                            </Stack>
-                        </Stack>
-                    </Paper>
-                ))}
-            </Stack>
+                                    <Stack
+                                        direction="row"
+                                        spacing={2}
+                                        sx={{
+                                            justifyContent:
+                                                "space-between",
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <Typography
+                                            variant="subtitle1"
+                                            sx={{
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {action.title}
+                                        </Typography>
 
-            {decision.actions.executionSummary && (
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                >
-                    {decision.actions.executionSummary}
-                </Typography>
-            )}
-        </Stack>
+                                        <Typography
+                                            variant="overline"
+                                            color={
+                                                action.automation
+                                                    ? "success.main"
+                                                    : "warning.main"
+                                            }
+                                            sx={{
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            {action.automation
+                                                ? "AUTOMATED"
+                                                : "MANUAL"}
+                                        </Typography>
+                                    </Stack>
+
+                                    <Typography
+                                        variant="body2"
+                                        color="text.secondary"
+                                    >
+                                        {action.description}
+                                    </Typography>
+                                </Stack>
+                            </Stack>
+                        </Paper>
+                    ))
+                )}
+
+                {decision.actions.executionSummary && (
+                    <Typography
+                        variant="body2"
+                        color="text.secondary"
+                    >
+                        {decision.actions.executionSummary}
+                    </Typography>
+                )}
+            </Stack>
+        </DecisionSection>
     );
 }

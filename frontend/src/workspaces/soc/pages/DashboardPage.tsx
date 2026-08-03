@@ -6,7 +6,7 @@ import RiskOverviewPanel from "@/components/dashboard/panels/RiskOverviewPanel";
 import ThreatIntelligencePanel from "@/components/dashboard/panels/ThreatIntelligencePanel";
 import TimelinePanel from "@/components/dashboard/panels/TimelinePanel";
 
-export default function DashboardLayout() {
+export default function DashboardPage() {
     return (
         <Box
             component="main"
@@ -34,7 +34,7 @@ export default function DashboardLayout() {
 
             <Box
                 component="aside"
-                aria-label="Cyber reasoning insights"
+                aria-label="SOC insights"
                 sx={{
                     display: "flex",
                     flexDirection: "column",

@@ -2,6 +2,8 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import DecisionSection from "@/components/dashboard/ui/DecisionSection";
+
 export default function DecisionTimeline() {
     const events = [
         {
@@ -37,32 +39,14 @@ export default function DecisionTimeline() {
     ];
 
     return (
-        <Stack spacing={3}>
-            <Stack spacing={0.5}>
-                <Typography
-                    variant="overline"
-                    color="primary"
-                >
-                    Decision Timeline
-                </Typography>
-
-                <Typography variant="h5">
-                    Processing Flow
-                </Typography>
-
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                >
-                    Complete reasoning sequence executed by the
-                    Decision Engine.
-                </Typography>
-            </Stack>
-
+        <DecisionSection
+            title="Decision Timeline"
+            subtitle="Processing Flow"
+        >
             <Stack spacing={2}>
                 {events.map((event, index) => (
                     <Stack
-                        key={index}
+                        key={`${event.time}-${event.title}`}
                         direction="row"
                         spacing={2}
                         sx={{
@@ -134,6 +118,6 @@ export default function DecisionTimeline() {
                     </Stack>
                 ))}
             </Stack>
-        </Stack>
+        </DecisionSection>
     );
 }

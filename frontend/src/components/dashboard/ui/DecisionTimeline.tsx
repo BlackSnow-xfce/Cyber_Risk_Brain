@@ -10,9 +10,9 @@ export default function DecisionTimeline({
 }: DecisionTimelineProps) {
     return (
         <Stack spacing={2}>
-            {items.map((item, index) => (
+            {items.map((item) => (
                 <Stack
-                    key={index}
+                    key={item}
                     direction="row"
                     spacing={2}
                     sx={{

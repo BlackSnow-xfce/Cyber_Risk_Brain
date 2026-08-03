@@ -1,3 +1,5 @@
+import Typography from "@mui/material/Typography";
+
 import DashboardWidget from "@/components/dashboard/DashboardWidget";
 
 export default function ThreatIntelligencePanel() {
@@ -8,7 +10,12 @@ export default function ThreatIntelligencePanel() {
             status="live"
             statusLabel="Live"
         >
-            <p>No threat intelligence available.</p>
+            <Typography
+                variant="body2"
+                color="text.secondary"
+            >
+                No threat intelligence available.
+            </Typography>
         </DashboardWidget>
     );
 }

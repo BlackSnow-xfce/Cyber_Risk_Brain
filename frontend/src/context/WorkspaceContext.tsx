@@ -1,5 +1,6 @@
 import {
     createContext,
+    useCallback,
     useMemo,
     useState,
     type PropsWithChildren,
@@ -11,6 +12,10 @@ export interface WorkspaceContextValue {
     workspace: WorkspaceId;
 
     setWorkspace: (workspace: WorkspaceId) => void;
+
+    activeNavigationItemId: string | null;
+
+    setActiveNavigationItemId: (itemId: string) => void;
 }
 
 export const WorkspaceContext =
@@ -19,16 +24,25 @@ export const WorkspaceContext =
 export function WorkspaceProvider({
     children,
 }: PropsWithChildren) {
-    const [workspace, setWorkspace] = useState(
+    const [workspace, setWorkspaceState] = useState(
         WorkspaceId.DECISION_CENTER,
     );
+    const [activeNavigationItemId, setActiveNavigationItemId] =
+        useState<string | null>(null);
+
+    const setWorkspace = useCallback((nextWorkspace: WorkspaceId) => {
+        setWorkspaceState(nextWorkspace);
+        setActiveNavigationItemId(null);
+    }, []);
 
     const value = useMemo(
         () => ({
             workspace,
             setWorkspace,
+            activeNavigationItemId,
+            setActiveNavigationItemId,
         }),
-        [workspace],
+        [workspace, setWorkspace, activeNavigationItemId],
     );
 
     return (

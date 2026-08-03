@@ -2,6 +2,8 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import DecisionSection from "@/components/dashboard/ui/DecisionSection";
+
 import type { Decision } from "@/types/decision";
 
 interface EvidenceChipsProps {
@@ -12,28 +14,10 @@ export default function EvidenceChips({
     decision,
 }: EvidenceChipsProps) {
     return (
-        <Stack spacing={3}>
-            <Stack spacing={0.5}>
-                <Typography
-                    variant="overline"
-                    color="primary"
-                >
-                    Evidence
-                </Typography>
-
-                <Typography variant="h5">
-                    Why this decision?
-                </Typography>
-
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                >
-                    The following evidence contributed to the
-                    AI decision.
-                </Typography>
-            </Stack>
-
+        <DecisionSection
+            title="Evidence"
+            subtitle="Why this decision?"
+        >
             <Stack spacing={2}>
                 {decision.evidence.items.map((item) => (
                     <Paper
@@ -47,12 +31,19 @@ export default function EvidenceChips({
                     >
                         <Stack
                             direction="row"
+                            spacing={2}
                             sx={{
                                 justifyContent: "space-between",
                                 alignItems: "flex-start",
                             }}
                         >
-                            <Stack spacing={0.75}>
+                            <Stack
+                                spacing={0.75}
+                                sx={{
+                                    flex: 1,
+                                    minWidth: 0,
+                                }}
+                            >
                                 <Typography
                                     variant="subtitle1"
                                     sx={{
@@ -82,6 +73,9 @@ export default function EvidenceChips({
                             <Typography
                                 variant="overline"
                                 color="primary"
+                                sx={{
+                                    flexShrink: 0,
+                                }}
                             >
                                 {item.type}
                             </Typography>
@@ -89,6 +83,6 @@ export default function EvidenceChips({
                     </Paper>
                 ))}
             </Stack>
-        </Stack>
+        </DecisionSection>
     );
 }
