@@ -2,15 +2,21 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem;
+    min-width: 0;
 }
 
 .metric-row__label {
     color: #d6dbe3;
     font-size: 0.92rem;
+    min-width: 0;
 }
 
 .metric-row__value {
     color: #f5f7fa;
     font-size: 1rem;
     font-weight: 700;
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
 }

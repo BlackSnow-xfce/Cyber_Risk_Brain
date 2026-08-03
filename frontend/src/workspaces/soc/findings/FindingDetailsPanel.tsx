@@ -2,6 +2,15 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import {
+    ExecutionTrace,
+    ExplainabilityPipeline,
+} from "@/components/reasoning";
+import { defaultRulePackRegistry, RuleEngine } from "@/engine";
+import {
+    knowledgeBindingRepository,
+    knowledgeRepository,
+} from "@/knowledge";
 import Panel from "@/ui/panel/Panel";
 
 import type { Finding } from "./Finding";
@@ -15,7 +24,6 @@ export default function FindingDetailsPanel({
 }: FindingDetailsPanelProps) {
     const detailSections = finding
         ? [
-              ["Executive Summary", finding.description],
               ["Explainability", finding.explainability.reason],
               [
                   "Evidence",
@@ -29,6 +37,24 @@ export default function FindingDetailsPanel({
               ["Recommendations", finding.recommendation.description],
           ] as const
         : [];
+    const knowledgeBindings = finding
+        ? knowledgeBindingRepository.getBindingsByEntityId(finding.id)
+        : [];
+    const relevantKnowledgeIds = new Set(
+        knowledgeBindings.map((binding) => binding.knowledgeItemId),
+    );
+    const knowledge = knowledgeRepository
+        .getKnowledgeItems()
+        .filter((item) => relevantKnowledgeIds.has(item.id));
+    const engineResult = finding
+        ? new RuleEngine(defaultRulePackRegistry).evaluate({
+              entity: finding,
+              knowledge,
+              knowledgeBindings,
+              evidence: finding.evidence,
+              correlations: finding.correlations,
+          })
+        : null;
 
     return (
         <Panel
@@ -54,6 +80,32 @@ export default function FindingDetailsPanel({
                 </Typography>
 
                 <Divider />
+
+                {finding && (
+                    <Stack spacing={0.5}>
+                        <Typography variant="subtitle2">
+                            Executive Summary
+                        </Typography>
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            {finding.description}
+                        </Typography>
+                    </Stack>
+                )}
+
+                {finding && (
+                    <ExplainabilityPipeline
+                        entity={finding}
+                        knowledge={knowledge}
+                        knowledgeBindings={knowledgeBindings}
+                    />
+                )}
+
+                {engineResult && (
+                    <ExecutionTrace trace={engineResult.executionTrace} />
+                )}
 
                 {detailSections.map(([section, content]) => (
                     <Stack key={section} spacing={0.5}>

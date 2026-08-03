@@ -9,6 +9,26 @@ const threatIntelligence: readonly ThreatIntelligence[] = [
         type: "Campaign",
         severity: "Critical",
         status: "Active",
+        inference: [
+            {
+                id: "inference-threat-001-active-campaign",
+                entityId: "threat-001",
+                type: "ACTIVE_CAMPAIGN_RELATED",
+                strength: "Strong",
+                title: "Active campaign is related to the affected technology",
+                description: "Confirmed exploitation knowledge and threat evidence connect the campaign to affected SOC entities.",
+                confidence: 94,
+                supportingKnowledgeIds: ["knowledge-kev-cve-2024-3400"],
+                supportingBindingIds: ["binding-kev-threat-001"],
+                supportingEvidenceIds: ["evidence-threat-001-intelligence", "evidence-threat-001-kev"],
+                supportingCorrelationIds: ["correlation-threat-001-finding-001", "correlation-threat-001-asset-001"],
+                result: {
+                    summary: "The active campaign is relevant to the affected vulnerability and asset context.",
+                    confidence: 94,
+                    findings: ["Known exploitation is confirmed.", "Related findings and assets are identified."],
+                },
+            },
+        ],
         decision: {
             id: "decision-threat-001",
             entityId: "threat-001",

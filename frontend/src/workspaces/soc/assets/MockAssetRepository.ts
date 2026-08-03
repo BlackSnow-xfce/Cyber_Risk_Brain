@@ -11,6 +11,26 @@ const assets: readonly Asset[] = [
         owner: "Platform Security",
         riskScore: 98,
         status: "Active",
+        inference: [
+            {
+                id: "inference-asset-001-critical-exposure",
+                entityId: "asset-001",
+                type: "CRITICAL_ASSET_EXPOSED",
+                strength: "Strong",
+                title: "Business-critical asset is externally exposed",
+                description: "Asset classification and exposure evidence indicate that a critical production asset is internet facing.",
+                confidence: 97,
+                supportingKnowledgeIds: ["knowledge-asset-business-critical"],
+                supportingBindingIds: ["binding-business-critical-asset-001"],
+                supportingEvidenceIds: ["evidence-asset-001-inventory", "evidence-asset-001-facing"],
+                supportingCorrelationIds: ["correlation-asset-001-finding-001", "correlation-asset-001-exposure-001"],
+                result: {
+                    summary: "A verified business-critical asset has confirmed external exposure.",
+                    confidence: 97,
+                    findings: ["The asset supports critical digital services.", "Public reachability is confirmed."],
+                },
+            },
+        ],
         decision: {
             id: "decision-asset-001",
             entityId: "asset-001",

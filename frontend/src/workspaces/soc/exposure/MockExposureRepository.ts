@@ -11,6 +11,26 @@ const exposures: readonly Exposure[] = [
         internetFacing: "Yes",
         riskScore: 98,
         status: "Open",
+        inference: [
+            {
+                id: "inference-exposure-001-attack-path",
+                entityId: "exposure-001",
+                type: "ATTACK_PATH_EXISTS",
+                strength: "Strong",
+                title: "An external attack path likely exists",
+                description: "Public exposure evidence and related entity context indicate a potential path to the application gateway.",
+                confidence: 95,
+                supportingKnowledgeIds: ["knowledge-mitre-t1190"],
+                supportingBindingIds: ["binding-mitre-t1190-exposure-001"],
+                supportingEvidenceIds: ["evidence-exposure-001-facing", "evidence-exposure-001-epss"],
+                supportingCorrelationIds: ["correlation-exposure-001-finding-001", "correlation-exposure-001-asset-001"],
+                result: {
+                    summary: "The internet-facing exposure may provide an attack path to a related production asset.",
+                    confidence: 95,
+                    findings: ["Internet-facing exposure is confirmed.", "The exposure is linked to a finding and production asset."],
+                },
+            },
+        ],
         decision: {
             id: "decision-exposure-001",
             entityId: "exposure-001",

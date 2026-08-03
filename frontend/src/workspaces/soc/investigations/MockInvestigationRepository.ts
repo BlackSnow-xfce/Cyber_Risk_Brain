@@ -51,6 +51,26 @@ const investigations: readonly Investigation[] = [
         },
         assignedAnalyst: "SOC Analyst",
         status: "Open",
+        inference: [
+            {
+                id: "inference-investigation-001-validation",
+                entityId: "investigation-001",
+                type: "ADDITIONAL_VALIDATION_REQUIRED",
+                strength: "Medium",
+                title: "Additional forensic validation is required",
+                description: "Detection and playbook knowledge identify investigation context that still requires analyst validation.",
+                confidence: 90,
+                supportingKnowledgeIds: ["knowledge-detection-public-exploit", "knowledge-playbook-critical-exposure"],
+                supportingBindingIds: ["binding-detection-investigation-001", "binding-playbook-investigation-001"],
+                supportingEvidenceIds: ["evidence-investigation-001-activity", "evidence-investigation-001-scan"],
+                supportingCorrelationIds: ["correlation-investigation-001-finding-001", "correlation-investigation-001-threat-001"],
+                result: {
+                    summary: "The correlated investigation context requires additional analyst validation.",
+                    confidence: 90,
+                    findings: ["Relevant detection knowledge maps to the scan evidence.", "Playbook applicability has not yet been validated."],
+                },
+            },
+        ],
         decision: {
             id: "decision-investigation-001",
             entityId: "investigation-001",

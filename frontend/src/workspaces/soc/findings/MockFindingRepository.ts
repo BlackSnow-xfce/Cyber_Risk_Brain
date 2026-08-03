@@ -10,6 +10,26 @@ const findings: readonly Finding[] = [
         asset: "Production Application Gateway",
         riskScore: 98,
         status: "Open",
+        inference: [
+            {
+                id: "inference-finding-001-public-exploit",
+                entityId: "finding-001",
+                type: "PUBLIC_EXPLOIT_AVAILABLE",
+                strength: "Strong",
+                title: "Public exploit context is applicable",
+                description: "Known exploitation knowledge applies to the vulnerability on the internet-facing asset.",
+                confidence: 97,
+                supportingKnowledgeIds: ["knowledge-mitre-t1190", "knowledge-cve-2024-3400", "knowledge-kev-cve-2024-3400"],
+                supportingBindingIds: ["binding-mitre-t1190-finding-001", "binding-cve-2024-3400-finding-001", "binding-kev-cve-2024-3400-finding-001"],
+                supportingEvidenceIds: ["evidence-finding-001-cve", "evidence-finding-001-exposure"],
+                supportingCorrelationIds: ["correlation-finding-001-threat-001", "correlation-finding-001-exposure-001"],
+                result: {
+                    summary: "Public exploitation context is relevant to the exposed vulnerability.",
+                    confidence: 97,
+                    findings: ["The vulnerability has known exploitation context.", "The affected asset is externally reachable."],
+                },
+            },
+        ],
         decision: {
             id: "decision-finding-001",
             entityId: "finding-001",

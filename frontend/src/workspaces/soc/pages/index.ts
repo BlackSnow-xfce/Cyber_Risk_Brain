@@ -1,6 +1,7 @@
 import AssetsPage from "./AssetsPage";
 import DashboardPage from "./DashboardPage";
 import ExposurePage from "./ExposurePage";
+import ExplainabilityPage from "./ExplainabilityPage";
 import FindingsPage from "./FindingsPage";
 import InvestigationsPage from "./InvestigationsPage";
 import ThreatIntelligencePage from "./ThreatIntelligencePage";
@@ -11,6 +12,7 @@ export const socPageRegistry = {
     investigations: InvestigationsPage,
     assets: AssetsPage,
     "threat-intelligence": ThreatIntelligencePage,
+    explainability: ExplainabilityPage,
     exposure: ExposurePage,
 };
 

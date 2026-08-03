@@ -2,6 +2,7 @@ import {
     BarChart3,
     Building2,
     Gauge,
+    GitBranch,
     LayoutDashboard,
     Search,
     Shield,
@@ -61,6 +62,13 @@ export const socNavigation: NavigationItem[] = [
         label: "Threat Intelligence",
         route: "/threat-intelligence",
         icon: Shield,
+    },
+    {
+        section: "Detect & Analyze",
+        id: "explainability",
+        label: "Explainability",
+        route: "/explainability",
+        icon: GitBranch,
     },
     {
         section: "Detect & Analyze",
