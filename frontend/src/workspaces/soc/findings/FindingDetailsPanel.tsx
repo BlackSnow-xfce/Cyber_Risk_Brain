@@ -6,11 +6,11 @@ import {
     ExecutionTrace,
     ExplainabilityPipeline,
 } from "@/components/reasoning";
-import { defaultRulePackRegistry, RuleEngine } from "@/engine";
 import {
     knowledgeBindingRepository,
     knowledgeRepository,
 } from "@/knowledge";
+import { defaultReasoningOrchestrator } from "@/reasoning/DefaultReasoningOrchestrator";
 import Panel from "@/ui/panel/Panel";
 
 import type { Finding } from "./Finding";
@@ -46,8 +46,8 @@ export default function FindingDetailsPanel({
     const knowledge = knowledgeRepository
         .getKnowledgeItems()
         .filter((item) => relevantKnowledgeIds.has(item.id));
-    const engineResult = finding
-        ? new RuleEngine(defaultRulePackRegistry).evaluate({
+    const reasoningSession = finding
+        ? defaultReasoningOrchestrator.execute({
               entity: finding,
               knowledge,
               knowledgeBindings,
@@ -103,8 +103,10 @@ export default function FindingDetailsPanel({
                     />
                 )}
 
-                {engineResult && (
-                    <ExecutionTrace trace={engineResult.executionTrace} />
+                {reasoningSession?.result && (
+                    <ExecutionTrace
+                        trace={reasoningSession.result.executionTrace}
+                    />
                 )}
 
                 {detailSections.map(([section, content]) => (

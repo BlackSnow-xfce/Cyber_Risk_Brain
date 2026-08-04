@@ -1,11 +1,11 @@
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 
-import { defaultRulePackRegistry, RuleEngine } from "@/engine";
 import {
     knowledgeBindingRepository,
     knowledgeRepository,
 } from "@/knowledge";
+import { defaultReasoningOrchestrator } from "@/reasoning/DefaultReasoningOrchestrator";
 
 import { useSOCWorkspace } from "../SOCWorkspaceContext";
 import { findingRepository } from "../findings/MockFindingRepository";
@@ -30,7 +30,7 @@ export default function ExplainabilityWorkspace() {
     const knowledge = knowledgeRepository
         .getKnowledgeItems()
         .filter((item) => knowledgeIds.has(item.id));
-    const engineResult = new RuleEngine(defaultRulePackRegistry).evaluate({
+    const reasoningSession = defaultReasoningOrchestrator.execute({
         entity,
         knowledge,
         knowledgeBindings: bindings,
@@ -61,7 +61,11 @@ export default function ExplainabilityWorkspace() {
                     knowledge={knowledge}
                     bindings={bindings}
                 />
-                <ExecutionTraceSection trace={engineResult.executionTrace} />
+                {reasoningSession.result && (
+                    <ExecutionTraceSection
+                        trace={reasoningSession.result.executionTrace}
+                    />
+                )}
             </Box>
         </Stack>
     );

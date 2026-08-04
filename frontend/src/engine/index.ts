@@ -4,6 +4,7 @@ export {
     defaultRules,
 } from "./DefaultRules";
 export type { EngineContext } from "./EngineContext";
+export { ReasoningOrchestrator } from "@/reasoning/ReasoningOrchestrator";
 export type {
     ExecutionTraceEntry,
     GeneratedArtifactReference,
