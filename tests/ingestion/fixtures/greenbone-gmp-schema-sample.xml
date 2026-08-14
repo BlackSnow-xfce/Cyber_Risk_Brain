@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schema-shaped test input derived from the official Greenbone GMP XML
+  documentation. This is not a captured scanner export or live intelligence.
+-->
+<get_reports_response status="200" status_text="OK">
+  <report id="b6f0f8ea-98af-4a95-9f2e-08cbd8a753af">
+    <report>
+      <results>
+        <result id="51d5d153-5f01-4da9-83d5-e17c47bb69a5">
+          <host>192.0.2.10</host>
+          <port>80/tcp</port>
+          <nvt oid="1.3.6.1.4.1.25623.1.0.100000">
+            <name>HTTP Security Header Detection</name>
+          </nvt>
+          <threat>High</threat>
+          <severity>8.0</severity>
+        </result>
+      </results>
+    </report>
+  </report>
+</get_reports_response>

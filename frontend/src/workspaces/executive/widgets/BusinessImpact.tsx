@@ -1,33 +1,17 @@
-import DashboardWidget from "@/components/dashboard/DashboardWidget";
-
 import Typography from "@mui/material/Typography";
+
+import Panel from "@/ui/panel/Panel";
 
 export default function BusinessImpact() {
     return (
-        <DashboardWidget
-            title="Business Impact"
-            subtitle="Operational business exposure"
-            status="warning"
-            statusLabel="Attention"
-        >
-            <Typography
-                variant="h3"
-                sx={{
-                    fontWeight: 700,
-                }}
-            >
-                High
+        <Panel component="section">
+            <Typography variant="h6">
+                Business Impact
             </Typography>
 
-            <Typography
-                sx={{
-                    mt: 1,
-                    color: "text.secondary",
-                }}
-            >
-                Two critical business services are affected by the
-                current attack path and require executive visibility.
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+                No authorized business-impact source is connected.
             </Typography>
-        </DashboardWidget>
+        </Panel>
     );
 }

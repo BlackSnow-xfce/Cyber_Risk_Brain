@@ -1,0 +1,19 @@
+{
+  "name": "predatorai-refactor-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "refactor": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "ts-morph": "^27.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

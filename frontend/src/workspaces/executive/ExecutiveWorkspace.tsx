@@ -1,31 +1,32 @@
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 import ExecutiveLayout from "./ExecutiveLayout";
+import ExecutiveAreaPage from "./pages/ExecutiveAreaPage";
+import {
+    executiveAreaRegistry,
+    ExecutiveOverviewPage,
+    isExecutiveAreaId,
+} from "./pages";
 
 export default function ExecutiveWorkspace() {
+    const { activeNavigationItemId } = useWorkspace();
+
+    if (isExecutiveAreaId(activeNavigationItemId)) {
+        const area = executiveAreaRegistry[activeNavigationItemId];
+
+        return (
+            <ExecutiveLayout>
+                <ExecutiveAreaPage
+                    title={area.title}
+                    description={area.description}
+                />
+            </ExecutiveLayout>
+        );
+    }
+
     return (
         <ExecutiveLayout>
-            <Box>
-                <Typography
-                    variant="h4"
-                    sx={{
-                        fontWeight: 700,
-                    }}
-                >
-                    Executive Workspace
-                </Typography>
-
-                <Typography
-                    sx={{
-                        mt: 1,
-                        color: "text.secondary",
-                    }}
-                >
-                    AI-driven executive decision support for cyber risk,
-                    business impact and strategic security posture.
-                </Typography>
-            </Box>
+            <ExecutiveOverviewPage />
         </ExecutiveLayout>
     );
 }

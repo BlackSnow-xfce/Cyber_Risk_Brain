@@ -1,27 +1,17 @@
-import DashboardWidget from "@/components/dashboard/DashboardWidget";
-
 import Typography from "@mui/material/Typography";
+
+import Panel from "@/ui/panel/Panel";
 
 export default function EnterpriseRisk() {
     return (
-        <DashboardWidget
-            title="Enterprise Risk"
-            subtitle="Current business exposure"
-            status="warning"
-            statusLabel="Elevated"
-        >
-            <Typography variant="h3">
-                82
+        <Panel component="section">
+            <Typography variant="h6">
+                Enterprise Risk
             </Typography>
 
-            <Typography
-                sx={{
-                    mt: 1,
-                    color: "text.secondary",
-                }}
-            >
-                Overall enterprise cyber risk score.
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+                No authorized enterprise risk source is connected.
             </Typography>
-        </DashboardWidget>
+        </Panel>
     );
 }

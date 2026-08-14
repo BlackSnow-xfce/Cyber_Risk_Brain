@@ -1,7 +1,11 @@
 import { WorkspaceId } from "@/types/workspace";
 
+import { administratorNavigation } from "../administrator/navigation";
+import { incidentResponseNavigation } from "../incident-response/navigation";
+import { riskManagerNavigation } from "../risk-manager/navigation";
 import { socNavigation } from "../soc/navigation";
 import { executiveNavigation } from "../executive/navigation";
+import { threatHunterNavigation } from "../threat-hunter/navigation";
 
 export function getWorkspaceNavigation(
     workspace: WorkspaceId,
@@ -14,13 +18,16 @@ export function getWorkspaceNavigation(
             return executiveNavigation;
 
         case WorkspaceId.THREAT_HUNTING:
-            return [];
+            return threatHunterNavigation;
+
+        case WorkspaceId.INCIDENT_RESPONSE:
+            return incidentResponseNavigation;
 
         case WorkspaceId.RISK_MANAGEMENT:
-            return [];
+            return riskManagerNavigation;
 
         case WorkspaceId.ADMINISTRATION:
-            return [];
+            return administratorNavigation;
 
         default:
             return socNavigation;

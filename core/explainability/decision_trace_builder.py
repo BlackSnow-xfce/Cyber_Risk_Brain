@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from core.decision.models import (
@@ -13,10 +14,11 @@ from core.explainability.decision_trace import DecisionTrace
 from core.explainability.explanation_item import (
     ExplanationCategory,
     ExplanationItem,
+    ExplanationProvenance,
 )
 
 
-class DecisionTraceBuilder:
+class DecisionExplainabilityProjectionBuilder:
     """
     Builds a DecisionTrace from a canonical DecisionResult.
 
@@ -32,7 +34,13 @@ class DecisionTraceBuilder:
     - reinterpret domain decisions
     """
 
+    def __init__(self, *, generated_at: datetime | None = None) -> None:
+        self._generated_at = generated_at
+
     def build(self, result: DecisionResult) -> DecisionTrace:
+        if self._generated_at is None:
+            self._generated_at = datetime.now(timezone.utc)
+
         items: list[ExplanationItem] = []
         sequence = 1
 
@@ -45,6 +53,7 @@ class DecisionTraceBuilder:
                 sequence=sequence,
                 source="decision_engine",
                 importance=1.0,
+                provenance=self._provenance("decision"),
                 metadata={
                     "priority": result.priority.value,
                     "action": result.action.value,
@@ -95,6 +104,7 @@ class DecisionTraceBuilder:
             confidence_level=result.confidence.level,
             items=tuple(items),
             metadata=dict(result.metadata),
+            generated_at=self._generated_at,
         )
 
     def _build_attack_reasoning_items(
@@ -115,6 +125,7 @@ class DecisionTraceBuilder:
                 sequence=sequence,
                 source="decision_engine",
                 importance=1.0,
+                provenance=self._provenance("attack_reasoning.summary"),
             )
         )
         sequence += 1
@@ -129,6 +140,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.9,
+                    provenance=self._provenance(
+                        "attack_reasoning.attack_vector"
+                    ),
                 )
             )
             sequence += 1
@@ -143,6 +157,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.9,
+                    provenance=self._provenance(
+                        "attack_reasoning.exploitation_probability"
+                    ),
                 )
             )
             sequence += 1
@@ -163,6 +180,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.85,
+                    provenance=self._provenance(
+                        f"attack_reasoning.likely_outcomes[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -183,6 +203,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.8,
+                    provenance=self._provenance(
+                        f"attack_reasoning.attack_steps[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -203,6 +226,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.75,
+                    provenance=self._provenance(
+                        f"attack_reasoning.supporting_factors[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -223,6 +249,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.7,
+                    provenance=self._provenance(
+                        f"attack_reasoning.limiting_factors[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -246,59 +275,69 @@ class DecisionTraceBuilder:
                 sequence=sequence,
                 source="decision_engine",
                 importance=1.0,
+                provenance=self._provenance("business_impact.summary"),
             )
         )
         sequence += 1
 
-        impact_fields: tuple[tuple[str, str, str | None], ...] = (
+        impact_fields: tuple[tuple[str, str, str, str | None], ...] = (
             (
                 "business_service",
                 "Business service",
+                "business_impact.business_service",
                 business_impact.business_service,
             ),
             (
                 "asset_criticality",
                 "Asset criticality",
+                "business_impact.asset_criticality",
                 business_impact.asset_criticality,
             ),
             (
                 "confidentiality",
                 "Confidentiality impact",
+                "business_impact.confidentiality_impact",
                 business_impact.confidentiality_impact,
             ),
             (
                 "integrity",
                 "Integrity impact",
+                "business_impact.integrity_impact",
                 business_impact.integrity_impact,
             ),
             (
                 "availability",
                 "Availability impact",
+                "business_impact.availability_impact",
                 business_impact.availability_impact,
             ),
             (
                 "financial",
                 "Financial impact",
+                "business_impact.financial_impact",
                 business_impact.financial_impact,
             ),
             (
                 "operational",
                 "Operational impact",
+                "business_impact.operational_impact",
                 business_impact.operational_impact,
             ),
             (
                 "regulatory",
                 "Regulatory impact",
+                "business_impact.regulatory_impact",
                 business_impact.regulatory_impact,
             ),
             (
                 "reputational",
                 "Reputational impact",
+                "business_impact.reputational_impact",
                 business_impact.reputational_impact,
             ),
         )
 
-        for identifier, title, description in impact_fields:
+        for identifier, title, source_reference, description in impact_fields:
             if description is None or not description.strip():
                 continue
 
@@ -311,6 +350,7 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.8,
+                    provenance=self._provenance(source_reference),
                 )
             )
             sequence += 1
@@ -331,6 +371,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="decision_engine",
                     importance=0.75,
+                    provenance=self._provenance(
+                        f"business_impact.affected_processes[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -357,6 +400,7 @@ class DecisionTraceBuilder:
                 sequence=sequence,
                 source="confidence_engine",
                 importance=1.0,
+                provenance=self._provenance("confidence"),
                 metadata={
                     "score": confidence.score,
                     "level": confidence.level.value,
@@ -381,6 +425,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="confidence_engine",
                     importance=0.75,
+                    provenance=self._provenance(
+                        f"confidence.reasons[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -401,6 +448,9 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source="confidence_engine",
                     importance=0.8,
+                    provenance=self._provenance(
+                        f"confidence.missing_information[{index - 1}]"
+                    ),
                 )
             )
             sequence += 1
@@ -430,6 +480,7 @@ class DecisionTraceBuilder:
                     sequence=sequence,
                     source=evidence_item.source,
                     importance=evidence_item.weight,
+                    provenance=self._provenance(f"evidence[{index - 1}]"),
                     metadata={
                         "evidence_type": evidence_item.evidence_type.value,
                         "value": evidence_item.value,
@@ -448,7 +499,7 @@ class DecisionTraceBuilder:
         items: list[ExplanationItem] = []
         sequence = start_sequence
 
-        for recommendation in recommendations:
+        for index, recommendation in enumerate(recommendations):
             items.append(
                 ExplanationItem(
                     identifier=f"recommendation.{recommendation.order}",
@@ -459,6 +510,9 @@ class DecisionTraceBuilder:
                     source="recommendation_engine",
                     importance=self._recommendation_importance(
                         recommendation
+                    ),
+                    provenance=self._provenance(
+                        f"recommendations[{index}]"
                     ),
                     metadata={
                         "order": recommendation.order,
@@ -482,11 +536,18 @@ class DecisionTraceBuilder:
         return items, sequence
 
     @staticmethod
+    def _provenance(source_reference: str) -> ExplanationProvenance:
+        return ExplanationProvenance(
+            source_type="decision_result",
+            source_reference=source_reference,
+        )
+
+    @staticmethod
     def _evidence_description(evidence: Evidence) -> str:
         if evidence.description and evidence.description.strip():
             return evidence.description
 
-        value = DecisionTraceBuilder._stringify_value(
+        value = DecisionExplainabilityProjectionBuilder._stringify_value(
             evidence.value
         )
 
@@ -524,4 +585,6 @@ class DecisionTraceBuilder:
         }
 
         return priority_importance[recommendation.priority.value]
-    
+
+
+DecisionTraceBuilder = DecisionExplainabilityProjectionBuilder

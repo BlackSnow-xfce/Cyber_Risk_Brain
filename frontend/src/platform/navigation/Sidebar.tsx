@@ -18,9 +18,14 @@ export default function Sidebar() {
 
     const navigation =
         getWorkspaceNavigation(workspace);
-    const isSOCWorkspace =
-        workspace === WorkspaceId.DECISION_CENTER;
-    const activeItemId = isSOCWorkspace
+    const supportsWorkspaceFocus =
+        workspace === WorkspaceId.DECISION_CENTER
+        || workspace === WorkspaceId.THREAT_HUNTING
+        || workspace === WorkspaceId.INCIDENT_RESPONSE
+        || workspace === WorkspaceId.RISK_MANAGEMENT
+        || workspace === WorkspaceId.EXECUTIVE
+        || workspace === WorkspaceId.ADMINISTRATION;
+    const activeItemId = supportsWorkspaceFocus
         ? activeNavigationItemId ?? navigation[0]?.id
         : undefined;
 
@@ -58,7 +63,7 @@ export default function Sidebar() {
                     )}
                     activeItemId={activeItemId}
                     onSelect={
-                        isSOCWorkspace
+                        supportsWorkspaceFocus
                             ? setActiveNavigationItemId
                             : undefined
                     }

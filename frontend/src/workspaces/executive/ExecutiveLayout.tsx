@@ -12,6 +12,7 @@ export default function ExecutiveLayout({
                 flexDirection: "column",
                 gap: 3,
                 width: "100%",
+                minWidth: 0,
             }}
         >
             {children}

@@ -2,9 +2,18 @@ import {
     BarChart3,
     Briefcase,
     Building2,
+    ClipboardList,
+    Compass,
+    Eye,
+    FileClock,
+    Gauge,
+    Landmark,
+    LayoutDashboard,
+    Map,
+    Scale,
     Shield,
-    ShieldAlert,
     TrendingUp,
+    WalletCards,
 } from "lucide-react";
 
 import type { NavigationItem } from "@/workspaces/navigation";
@@ -12,73 +21,107 @@ import type { NavigationItem } from "@/workspaces/navigation";
 export const executiveNavigation: NavigationItem[] = [
     {
         section: "Executive",
-
-        id: "overview",
-
+        id: "executive-overview",
         label: "Executive Overview",
-
-        route: "/",
-
+        route: "/executive",
         icon: Briefcase,
     },
-
     {
         section: "Executive",
-
-        id: "enterprise-risk",
-
-        label: "Enterprise Risk",
-
-        route: "/risk",
-
-        icon: ShieldAlert,
+        id: "executive-dashboard",
+        label: "Executive Dashboard",
+        route: "/executive/dashboard",
+        icon: LayoutDashboard,
     },
-
     {
         section: "Executive",
-
-        id: "business-impact",
-
-        label: "Business Impact",
-
-        route: "/business-impact",
-
+        id: "enterprise-risk",
+        label: "Enterprise Risk",
+        route: "/executive/risk",
+        icon: Gauge,
+    },
+    {
+        section: "Executive",
+        id: "strategic-decisions",
+        label: "Strategic Decisions",
+        route: "/executive/decisions",
+        icon: Compass,
+    },
+    {
+        section: "Executive",
+        id: "business-exposure",
+        label: "Business Exposure",
+        route: "/executive/exposure",
+        icon: Eye,
+    },
+    {
+        section: "Business",
+        id: "critical-business-services",
+        label: "Critical Business Services",
+        route: "/executive/services",
         icon: Building2,
     },
-
     {
-        section: "Executive",
-
-        id: "compliance",
-
-        label: "Compliance",
-
-        route: "/compliance",
-
-        icon: Shield,
+        section: "Business",
+        id: "business-impact",
+        label: "Business Impact",
+        route: "/executive/impact",
+        icon: Landmark,
     },
-
     {
-        section: "Executive",
-
-        id: "reports",
-
-        label: "Reports",
-
-        route: "/reports",
-
+        section: "Business",
+        id: "investment-priorities",
+        label: "Investment Priorities",
+        route: "/executive/investments",
+        icon: WalletCards,
+    },
+    {
+        section: "Business",
+        id: "risk-portfolio",
+        label: "Risk Portfolio",
+        route: "/executive/portfolio",
         icon: BarChart3,
     },
-
     {
-        section: "Executive",
-
+        section: "Governance",
+        id: "compliance-status",
+        label: "Compliance Status",
+        route: "/executive/compliance",
+        icon: Shield,
+    },
+    {
+        section: "Governance",
+        id: "security-strategy",
+        label: "Security Strategy",
+        route: "/executive/strategy",
+        icon: Scale,
+    },
+    {
+        section: "Governance",
+        id: "roadmap",
+        label: "Roadmap",
+        route: "/executive/roadmap",
+        icon: Map,
+    },
+    {
+        section: "Governance",
+        id: "board-reporting",
+        label: "Board Reporting",
+        route: "/executive/board-reporting",
+        icon: ClipboardList,
+    },
+    {
+        section: "Insights",
         id: "trends",
-
-        label: "Strategic Trends",
-
-        route: "/trends",
-
+        label: "Trends",
+        route: "/executive/trends",
         icon: TrendingUp,
+    },
+    {
+        section: "Insights",
+        id: "decision-history",
+        label: "Decision History",
+        route: "/executive/decision-history",
+        icon: FileClock,
     },
 ];

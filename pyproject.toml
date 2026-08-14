@@ -8,3 +8,11 @@ dependencies = [
     "requests",
     "python-dotenv"
 ]
+
+[project.optional-dependencies]
+test = [
+    "pytest"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

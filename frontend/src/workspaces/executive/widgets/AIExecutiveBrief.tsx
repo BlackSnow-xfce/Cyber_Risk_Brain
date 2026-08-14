@@ -1,37 +1,17 @@
-import DashboardWidget from "@/components/dashboard/DashboardWidget";
-
 import Typography from "@mui/material/Typography";
+
+import Panel from "@/ui/panel/Panel";
 
 export default function AIExecutiveBrief() {
     return (
-        <DashboardWidget
-            title="AI Executive Brief"
-            subtitle="Strategic situation assessment"
-            status="live"
-            statusLabel="Reasoning"
-        >
-            <Typography>
-                PredatorAI currently assesses the enterprise cyber risk
-                as elevated. One critical decision requires executive
-                attention due to the potential impact on business
-                operations.
+        <Panel component="section">
+            <Typography variant="h6">
+                Executive Briefing
             </Typography>
 
-            <Typography sx={{ mt: 2 }}>
-                Recommended priority:
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+                No authorized executive briefing source is connected.
             </Typography>
-
-            <Typography sx={{ mt: 1 }}>
-                • Reduce exposure of internet-facing assets.
-            </Typography>
-
-            <Typography>
-                • Prioritize remediation of critical attack paths.
-            </Typography>
-
-            <Typography>
-                • Review business services affected by the current risk.
-            </Typography>
-        </DashboardWidget>
+        </Panel>
     );
 }
