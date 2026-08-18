@@ -5,6 +5,7 @@ __pycache__/
 .env
 logs/
 output/
+runtime/
 
 # Frontend
 frontend/node_modules/
