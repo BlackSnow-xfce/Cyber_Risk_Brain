@@ -1,10 +1,10 @@
-# Handoff - Architecture Review TASK-0078
+# Handoff - Architecture Review TASK-0079
 
 Status:
 CLOSED
 
 Task:
-TASK-0078 - Incident Owner Assignment Command and Persistence Boundary
+TASK-0079 - SOC Analyst Dashboard Foundation
 
 Task Status:
 DONE / PASS / APPROVED
@@ -15,31 +15,25 @@ PASS / APPROVED
 Reviewer:
 Architect
 
-Review Summary:
+Product Owner Browser Acceptance:
+PASS
 
-`IncidentOwnerAssignmentService` ist korrekt in der Application-Schicht
-angesiedelt und verwendet den bestehenden `SecurityIncidentContext 1.0`,
-`IncidentPrincipalReference`-Contract sowie `IncidentContextRepository`.
-Die Änderung ist immutable, verändert ausschließlich den Owner und bewahrt
-alle übrigen Context-Daten und Referenzen. Unbekannte Incident-IDs und
-ungültige Owner-Daten werden fail-safe behandelt.
+Die SOC-Analyst-Dashboard-Grundstruktur und die produktive Findings-
+Integration wurden im Browser akzeptiert. Der Findings-Wert `5`, Status
+`Live` sowie drei reale Greenbone-Findings wurden sichtbar bestätigt.
 
-Es wurden keine öffentlichen Write-APIs, UI-, AuthZ-, Lifecycle-, Activity-,
-Risk-, Decision-, Provider-, Correlation- oder LLM-Aufrufe eingeführt.
+Technische Validierung:
 
-Acceptance:
-
-- Incident: `incident-task0077-distcc-live`
-- Owner: `user:soc-analyst-task0078`
-- Persistenz-Roundtrip erfolgreich
-- Command-Center-Projektion zeigt den neuen Owner
-- Finding-/Asset-/TI-/Evidence-Referenzen unverändert
-
-Validierung:
-
-- fokussierte Tests: 4 passed
-- Python-Regression: 304 passed
+- fokussierte Dashboard-/Findings-Tests: 4 passed
+- Frontend-Regression: 57 passed
 - TypeScript: Exit Code 0
+- Frontend Build: erfolgreich
+- Python-Regression: 304 passed
 - `git diff --check`: erfolgreich
+
+Keine synthetischen SOC-Kennzahlen, Mock-Findings oder hardcodierte Incident-ID.
+Keine Backend-, Incident-, Risk-, Decision- oder Folgeimplementierung.
+
+TASK-0080 wurde nicht erstellt.
 
 Aktualisiert: 2026-08-18
