@@ -1,10 +1,10 @@
-# Handoff - Architecture Review TASK-0076
+# Handoff - Architecture Review TASK-0078
 
 Status:
 CLOSED
 
 Task:
-TASK-0077 - Incident Command Center Read-Only UI MVP
+TASK-0078 - Incident Owner Assignment Command and Persistence Boundary
 
 Task Status:
 DONE / PASS / APPROVED
@@ -15,41 +15,31 @@ PASS / APPROVED
 Reviewer:
 Architect
 
-## Review-Handoff
+Review Summary:
 
-TASK-0077 implementiert einen read-only Incident Command Center MVP im
-bestehenden Incident-Response-Workspace. Der bestehende Backend-Contract bleibt
-unverändert. Der Client verwendet ausschließlich den Command-Center-Endpunkt;
-die Incident-ID wird aus dem parametrischen URL-Pfad bezogen.
+`IncidentOwnerAssignmentService` ist korrekt in der Application-Schicht
+angesiedelt und verwendet den bestehenden `SecurityIncidentContext 1.0`,
+`IncidentPrincipalReference`-Contract sowie `IncidentContextRepository`.
+Die Änderung ist immutable, verändert ausschließlich den Owner und bewahrt
+alle übrigen Context-Daten und Referenzen. Unbekannte Incident-IDs und
+ungültige Owner-Daten werden fail-safe behandelt.
 
-Validierung: 8 fokussierte Frontend-Tests, 48 Frontend-Regressionstests, Python
-300 passed, TypeScript erfolgreich, Frontend-Build erfolgreich und
-`git diff --check` erfolgreich. Keine Mock-Investigation-Daten, keine
-Backend-/Contract-Änderungen, keine hardcodierte Incident-ID.
+Es wurden keine öffentlichen Write-APIs, UI-, AuthZ-, Lifecycle-, Activity-,
+Risk-, Decision-, Provider-, Correlation- oder LLM-Aufrufe eingeführt.
 
-## Architecture Review / Runtime Acceptance
-
-Die Implementierung bleibt vollständig im bestehenden Incident-Response-
-Workspace. Der reale API-Pfad wurde mit einem über
-`IncidentContextCreationService` erzeugten temporären Context validiert:
+Acceptance:
 
 - Incident: `incident-task0077-distcc-live`
-- Finding: `6d3167e9-002c-4b76-a5a7-ce47f81b78b1`
-- Asset: `asset-lab-metasploitable2-001`
-- TI: `CVE-2004-2687`
-- Evidence: `correlation:6d3167e9-002c-4b76-a5a7-ce47f81b78b1:CVE-2004-2687`
-- API: HTTP 200
-- unbekannte Incident-ID: HTTP 404
-- Completeness: `no_data` (fehlende Owner-Boundary-Resolutionen werden korrekt
-  nicht erfunden)
+- Owner: `user:soc-analyst-task0078`
+- Persistenz-Roundtrip erfolgreich
+- Command-Center-Projektion zeigt den neuen Owner
+- Finding-/Asset-/TI-/Evidence-Referenzen unverändert
 
-Der Frontend-Dev-Server konnte in der lokalen Umgebung wegen eines
-`esbuild spawn EPERM` nicht gestartet werden. Die Browser-Acceptance ist daher
-technisch nicht verfügbar; TypeScript, Frontend-Tests und Production-Build sind
-erfolgreich. Die temporäre Acceptance-Datei wurde anschließend entfernt.
+Validierung:
 
-Architektur-Invarianten: keine hardcodierte Incident-ID, keine Mock-
-Investigation-Daten, kein Parallelmodell, keine Backend-Änderung, kein neuer
-Workspace und keine öffentliche Write-API.
+- fokussierte Tests: 4 passed
+- Python-Regression: 304 passed
+- TypeScript: Exit Code 0
+- `git diff --check`: erfolgreich
 
 Aktualisiert: 2026-08-18

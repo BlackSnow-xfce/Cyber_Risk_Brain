@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -344,6 +345,29 @@ class IncidentContextCreationService:
             raise ValueError("Incident creation requires a canonical context.")
         self._repository.save(context)
         return context
+
+
+class IncidentOwnerAssignmentService:
+    """Assign an incident owner through the canonical repository boundary."""
+
+    def __init__(self, repository: IncidentContextRepository) -> None:
+        self._repository = repository
+
+    def assign(
+        self,
+        incident_id: str,
+        owner: IncidentPrincipalReference,
+    ) -> SecurityIncidentContext:
+        if not isinstance(owner, IncidentPrincipalReference):
+            raise ValueError("Incident owner must be a canonical principal reference.")
+
+        context = self._repository.get(incident_id)
+        if context is None:
+            raise LookupError("Incident context was not found.")
+
+        updated_context = replace(context, owner=owner)
+        self._repository.save(updated_context)
+        return updated_context
 
 
 def _serialize_context(context: SecurityIncidentContext) -> dict[str, object]:

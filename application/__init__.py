@@ -61,6 +61,7 @@ from application.incident_repository import (
     IncidentContextCreationService,
     IncidentContextDataError,
     IncidentContextRepository,
+    IncidentOwnerAssignmentService,
     FileIncidentContextRepository,
 )
 from application.incident_web_evidence import (
@@ -146,6 +147,7 @@ __all__ = [
     "IncidentContextCreationService",
     "IncidentContextDataError",
     "IncidentContextRepository",
+    "IncidentOwnerAssignmentService",
     "FileIncidentContextRepository",
     "MissingRiskInput",
     "RiskAssessmentInput",

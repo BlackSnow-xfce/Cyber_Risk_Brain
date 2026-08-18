@@ -4,13 +4,14 @@ Status:
 WAITING
 
 Task:
-TASK-0077 - Incident Command Center Read-Only UI MVP
+TASK-0078 - Incident Owner Assignment Command and Persistence Boundary
 
 Phase:
 COMPLETED
 
 Nachricht:
 
-TASK-0077 wurde implementiert und nach REVIEW übergeben. Keine Selbstfreigabe.
+TASK-0078 wurde durch den Architect mit PASS / APPROVED freigegeben und
+administrativ abgeschlossen. Keine Folgeaufgabe erstellt.
 
 Aktualisiert: 2026-08-18
