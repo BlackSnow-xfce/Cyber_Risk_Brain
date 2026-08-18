@@ -4,6 +4,7 @@ import "./Sidebar.css";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspaceId } from "@/types/workspace";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { getWorkspaceNavigation } from "@/workspaces";
 
@@ -15,6 +16,8 @@ export default function Sidebar() {
         activeNavigationItemId,
         setActiveNavigationItemId,
     } = useWorkspace();
+    const { pathname } = useLocation();
+    const navigate = useNavigate();
 
     const navigation =
         getWorkspaceNavigation(workspace);
@@ -26,9 +29,33 @@ export default function Sidebar() {
         || workspace === WorkspaceId.RISK_MANAGEMENT
         || workspace === WorkspaceId.EXECUTIVE
         || workspace === WorkspaceId.ADMINISTRATION;
+    const activeRouteItem = navigation.find((item) =>
+        matchesNavigationRoute(item.route, pathname),
+    );
+    const isIncidentCommandCenterPath =
+        /^\/incident-response\/incidents\/[^/]+\/command-center\/?$/.test(
+            pathname,
+        );
     const activeItemId = supportsWorkspaceFocus
-        ? activeNavigationItemId ?? navigation[0]?.id
+        ? activeRouteItem?.id
+            ?? (isIncidentCommandCenterPath
+                ? undefined
+                : activeNavigationItemId ?? undefined)
         : undefined;
+
+    const handleSelect = (itemId: string) => {
+        const item = navigation.find((candidate) => candidate.id === itemId);
+        if (!item) {
+            return;
+        }
+
+        setActiveNavigationItemId(item.id);
+        if (item.route.includes(":incidentId")) {
+            return;
+        }
+
+        navigate(item.route);
+    };
 
     const sections = [
         ...new Set(
@@ -65,7 +92,7 @@ export default function Sidebar() {
                     activeItemId={activeItemId}
                     onSelect={
                         supportsWorkspaceFocus
-                            ? setActiveNavigationItemId
+                            ? handleSelect
                             : undefined
                     }
                 />
@@ -80,4 +107,19 @@ export default function Sidebar() {
             </button>
         </aside>
     );
+}
+
+function matchesNavigationRoute(route: string, pathname: string): boolean {
+    const pattern = route
+        .split("/")
+        .map((segment) =>
+            segment.startsWith(":") ? "[^/]+" : escapeRegExp(segment),
+        )
+        .join("/");
+
+    return new RegExp(`^${pattern}/?$`).test(pathname);
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
