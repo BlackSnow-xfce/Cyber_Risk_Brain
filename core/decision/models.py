@@ -40,10 +40,35 @@ class EvidenceType(StrEnum):
     RISK_SCORE = "risk_score"
     ATTACK_PATH = "attack_path"
     CONTROL = "control"
+    WEB_TELEMETRY = "web_telemetry"
     OTHER = "other"
 
 
-@dataclass(slots=True)
+class EvidenceKind(StrEnum):
+    SOURCE = "source"
+    DERIVED = "derived"
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceProvenance:
+    source_type: str
+    source_reference: str
+    input_references: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.source_type.strip():
+            raise ValueError("Evidence provenance source type must not be empty.")
+        if not self.source_reference.strip():
+            raise ValueError(
+                "Evidence provenance source reference must not be empty."
+            )
+        if any(not reference.strip() for reference in self.input_references):
+            raise ValueError("Evidence input references must not be empty.")
+        if len(set(self.input_references)) != len(self.input_references):
+            raise ValueError("Evidence input references must be unique.")
+
+
+@dataclass(frozen=True, slots=True)
 class Evidence:
     evidence_type: EvidenceType
     key: str
@@ -51,6 +76,10 @@ class Evidence:
     source: str | None = None
     description: str | None = None
     weight: float = 1.0
+    identifier: str | None = None
+    kind: EvidenceKind | None = None
+    provenance: EvidenceProvenance | None = None
+    contract_version: str | None = None
 
     def __post_init__(self) -> None:
         if not self.key.strip():
@@ -58,6 +87,28 @@ class Evidence:
 
         if self.weight < 0:
             raise ValueError("Evidence weight must be greater than or equal to 0.")
+
+        canonical_fields = (
+            self.identifier,
+            self.kind,
+            self.provenance,
+            self.contract_version,
+        )
+        if any(field is not None for field in canonical_fields) and any(
+            field is None for field in canonical_fields
+        ):
+            raise ValueError(
+                "Canonical evidence metadata must be supplied completely."
+            )
+        if self.identifier is not None and not self.identifier.strip():
+            raise ValueError("Evidence identifier must not be empty.")
+        if self.contract_version is not None and not self.contract_version.strip():
+            raise ValueError("Evidence contract version must not be empty.")
+        if self.kind is EvidenceKind.DERIVED:
+            if self.provenance is None or not self.provenance.input_references:
+                raise ValueError(
+                    "Derived evidence must reference its input evidence."
+                )
 
 
 @dataclass(slots=True)

@@ -14,6 +14,8 @@ def test_completeness_status_contains_exactly_the_accepted_states() -> None:
         CompletenessStatus.AVAILABLE,
         CompletenessStatus.NO_DATA,
         CompletenessStatus.SOURCE_UNAVAILABLE,
+        CompletenessStatus.NOT_EVALUATED,
+        CompletenessStatus.NOT_APPLICABLE,
         CompletenessStatus.NOT_PART_OF_EXECUTION,
         CompletenessStatus.UNKNOWN,
     )

@@ -14,6 +14,7 @@ import { workspaceRegistry } from "@/workspaces";
 const workspaceColors: Record<WorkspaceId, string> = {
     [WorkspaceId.DECISION_CENTER]: "#4caf50",
     [WorkspaceId.THREAT_HUNTING]: "#fb8c00",
+    [WorkspaceId.THREAT_INTELLIGENCE]: "#ab47bc",
     [WorkspaceId.INCIDENT_RESPONSE]: "#ef5350",
     [WorkspaceId.EXECUTIVE]: "#fbc02d",
     [WorkspaceId.RISK_MANAGEMENT]: "#42a5f5",
@@ -26,6 +27,7 @@ const workspaceGroups = [
         workspaceIds: [
             WorkspaceId.DECISION_CENTER,
             WorkspaceId.THREAT_HUNTING,
+            WorkspaceId.THREAT_INTELLIGENCE,
             WorkspaceId.INCIDENT_RESPONSE,
         ],
     },

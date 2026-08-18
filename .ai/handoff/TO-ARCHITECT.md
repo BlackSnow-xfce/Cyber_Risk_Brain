@@ -1,41 +1,32 @@
-# Handoff – Architecture Review TASK-0044 abgeschlossen
+# Handoff - Architecture Review TASK-0076
 
 Status:
 CLOSED
 
 Task:
-TASK-0044 – First Live Intelligence Ingestion Contract
+TASK-0076 - Canonical Incident Context Repository and Controlled Creation/Query Boundary
 
-Reviewentscheidung:
+Task Status:
+DONE / PASS / APPROVED
+
+Review Result:
 PASS / APPROVED
 
-Freigabe:
+Reviewer:
 Architect
 
-Review-Datum:
-2026-08-14
+## Abschluss
 
-## Ergebnis
+TASK-0076 wurde freigegeben. Die file-backed Repository-Boundary verwendet
+`SecurityIncidentContext 1.0`, die interne Creation-Boundary und das bestehende
+Command-Center-Wiring. Keine oeffentliche Write-API und keine neuen fachlichen
+Modelle wurden eingefuehrt.
 
-TASK-0044 erfüllt den freigegebenen Scope und wurde nach DONE verschoben. Greenbone/OpenVAS GMP XML ist als erste minimale file-basierte Ingestion Boundary umgesetzt; `UniversalFinding` bleibt der vorhandene scannerneutrale kanonische Eintrittspunkt.
+* Acceptance: Persist/Load, HTTP 200 und unbekannte ID HTTP 404
+* Python-Regression: 300 passed
+* TypeScript: Exit Code 0
+* `git diff --check`: Exit Code 0
+* ADR-0001 bis ADR-0009 unveraendert
+* TASK-0077 nicht erstellt
 
-Architecture Baseline 1.0 und ADR-0001 bis ADR-0007 bleiben unverändert.
-
-## Validierte Eigenschaften
-
-* Scanner-spezifisches XML bleibt an der Ingestion Boundary.
-* Source Identity bleibt durch `source="greenbone"` und die Greenbone-Result-UUID erhalten.
-* Keine Scanner-Orchestrierung, API-Integration, Persistenzänderung oder Generalisierung wurde eingeführt.
-* Drei fokussierte Contract-Tests und der vollständige Python-Testlauf mit 22 Tests waren erfolgreich.
-* Die ausstehende Prüfung mit einem echten Greenbone-/DVWA-Export wurde korrekt als Folgevalidierung abgegrenzt.
-
-## AIDP-Zustand
-
-* TASK-0044: DONE, PASS / APPROVED
-* READY: ausschließlich TASK-0045
-* REVIEW: leer
-* TO-CODEX: TASK-0045 / READY
-
-## Nächster freigegebener Schritt
-
-TASK-0045 validiert ausschließlich einen tatsächlich erzeugten Greenbone/OpenVAS-GMP-XML-Export gegen die bestehende Boundary. Ohne echten Export muss TASK-0045 im Status READY verbleiben; eine künstliche Datei darf nicht als realer Scan verwendet werden.
+Aktualisiert: 2026-08-18

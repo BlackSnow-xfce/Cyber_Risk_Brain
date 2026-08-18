@@ -8,6 +8,7 @@ import { RiskManagerWorkspace } from "@/workspaces/risk-manager";
 import { SOCWorkspace } from "@/workspaces/soc";
 import { ExecutiveWorkspace } from "@/workspaces/executive";
 import { ThreatHunterWorkspace } from "@/workspaces/threat-hunter";
+import { ThreatIntelligenceWorkspace } from "@/workspaces/threat-intelligence";
 
 export default function WorkspaceOutlet() {
     const { workspace } = useWorkspace();
@@ -21,6 +22,9 @@ export default function WorkspaceOutlet() {
 
         case WorkspaceId.THREAT_HUNTING:
             return <ThreatHunterWorkspace />;
+
+        case WorkspaceId.THREAT_INTELLIGENCE:
+            return <ThreatIntelligenceWorkspace />;
 
         case WorkspaceId.INCIDENT_RESPONSE:
             return <IncidentResponseWorkspace />;

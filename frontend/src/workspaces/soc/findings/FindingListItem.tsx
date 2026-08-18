@@ -4,12 +4,12 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { Finding } from "./Finding";
+import type { FindingSummary } from "./FindingSummary";
 
 interface FindingListItemProps {
-    finding: Finding;
+    finding: FindingSummary;
     selected: boolean;
-    onSelect: (finding: Finding) => void;
+    onSelect: (finding: FindingSummary) => void;
 }
 
 export default function FindingListItem({
@@ -45,7 +45,7 @@ export default function FindingListItem({
                     }}
                 >
                     <Chip
-                        label={`Severity ${finding.severity}`}
+                        label={`Severity ${finding.vendorSeverity}`}
                         size="small"
                         variant="outlined"
                     />
@@ -63,7 +63,7 @@ export default function FindingListItem({
                         display: "grid",
                         gridTemplateColumns: {
                             xs: "minmax(0, 1fr)",
-                            sm: "repeat(4, minmax(0, 1fr))",
+                            sm: "repeat(2, minmax(0, 1fr))",
                         },
                         gap: 2,
                     }}
@@ -73,16 +73,8 @@ export default function FindingListItem({
                         value={finding.asset}
                     />
                     <FindingAttribute
-                        label="Risk Score"
-                        value={finding.riskScore}
-                    />
-                    <FindingAttribute
-                        label="Confidence"
-                        value={`${finding.confidence.score}%`}
-                    />
-                    <FindingAttribute
-                        label="Status"
-                        value={finding.status}
+                        label="Source"
+                        value={finding.source}
                     />
                 </Box>
             </Stack>

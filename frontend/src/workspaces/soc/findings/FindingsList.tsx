@@ -3,13 +3,13 @@ import Typography from "@mui/material/Typography";
 
 import Panel from "@/ui/panel/Panel";
 
-import type { Finding } from "./Finding";
+import type { FindingSummary } from "./FindingSummary";
 import FindingListItem from "./FindingListItem";
 
 interface FindingsListProps {
-    findings: readonly Finding[];
+    findings: readonly FindingSummary[];
     selectedFindingId: string | null;
-    onSelect: (finding: Finding) => void;
+    onSelect: (finding: FindingSummary) => void;
 }
 
 export default function FindingsList({

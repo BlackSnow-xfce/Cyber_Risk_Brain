@@ -10,6 +10,8 @@ class CompletenessStatus(StrEnum):
     AVAILABLE = "available"
     NO_DATA = "no_data"
     SOURCE_UNAVAILABLE = "source_unavailable"
+    NOT_EVALUATED = "not_evaluated"
+    NOT_APPLICABLE = "not_applicable"
     NOT_PART_OF_EXECUTION = "not_part_of_execution"
     UNKNOWN = "unknown"
 

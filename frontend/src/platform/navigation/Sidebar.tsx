@@ -21,6 +21,7 @@ export default function Sidebar() {
     const supportsWorkspaceFocus =
         workspace === WorkspaceId.DECISION_CENTER
         || workspace === WorkspaceId.THREAT_HUNTING
+        || workspace === WorkspaceId.THREAT_INTELLIGENCE
         || workspace === WorkspaceId.INCIDENT_RESPONSE
         || workspace === WorkspaceId.RISK_MANAGEMENT
         || workspace === WorkspaceId.EXECUTIVE

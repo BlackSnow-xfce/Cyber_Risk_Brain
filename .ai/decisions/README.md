@@ -224,6 +224,8 @@ Ein abgelöster ADR bleibt erhalten. Der Status verweist eindeutig auf den neuen
 | [ADR-0005](ADR-0005-mission-console-workspace-architecture.md) | Mission Console Workspace Architecture | ACCEPTED |
 | [ADR-0006](ADR-0006-decision-evidence-architecture.md) | Decision Evidence Architecture | ACCEPTED |
 | [ADR-0007](ADR-0007-domain-integration-principles.md) | Domain Integration Principles | ACCEPTED |
+| [ADR-0008](ADR-0008-decision-lifecycle-human-governance.md) | Decision Lifecycle & Human Decision Governance | ACCEPTED |
+| [ADR-0009](ADR-0009-security-incident-context-domain-ownership.md) | Security Incident Context & Domain Ownership | ACCEPTED |
 
 ### Proposed
 

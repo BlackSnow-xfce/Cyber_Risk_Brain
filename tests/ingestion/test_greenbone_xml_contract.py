@@ -32,6 +32,10 @@ def test_maps_greenbone_result_to_existing_canonical_finding() -> None:
     assert finding.mitre_tactic is None
     assert finding.owner is None
     assert finding.remediation is None
+    assert finding.cve_identifiers == (
+        "CVE-2021-44228",
+        "CVE-2024-12345",
+    )
 
 
 def test_greenbone_mapping_is_deterministic() -> None:
@@ -57,3 +61,26 @@ def test_file_boundary_preserves_greenbone_source_identity() -> None:
         "greenbone",
         "51d5d153-5f01-4da9-83d5-e17c47bb69a5",
     )
+
+
+def test_maps_cve_reference_embedded_in_greenbone_nvt_name() -> None:
+    report = b"""\
+<report>
+  <results>
+    <result id="6d3167e9-002c-4b76-a5a7-ce47f81b78b1">
+      <host>172.18.0.19</host>
+      <nvt oid="1.3.6.1.4.1.25623.1.0.103553">
+        <name>DistCC RCE Vulnerability (CVE-2004-2687)</name>
+        <refs>
+          <ref type="dfn-cert" id="DFN-CERT-2019-0381" />
+        </refs>
+      </nvt>
+      <threat>Critical</threat>
+    </result>
+  </results>
+</report>
+"""
+
+    finding = parse_greenbone_xml_findings(report)[0]
+
+    assert finding.cve_identifiers == ("CVE-2004-2687",)

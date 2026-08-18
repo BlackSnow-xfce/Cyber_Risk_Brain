@@ -2,59 +2,45 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import {
-    ExecutionTrace,
-    ExplainabilityPipeline,
-} from "@/components/reasoning";
-import {
-    knowledgeBindingRepository,
-    knowledgeRepository,
-} from "@/knowledge";
-import { defaultReasoningOrchestrator } from "@/reasoning/DefaultReasoningOrchestrator";
 import Panel from "@/ui/panel/Panel";
+import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 
-import type { Finding } from "./Finding";
+import type { FindingExplanationResult } from "./FindingExplanation";
+import FindingExplanationSection from "./FindingExplanationSection";
+import type { FindingSummary } from "./FindingSummary";
+import FindingThreatIntelligenceSection from "./FindingThreatIntelligenceSection";
 
 interface FindingDetailsPanelProps {
-    finding: Finding | null;
+    finding: FindingSummary | null;
+    explanation: FindingExplanationResult | null;
+    explanationError: string | null;
+    explanationLoading: boolean;
+    onGenerateExplanation: () => void;
+    threatIntelligence: FindingThreatIntelligenceEnrichment | null;
+    threatIntelligenceError: string | null;
+    threatIntelligenceLoading: boolean;
+    onLoadThreatIntelligence: () => void;
 }
 
 export default function FindingDetailsPanel({
     finding,
+    explanation,
+    explanationError,
+    explanationLoading,
+    onGenerateExplanation,
+    threatIntelligence,
+    threatIntelligenceError,
+    threatIntelligenceLoading,
+    onLoadThreatIntelligence,
 }: FindingDetailsPanelProps) {
     const detailSections = finding
         ? [
-              ["Explainability", finding.explainability.reason],
-              [
-                  "Evidence",
-                  finding.evidence
-                      .map(
-                          (evidence) =>
-                              `${evidence.title}: ${evidence.description}`,
-                      )
-                      .join("; "),
-              ],
-              ["Recommendations", finding.recommendation.description],
+              ["Source ID", finding.id],
+              ["Source", finding.source],
+              ["Vendor Severity", finding.vendorSeverity],
+              ["Asset", finding.asset],
           ] as const
         : [];
-    const knowledgeBindings = finding
-        ? knowledgeBindingRepository.getBindingsByEntityId(finding.id)
-        : [];
-    const relevantKnowledgeIds = new Set(
-        knowledgeBindings.map((binding) => binding.knowledgeItemId),
-    );
-    const knowledge = knowledgeRepository
-        .getKnowledgeItems()
-        .filter((item) => relevantKnowledgeIds.has(item.id));
-    const reasoningSession = finding
-        ? defaultReasoningOrchestrator.execute({
-              entity: finding,
-              knowledge,
-              knowledgeBindings,
-              evidence: finding.evidence,
-              correlations: finding.correlations,
-          })
-        : null;
 
     return (
         <Panel
@@ -82,31 +68,10 @@ export default function FindingDetailsPanel({
                 <Divider />
 
                 {finding && (
-                    <Stack spacing={0.5}>
-                        <Typography variant="subtitle2">
-                            Executive Summary
-                        </Typography>
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                        >
-                            {finding.description}
-                        </Typography>
-                    </Stack>
-                )}
-
-                {finding && (
-                    <ExplainabilityPipeline
-                        entity={finding}
-                        knowledge={knowledge}
-                        knowledgeBindings={knowledgeBindings}
-                    />
-                )}
-
-                {reasoningSession?.result && (
-                    <ExecutionTrace
-                        trace={reasoningSession.result.executionTrace}
-                    />
+                    <Typography variant="body2" color="text.secondary">
+                        Canonical scanner finding. Risk and decision enrichment
+                        is not available for this live data.
+                    </Typography>
                 )}
 
                 {detailSections.map(([section, content]) => (
@@ -123,6 +88,23 @@ export default function FindingDetailsPanel({
                         </Typography>
                     </Stack>
                 ))}
+
+                {finding && (
+                    <>
+                        <FindingThreatIntelligenceSection
+                            result={threatIntelligence}
+                            error={threatIntelligenceError}
+                            loading={threatIntelligenceLoading}
+                            onLoad={onLoadThreatIntelligence}
+                        />
+                        <FindingExplanationSection
+                            explanation={explanation}
+                            error={explanationError}
+                            loading={explanationLoading}
+                            onGenerate={onGenerateExplanation}
+                        />
+                    </>
+                )}
             </Stack>
         </Panel>
     );

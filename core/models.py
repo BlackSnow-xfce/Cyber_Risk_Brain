@@ -29,3 +29,4 @@ class UniversalFinding:
     mitre_tactic: Optional[str]
     owner: Optional[str]
     remediation: Optional[str]
+    cve_identifiers: tuple[str, ...] = ()

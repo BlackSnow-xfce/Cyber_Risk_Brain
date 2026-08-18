@@ -6,6 +6,7 @@ import { riskManagerNavigation } from "../risk-manager/navigation";
 import { socNavigation } from "../soc/navigation";
 import { executiveNavigation } from "../executive/navigation";
 import { threatHunterNavigation } from "../threat-hunter/navigation";
+import { threatIntelligenceNavigation } from "../threat-intelligence/navigation";
 
 export function getWorkspaceNavigation(
     workspace: WorkspaceId,
@@ -19,6 +20,9 @@ export function getWorkspaceNavigation(
 
         case WorkspaceId.THREAT_HUNTING:
             return threatHunterNavigation;
+
+        case WorkspaceId.THREAT_INTELLIGENCE:
+            return threatIntelligenceNavigation;
 
         case WorkspaceId.INCIDENT_RESPONSE:
             return incidentResponseNavigation;
