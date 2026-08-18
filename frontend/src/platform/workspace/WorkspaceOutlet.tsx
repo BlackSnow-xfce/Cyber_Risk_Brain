@@ -1,4 +1,5 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useLocation } from "react-router-dom";
 
 import { WorkspaceId } from "@/types/workspace";
 
@@ -12,6 +13,11 @@ import { ThreatIntelligenceWorkspace } from "@/workspaces/threat-intelligence";
 
 export default function WorkspaceOutlet() {
     const { workspace } = useWorkspace();
+    const { pathname } = useLocation();
+
+    if (/^\/incident-response\/incidents\/[^/]+\/command-center\/?$/.test(pathname)) {
+        return <IncidentResponseWorkspace />;
+    }
 
     switch (workspace) {
         case WorkspaceId.DECISION_CENTER:

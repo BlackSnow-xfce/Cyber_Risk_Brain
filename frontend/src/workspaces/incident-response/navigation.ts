@@ -20,6 +20,13 @@ import type { NavigationItem } from "@/workspaces/navigation";
 export const incidentResponseNavigation: NavigationItem[] = [
     {
         section: "Incident Operations",
+        id: "command-center",
+        label: "Command Center",
+        route: "/incident-response/incidents/:incidentId/command-center",
+        icon: LayoutDashboard,
+    },
+    {
+        section: "Incident Operations",
         id: "overview",
         label: "Overview",
         route: "/incident-response",
