@@ -30,6 +30,13 @@ from .contracts import (
     WriterDecision,
     WriterResult,
     WriterControlPlaneAcceptanceResult,
+    ConsumptionState,
+    ContractInboxItem,
+    ConsumptionEvent,
+    ReviewEnvelope,
+    PublishResult,
+    TriggerResult,
+    TriggerStatus,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -55,6 +62,14 @@ from .runtime import LocalRuntimeStore
 from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
     serialize_writer_control_plane_acceptance_result,
+)
+from .trigger_publisher import (
+    AIDPWatchOnce,
+    ConsumptionStore,
+    GitReviewPublisher,
+    LocalContractInbox,
+    serialize_review_envelope,
+    serialize_trigger_result,
 )
 
 __all__ = [
@@ -82,6 +97,13 @@ __all__ = [
     "WriterDecision",
     "WriterResult",
     "WriterControlPlaneAcceptanceResult",
+    "ConsumptionState",
+    "ContractInboxItem",
+    "ConsumptionEvent",
+    "ReviewEnvelope",
+    "PublishResult",
+    "TriggerResult",
+    "TriggerStatus",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -107,4 +129,10 @@ __all__ = [
     "serialize_writer_result",
     "WriterControlPlaneAcceptanceHarness",
     "serialize_writer_control_plane_acceptance_result",
+    "AIDPWatchOnce",
+    "ConsumptionStore",
+    "GitReviewPublisher",
+    "LocalContractInbox",
+    "serialize_review_envelope",
+    "serialize_trigger_result",
 ]

@@ -70,6 +70,21 @@ class WriterAction(StrEnum):
     MATERIALIZE_REWORK = "MATERIALIZE_REWORK"
 
 
+class ConsumptionState(StrEnum):
+    RECEIVED = "RECEIVED"
+    MATERIALIZED = "MATERIALIZED"
+    EXECUTING = "EXECUTING"
+    REVIEW_PUBLISHED = "REVIEW_PUBLISHED"
+    BLOCKED = "BLOCKED"
+
+
+class TriggerStatus(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    PUBLISHED = "PUBLISHED"
+    BLOCKED = "BLOCKED"
+    ERROR = "ERROR"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -301,6 +316,65 @@ class WriterControlPlaneAcceptanceResult:
     source_aidp_unchanged: bool
     cleanup_status: CleanupStatus
     temporary_repository: str
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ContractInboxItem:
+    contract_id: str
+    contract: ArchitectTaskContract | ReworkContract
+    received_at: datetime
+
+    def __post_init__(self) -> None:
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", self.contract_id) is None:
+            raise ValueError("contract_id is invalid")
+        if self.received_at.tzinfo is None or self.received_at.utcoffset() is None:
+            raise ValueError("received_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class ConsumptionEvent:
+    contract_id: str
+    state: ConsumptionState
+    timestamp: datetime
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewEnvelope:
+    task_id: str
+    execution_id: str
+    branch: str
+    start_commit: str
+    resulting_commit: str
+    execution_status: ExecutionStatus
+    changed_files: tuple[str, ...]
+    scope_compliance: ScopeCompliance
+    validation_results: tuple[ValidationResult, ...]
+    failure_reason: str | None
+    intended_next_state: AIDPState
+    published_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PublishResult:
+    branch: str
+    execution_commit: str | None
+    review_envelope_path: str | None
+    review_envelope_commit: str | None
+    push_status: str
+    final_state: AIDPState | None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TriggerResult:
+    status: TriggerStatus
+    contract_id: str | None
+    consumption_state: ConsumptionState | None
+    writer_result: WriterResult | None = None
+    control_plane_result: ControlPlaneResult | None = None
+    publish_result: PublishResult | None = None
     failure_reason: str | None = None
 
 

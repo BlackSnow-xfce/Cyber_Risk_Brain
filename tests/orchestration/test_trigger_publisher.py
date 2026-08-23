@@ -1,0 +1,192 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+from aidp_orchestration.contracts import (
+    AIDPState, ArchitectTaskContract, CodexExecutionResult, ConsumptionState, ControlPlaneAction,
+    ControlPlaneDecision, ControlPlaneResult, TriggerStatus, WriterAction,
+    WriterDecision, WriterResult, ExecutionStatus, ScopeCompliance, RunnerResult, RunnerStatus, ValidationResult,
+)
+from aidp_orchestration.repository import AIDPRepository
+from aidp_orchestration.trigger_publisher import (
+    AIDPWatchOnce, ConsumptionStore, LocalContractInbox, serialize_trigger_result,
+    GitReviewPublisher,
+)
+
+
+def _contract() -> ArchitectTaskContract:
+    return ArchitectTaskContract(
+        "TASK-E2E-WRITER-0001", "Probe", "IMPLEMENTATION", "a" * 40,
+        ("tests/orchestration/probe.txt",), ("no product files",),
+        ("git diff --check",), ("probe exists",), False,
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _write_inbox(root: Path, contract_id: str = "contract-1") -> None:
+    contract = _contract()
+    value = {
+        "contract_inbox_item": {
+            "contract_id": contract_id, "contract_type": "architect_task",
+            "received_at": "2026-01-01T00:00:00+00:00",
+            "contract": {
+                "task_id": contract.task_id, "title": contract.title, "phase": contract.phase,
+                "expected_head": contract.expected_head, "allowed_scope": list(contract.allowed_scope),
+                "prohibited_actions": list(contract.prohibited_actions),
+                "validation_requirements": list(contract.validation_requirements),
+                "acceptance_criteria": list(contract.acceptance_criteria),
+                "product_owner_gate": contract.product_owner_gate, "created_at": contract.created_at.isoformat(),
+            },
+        }
+    }
+    path = root / "contract-inbox" / "one.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+
+class FakeWriter:
+    calls = 0
+
+    def materialize_task(self, contract):
+        self.calls += 1
+        return WriterResult(WriterDecision(WriterAction.MATERIALIZE_READY, contract.task_id, "topic", "head", "ok"))
+
+    def materialize_rework(self, contract):
+        raise AssertionError("wrong writer path")
+
+
+class FakeControlPlane:
+    calls = 0
+
+    def decide(self):
+        return ControlPlaneDecision(ControlPlaneAction.EXECUTE, "TASK-E2E-WRITER-0001", AIDPState.READY_FOR_CODEX, "topic", "head", "ok")
+
+    def run_once(self):
+        self.calls += 1
+        return ControlPlaneResult(self.decide(), ControlPlaneAction.READY_FOR_ARCHITECT)
+
+
+class FakePublisher:
+    calls = 0
+
+    def commit_materialization(self, result):
+        raise AssertionError("no materialized paths in fixture")
+
+    def publish(self, result, expected_branch):
+        from aidp_orchestration.contracts import PublishResult
+        self.calls += 1
+        return PublishResult(expected_branch, "exec", ".ai/orchestration/review-inbox/x.json", "review", "PUSHED", AIDPState.READY_FOR_ARCHITECT)
+
+
+def test_empty_inbox_is_no_action(tmp_path: Path):
+    watcher = AIDPWatchOnce(AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=FakeControlPlane(), publisher=FakePublisher(), runtime_root=tmp_path / "runtime", execution_lock_active=lambda: False)
+    assert watcher.run_once().status is TriggerStatus.NO_ACTION
+
+
+def test_contract_is_consumed_exactly_once_across_restart(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    writer, control, publisher = FakeWriter(), FakeControlPlane(), FakePublisher()
+    first = AIDPWatchOnce(AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher, runtime_root=runtime, execution_lock_active=lambda: False).run_once()
+    second = AIDPWatchOnce(AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher, runtime_root=runtime, execution_lock_active=lambda: False).run_once()
+    assert first.status is TriggerStatus.PUBLISHED
+    assert second.status is TriggerStatus.BLOCKED
+    assert writer.calls == control.calls == publisher.calls == 1
+    assert ConsumptionStore(runtime).current("contract-1") is ConsumptionState.REVIEW_PUBLISHED
+
+
+def test_consumption_log_is_append_only_and_serialization_has_no_authority(tmp_path: Path):
+    store = ConsumptionStore(tmp_path)
+    store.append("c", ConsumptionState.RECEIVED, "received")
+    store.append("c", ConsumptionState.BLOCKED, "blocked")
+    assert len(store.path.read_text(encoding="utf-8").splitlines()) == 2
+    result = AIDPWatchOnce(AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=FakeControlPlane(), publisher=FakePublisher(), runtime_root=tmp_path / "empty", execution_lock_active=lambda: False).run_once()
+    encoded = serialize_trigger_result(result)
+    assert encoded == serialize_trigger_result(result)
+    assert "prompt" not in encoded.lower()
+    assert "APPROVED" not in encoded and '"DONE"' not in encoded
+
+
+def test_malformed_and_duplicate_contract_ids_fail_closed(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    original = runtime / "contract-inbox" / "one.json"
+    (original.parent / "two.json").write_bytes(original.read_bytes())
+    try:
+        LocalContractInbox(runtime).pending()
+    except ValueError as exc:
+        assert "duplicate" in str(exc)
+    else:
+        raise AssertionError("duplicate contract_id accepted")
+
+
+def test_product_owner_wait_never_publishes(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    control = FakeControlPlane()
+    control.decide = lambda: ControlPlaneDecision(ControlPlaneAction.WAITING_FOR_PRODUCT_OWNER, "TASK-E2E-WRITER-0001", AIDPState.WAITING_FOR_PRODUCT_OWNER, "topic", "head", "gate")
+    publisher = FakePublisher()
+    result = AIDPWatchOnce(AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=control, publisher=publisher, runtime_root=runtime, execution_lock_active=lambda: False).run_once()
+    assert result.status is TriggerStatus.BLOCKED
+    assert publisher.calls == 0
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.check_output(("git", *args), cwd=root, text=True, stderr=subprocess.STDOUT).strip()
+
+
+def test_success_commits_only_execution_and_envelope_then_pushes_origin(tmp_path: Path):
+    repository_root, remote = tmp_path / "repo", tmp_path / "origin.git"
+    repository_root.mkdir()
+    _git(repository_root, "init", "-b", "topic")
+    _git(repository_root, "config", "user.name", "AIDP Test")
+    _git(repository_root, "config", "user.email", "aidp@example.invalid")
+    probe = repository_root / "tests/orchestration/probe.txt"
+    probe.parent.mkdir(parents=True)
+    probe.write_text("before\n", encoding="utf-8")
+    _git(repository_root, "add", "--", "tests/orchestration/probe.txt")
+    _git(repository_root, "commit", "-m", "fixture")
+    start = _git(repository_root, "rev-parse", "HEAD")
+    subprocess.check_call(("git", "init", "--bare", str(remote)))
+    _git(repository_root, "remote", "add", "origin", str(remote))
+    probe.write_text("after\n", encoding="utf-8")
+    inbox = tmp_path / "architect.json"
+    inbox.write_text("{}", encoding="utf-8")
+    execution = CodexExecutionResult("exec-1", "TASK-E2E-WRITER-0001", start, start,
+        ("tests/orchestration/probe.txt",), (ValidationResult("git diff --check", True, "passed"),),
+        ExecutionStatus.SUCCESS, None, ScopeCompliance.COMPLIANT)
+    runner = RunnerResult(RunnerStatus.EXECUTED, execution.task_id, AIDPState.READY_FOR_CODEX,
+                          AIDPState.READY_FOR_ARCHITECT, "executed", execution)
+    decision = ControlPlaneDecision(ControlPlaneAction.EXECUTE, execution.task_id, AIDPState.READY_FOR_CODEX, "topic", start, "execute")
+    control = ControlPlaneResult(decision, ControlPlaneAction.READY_FOR_ARCHITECT, runner_result=runner, architect_inbox_path=str(inbox))
+    result = GitReviewPublisher(AIDPRepository(repository_root)).publish(control, "topic")
+    assert result.push_status == "PUSHED"
+    assert _git(repository_root, "show", "--pretty=", "--name-only", result.execution_commit) == "tests/orchestration/probe.txt"
+    assert _git(repository_root, "show", "--pretty=", "--name-only", result.review_envelope_commit) == result.review_envelope_path
+    envelope = (repository_root / result.review_envelope_path).read_text(encoding="utf-8")
+    assert "READY_FOR_ARCHITECT" in envelope and "APPROVED" not in envelope and "prompt" not in envelope.lower()
+    assert _git(repository_root, "rev-parse", "refs/remotes/origin/topic") == result.review_envelope_commit
+
+
+def test_scope_violation_never_commits_or_pushes(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-b", "topic")
+    _git(root, "config", "user.name", "AIDP Test")
+    _git(root, "config", "user.email", "aidp@example.invalid")
+    (root / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(root, "add", "--", "base.txt")
+    _git(root, "commit", "-m", "fixture")
+    head = _git(root, "rev-parse", "HEAD")
+    inbox = tmp_path / "architect.json"
+    inbox.write_text("{}", encoding="utf-8")
+    execution = CodexExecutionResult("exec-2", "TASK-E2E-WRITER-0001", head, head, (), (), ExecutionStatus.SCOPE_VIOLATION, "extra file", ScopeCompliance.VIOLATION)
+    runner = RunnerResult(RunnerStatus.EXECUTED, execution.task_id, AIDPState.READY_FOR_CODEX, None, "blocked", execution)
+    decision = ControlPlaneDecision(ControlPlaneAction.EXECUTE, execution.task_id, AIDPState.READY_FOR_CODEX, "topic", head, "execute")
+    control = ControlPlaneResult(decision, ControlPlaneAction.BLOCKED, runner_result=runner, architect_inbox_path=str(inbox))
+    result = GitReviewPublisher(AIDPRepository(root)).publish(control, "topic")
+    assert result.push_status == "NOT_PUSHED"
+    assert _git(root, "rev-parse", "HEAD") == head
