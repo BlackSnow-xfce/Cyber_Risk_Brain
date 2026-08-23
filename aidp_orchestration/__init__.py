@@ -1,6 +1,11 @@
 """Deterministic, fail-closed orchestration primitives for the AIDP workflow."""
 
 from .acceptance import AcceptanceHarness, serialize_acceptance_result
+from .architect_ingress import ArchitectGitIngress, serialize_architect_ingress_result
+from .architect_ingress_acceptance import (
+    ArchitectIngressAcceptanceHarness,
+    serialize_architect_ingress_acceptance_result,
+)
 from .architect_writer import (
     ArchitectContractWriter,
     load_architect_task_contract,
@@ -41,6 +46,9 @@ from .contracts import (
     WatchIterationEvent,
     WatchRuntimeResult,
     WatchRuntimeStatus,
+    IngressStatus,
+    ArchitectIngressResult,
+    ArchitectIngressAcceptanceResult,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -73,6 +81,7 @@ from .trigger_publisher import (
     GitReviewPublisher,
     LocalContractInbox,
     serialize_review_envelope,
+    serialize_contract_inbox_item,
     serialize_trigger_result,
 )
 from .trigger_publisher_acceptance import (
@@ -124,6 +133,9 @@ __all__ = [
     "WatchIterationEvent",
     "WatchRuntimeResult",
     "WatchRuntimeStatus",
+    "IngressStatus",
+    "ArchitectIngressResult",
+    "ArchitectIngressAcceptanceResult",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -154,6 +166,7 @@ __all__ = [
     "GitReviewPublisher",
     "LocalContractInbox",
     "serialize_review_envelope",
+    "serialize_contract_inbox_item",
     "serialize_trigger_result",
     "TriggerPublisherAcceptanceHarness",
     "serialize_trigger_publisher_acceptance_result",
@@ -163,4 +176,8 @@ __all__ = [
     "WatcherRuntimeLock",
     "serialize_watch_iteration_event",
     "serialize_watch_runtime_result",
+    "ArchitectGitIngress",
+    "serialize_architect_ingress_result",
+    "ArchitectIngressAcceptanceHarness",
+    "serialize_architect_ingress_acceptance_result",
 ]

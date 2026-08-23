@@ -14,6 +14,11 @@ from .architect_writer import (
     load_architect_task_contract,
     serialize_writer_result,
 )
+from .architect_ingress import ArchitectGitIngress
+from .architect_ingress_acceptance import (
+    ArchitectIngressAcceptanceHarness,
+    serialize_architect_ingress_acceptance_result,
+)
 from .contracts import AcceptanceStatus
 from .control_plane import AIDPControlPlane, serialize_control_plane_result
 from .executor import CodexExecutionService, serialize_execution_result
@@ -48,16 +53,28 @@ def main() -> int:
     mode.add_argument("--watch-once", action="store_true", help="consume and publish at most one local Architect contract")
     mode.add_argument("--acceptance-trigger-publisher", action="store_true", help="run isolated Trigger-to-Git-remote acceptance")
     mode.add_argument("--watch", action="store_true", help="periodically invoke the existing local watch-once boundary")
+    mode.add_argument("--acceptance-architect-ingress", action="store_true", help="run isolated Architect Git ingress acceptance")
     parser.add_argument("--task-id", help="task to execute (required with --execute)")
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--watch-interval", type=float, default=10.0)
+    parser.add_argument("--architect-contract-branch", help="explicit origin branch enabling Git contract ingress for --watch")
     args = parser.parse_args()
+    if args.architect_contract_branch and not args.watch:
+        parser.error("--architect-contract-branch is only valid with --watch")
     if args.watch and args.watch_interval < MINIMUM_WATCH_INTERVAL_SECONDS:
         parser.error(f"--watch-interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
     repository = AIDPRepository(args.root)
+    if args.acceptance_architect_ingress:
+        result = ArchitectIngressAcceptanceHarness(args.root).run()
+        print(serialize_architect_ingress_acceptance_result(result))
+        return 0 if result.status is AcceptanceStatus.PASS else 2
     if args.watch:
-        result = AIDPLocalWatcherRuntime(repository, interval_seconds=args.watch_interval).run()
+        try:
+            ingress = ArchitectGitIngress(repository, branch=args.architect_contract_branch) if args.architect_contract_branch else None
+        except ValueError as exc:
+            parser.error(str(exc))
+        result = AIDPLocalWatcherRuntime(repository, interval_seconds=args.watch_interval, ingress=ingress).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2
     if args.acceptance_trigger_publisher:

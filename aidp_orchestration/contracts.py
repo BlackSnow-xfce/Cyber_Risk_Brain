@@ -90,6 +90,13 @@ class WatchRuntimeStatus(StrEnum):
     BLOCKED = "BLOCKED"
 
 
+class IngressStatus(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    MATERIALIZED = "MATERIALIZED"
+    BLOCKED = "BLOCKED"
+    ERROR = "ERROR"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -411,12 +418,44 @@ class WatchIterationEvent:
     contract_id: str | None
     consumption_state: ConsumptionState | None
     failure_reason: str | None
+    ingress_status: IngressStatus | None = None
+    remote_contract_id: str | None = None
+    remote_contract_commit: str | None = None
+    ingress_failure_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class WatchRuntimeResult:
     status: WatchRuntimeStatus
     iterations: int
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectIngressResult:
+    status: IngressStatus
+    contract_id: str | None
+    remote_commit: str | None
+    blob_id: str | None
+    local_inbox_path: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectIngressAcceptanceResult:
+    status: AcceptanceStatus
+    remote_contract_branch: str
+    remote_contract_commit: str | None
+    contract_id: str
+    ingress_status: IngressStatus
+    local_inbox_materialized: bool
+    local_contract_verified: bool
+    second_ingress_status: IngressStatus | None
+    mutation_guard_verified: bool
+    source_aidp_unchanged: bool
+    cleanup_status: CleanupStatus
+    temporary_repository: str
+    temporary_remote: str
     failure_reason: str | None = None
 
 

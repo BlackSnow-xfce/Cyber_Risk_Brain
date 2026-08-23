@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .contracts import (
-    TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
+    ArchitectIngressResult, IngressStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
     WatchRuntimeStatus, utc_now,
 )
 from .repository import AIDPRepository
@@ -27,6 +27,10 @@ DEFAULT_WATCH_INTERVAL_SECONDS = 10.0
 
 class WatchOnceBoundary(Protocol):
     def run_once(self) -> TriggerResult: ...
+
+
+class IngressBoundary(Protocol):
+    def run_once(self) -> ArchitectIngressResult: ...
 
 
 class WatcherRuntimeLock:
@@ -70,6 +74,7 @@ class AIDPLocalWatcherRuntime:
         sleeper: Callable[[float], None] = time.sleep,
         event_sink: Callable[[str], None] = print,
         clock: Callable[[], datetime] = utc_now,
+        ingress: IngressBoundary | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
             raise ValueError(f"watch interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
@@ -79,6 +84,7 @@ class AIDPLocalWatcherRuntime:
         self.sleeper = sleeper
         self.event_sink = event_sink
         self.clock = clock
+        self.ingress = ingress
 
     def run(self) -> WatchRuntimeResult:
         try:
@@ -93,6 +99,17 @@ class AIDPLocalWatcherRuntime:
         try:
             while True:
                 iteration += 1
+                ingress_result: ArchitectIngressResult | None = None
+                if self.ingress is not None:
+                    try:
+                        ingress_result = self.ingress.run_once()
+                    except KeyboardInterrupt:
+                        return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration - 1)
+                    except Exception as exc:
+                        ingress_result = ArchitectIngressResult(
+                            IngressStatus.ERROR, None, None, None,
+                            failure_reason=f"ingress iteration failed: {exc.__class__.__name__}",
+                        )
                 try:
                     trigger_result = self.watcher.run_once()
                 except KeyboardInterrupt:
@@ -105,6 +122,10 @@ class AIDPLocalWatcherRuntime:
                 event = WatchIterationEvent(
                     self.clock(), iteration, trigger_result.status, trigger_result.contract_id,
                     trigger_result.consumption_state, trigger_result.failure_reason,
+                    ingress_result.status if ingress_result else None,
+                    ingress_result.contract_id if ingress_result else None,
+                    ingress_result.remote_commit if ingress_result else None,
+                    ingress_result.failure_reason if ingress_result else None,
                 )
                 try:
                     self.event_sink(serialize_watch_iteration_event(event))

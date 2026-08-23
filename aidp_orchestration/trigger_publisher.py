@@ -51,9 +51,22 @@ class LocalContractInbox:
             raise ValueError("duplicate contract_id")
         return items
 
+    def persist(self, item: ContractInboxItem) -> Path:
+        path = self.root / f"{item.contract_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(serialize_contract_inbox_item(item) + "\n")
+        if self._load(path) != item:
+            raise RuntimeError("contract inbox persistence validation failed")
+        return path
+
     @staticmethod
     def _load(path: Path) -> ContractInboxItem:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        return LocalContractInbox.parse(path.read_bytes())
+
+    @staticmethod
+    def parse(content: bytes) -> ContractInboxItem:
+        payload = json.loads(content.decode("utf-8", errors="strict"))
         value = payload.get("contract_inbox_item") if isinstance(payload, dict) else None
         if not isinstance(value, dict) or set(value) != {"contract_id", "contract_type", "contract", "received_at"}:
             raise ValueError("malformed contract inbox item")
@@ -254,17 +267,31 @@ def serialize_review_envelope(value: ReviewEnvelope) -> str:
     return _json({"architect_review_envelope": value})
 
 
+def serialize_contract_inbox_item(value: ContractInboxItem) -> str:
+    contract_type = "architect_task" if isinstance(value.contract, ArchitectTaskContract) else "rework"
+    return _json({"contract_inbox_item": {
+        "contract_id": value.contract_id,
+        "contract_type": contract_type,
+        "contract": value.contract,
+        "received_at": value.received_at,
+    }})
+
+
 def serialize_trigger_result(value: TriggerResult) -> str:
     return _json({"trigger_result": value})
 
 
 def _architect_contract(v: dict[str, object]) -> ArchitectTaskContract:
+    expected = {"task_id", "title", "phase", "expected_head", "allowed_scope", "prohibited_actions", "validation_requirements", "acceptance_criteria", "product_owner_gate", "created_at"}
+    if set(v) != expected: raise ValueError("invalid ArchitectTaskContract schema")
     return ArchitectTaskContract(_string(v,"task_id"), _string(v,"title"), _string(v,"phase"), _string(v,"expected_head"),
         _strings(v,"allowed_scope"), _strings(v,"prohibited_actions"), _strings(v,"validation_requirements"),
         _strings(v,"acceptance_criteria"), _boolean(v,"product_owner_gate"), datetime.fromisoformat(_string(v,"created_at")))
 
 
 def _rework_contract(v: dict[str, object]) -> ReworkContract:
+    expected = {"task_id", "review_iteration", "expected_head", "allowed_rework_scope", "findings", "required_validations", "created_at"}
+    if set(v) != expected: raise ValueError("invalid ReworkContract schema")
     iteration = v.get("review_iteration")
     if not isinstance(iteration, int) or isinstance(iteration, bool): raise ValueError("review_iteration must be integer")
     return ReworkContract(_string(v,"task_id"), iteration, _string(v,"expected_head"), _strings(v,"allowed_rework_scope"),
