@@ -1,7 +1,12 @@
 """Deterministic, fail-closed orchestration primitives for the AIDP workflow."""
 
+from .acceptance import AcceptanceHarness, serialize_acceptance_result
+
 from .contracts import (
     AIDPState,
+    AcceptanceResult,
+    AcceptanceStatus,
+    CleanupStatus,
     CodexExecutionRequest,
     CodexExecutionResult,
     RunnerResult,
@@ -24,6 +29,10 @@ from .runtime import LocalRuntimeStore
 __all__ = [
     "AIDPRepository",
     "AIDPState",
+    "AcceptanceHarness",
+    "AcceptanceResult",
+    "AcceptanceStatus",
+    "CleanupStatus",
     "CodexExecutionRequest",
     "CodexExecutionResult",
     "RunnerResult",
@@ -36,6 +45,7 @@ __all__ = [
     "ProcessOutcome",
     "SubprocessRunner",
     "serialize_execution_result",
+    "serialize_acceptance_result",
     "AIDPRunner",
     "LocalRuntimeStore",
     "serialize_runner_result",

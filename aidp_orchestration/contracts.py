@@ -44,6 +44,17 @@ class RunnerStatus(StrEnum):
     ERROR = "ERROR"
 
 
+class AcceptanceStatus(StrEnum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+
+
+class CleanupStatus(StrEnum):
+    CLEANED = "CLEANED"
+    PRESERVED = "PRESERVED"
+    FAILED = "FAILED"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -134,6 +145,18 @@ class RunnerResult:
     intended_next_state: AIDPState | None
     decision_reason: str
     execution_result: CodexExecutionResult | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceResult:
+    status: AcceptanceStatus
+    runner_result: RunnerResult | None
+    result_persisted: bool
+    audit_persisted: bool
+    temporary_repository: str
+    cleanup_status: CleanupStatus
+    source_aidp_unchanged: bool
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
