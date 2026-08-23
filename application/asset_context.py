@@ -69,6 +69,22 @@ class AssetContextQueryService:
 
         return matches[0] if matches else None
 
+    def resolve_canonical_asset(self, canonical_asset_id: str) -> AssetContext | None:
+        """Resolve a canonical asset identity from the authoritative source."""
+        normalized_id = canonical_asset_id.strip()
+        if not normalized_id:
+            raise ValueError("Canonical asset ID must not be empty.")
+        contexts = self._load_contexts()
+        matches = [
+            context for context in contexts
+            if context.canonical_asset_id == normalized_id
+        ]
+        if len(matches) > 1:
+            raise AssetContextDataError(
+                "Asset context source contains an ambiguous canonical asset."
+            )
+        return matches[0] if matches else None
+
     def _load_contexts(self) -> tuple[AssetContext, ...]:
         if self._context_path is None or not self._context_path.strip():
             raise AssetContextConfigurationError(

@@ -1,4 +1,3 @@
-import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLocation } from "react-router-dom";
 
 import IncidentResponseLayout from "./IncidentResponseLayout";
@@ -7,23 +6,23 @@ import IncidentCommandCenterPage from "./pages/IncidentCommandCenterPage";
 import {
     incidentResponseAreaRegistry,
     IncidentResponseOverviewPage,
+    IncidentQueuePage,
     isIncidentResponseAreaId,
 } from "./pages";
 
 export default function IncidentResponseWorkspace() {
-    const { activeNavigationItemId } = useWorkspace();
     const { pathname } = useLocation();
 
     if (/^\/incident-response\/incidents\/[^/]+\/command-center\/?$/.test(pathname)) {
         return <IncidentResponseLayout><IncidentCommandCenterPage /></IncidentResponseLayout>;
     }
 
-    if (activeNavigationItemId === "command-center") {
-        return <IncidentResponseLayout><IncidentCommandCenterPage /></IncidentResponseLayout>;
+    const areaId = incidentResponseAreaFromPath(pathname);
+    if (areaId === "incident-queue") {
+        return <IncidentResponseLayout><IncidentQueuePage /></IncidentResponseLayout>;
     }
-
-    if (isIncidentResponseAreaId(activeNavigationItemId)) {
-        const area = incidentResponseAreaRegistry[activeNavigationItemId];
+    if (areaId && isIncidentResponseAreaId(areaId)) {
+        const area = incidentResponseAreaRegistry[areaId];
 
         return (
             <IncidentResponseLayout>
@@ -40,4 +39,11 @@ export default function IncidentResponseWorkspace() {
             <IncidentResponseOverviewPage />
         </IncidentResponseLayout>
     );
+}
+
+function incidentResponseAreaFromPath(pathname: string): string | null {
+    if (/^\/incident-response\/queue\/?$/.test(pathname)) return "incident-queue";
+    if (/^\/incident-response\/?$/.test(pathname)) return "overview";
+    const match = pathname.match(/^\/incident-response\/([^/]+)\/?$/);
+    return match?.[1] ?? null;
 }

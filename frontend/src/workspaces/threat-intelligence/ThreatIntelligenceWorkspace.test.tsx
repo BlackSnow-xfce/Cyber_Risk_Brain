@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceContext } from "@/context/WorkspaceContext";
@@ -28,28 +29,34 @@ describe("Threat Intelligence workspace", () => {
     });
 
     it("routes overview and explorer through the isolated workspace", () => {
-        const { rerender } = renderWorkspace(null);
+        renderWorkspace(null, "/threat-intelligence");
         expect(screen.getByText("Threat Intelligence Overview")).toBeInTheDocument();
 
-        rerender(workspace("explorer"));
+        cleanup();
+        render(<MemoryRouter initialEntries={["/threat-intelligence/explorer"]}>{workspace("explorer")}</MemoryRouter>);
         expect(screen.getByText("Threat Intelligence Explorer")).toBeInTheDocument();
     });
 
+    it("treats the workspace root as the authoritative overview after history navigation", () => {
+        renderWorkspace("explorer", "/threat-intelligence");
+        expect(screen.getByText("Threat Intelligence Overview")).toBeInTheDocument();
+    });
+
     it("renders every overview category without fabricated intelligence", () => {
-        render(<ThreatIntelligenceOverviewPage />);
+        render(<ThreatIntelligenceOverviewPage loadFindings={() => Promise.resolve([])} />);
 
         for (const category of [
-            "Active Threats",
-            "Known Exploited Vulnerabilities",
-            "High EPSS Vulnerabilities",
-            "Emerging Threats",
-            "Threat Intelligence Sources",
+            "Findings in environment",
+            "CVE / vulnerability intelligence",
+            "NVD / CVSS / EPSS / CISA KEV",
+            "Provenance and completeness",
             "Environment Relevance",
         ]) {
             expect(screen.getByText(category)).toBeInTheDocument();
         }
-        expect(screen.getAllByText("Unavailable")).toHaveLength(3);
-        expect(screen.getAllByText("No data")).toHaveLength(2);
+        expect(screen.getByText("On demand")).toBeInTheDocument();
+        expect(screen.getByText("Source-backed")).toBeInTheDocument();
+        expect(screen.getByText("Preserved")).toBeInTheDocument();
         expect(screen.getByText("Not evaluated")).toBeInTheDocument();
     });
 
@@ -82,7 +89,7 @@ describe("Threat Intelligence workspace", () => {
             },
         ]);
 
-        render(<ThreatIntelligenceEnvironmentPage loadFindings={loadFindings} />);
+        render(<MemoryRouter><ThreatIntelligenceEnvironmentPage loadFindings={loadFindings} /></MemoryRouter>);
 
         expect(await screen.findByText("Controlled live finding")).toBeInTheDocument();
         expect(loadFindings).toHaveBeenCalledOnce();
@@ -94,30 +101,45 @@ describe("Threat Intelligence workspace", () => {
         expect(screen.getByText("Completeness: Not evaluated")).toBeInTheDocument();
     });
 
+    it("filters findings immediately and preserves canonical TI navigation", async () => {
+        const findings = [
+            { id: "distcc-001", source: "greenbone", title: "DistCC vulnerability", vendorSeverity: "Critical", asset: "172.18.0.19" },
+            { id: "ssh-002", source: "scanner", title: "OpenSSH finding", vendorSeverity: "Medium", asset: "10.0.0.4" },
+        ];
+        render(<MemoryRouter><ThreatIntelligenceEnvironmentPage loadFindings={() => Promise.resolve(findings)} /><LocationProbe /></MemoryRouter>);
+        const search = await screen.findByRole("textbox", { name: "Search findings" });
+        expect(screen.getByText("OpenSSH finding")).toBeInTheDocument();
+        fireEvent.change(search, { target: { value: "DIST" } });
+        expect(screen.getByText("DistCC vulnerability")).toBeInTheDocument();
+        expect(screen.queryByText("OpenSSH finding")).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Open finding-scoped Threat Intelligence" }));
+        expect(screen.getByTestId("location")).toHaveTextContent("findingId=distcc-001&focus=threat-intelligence");
+        fireEvent.change(search, { target: { value: "no-match" } });
+        expect(screen.getByText("No findings match the current search.")).toBeInTheDocument();
+        fireEvent.change(search, { target: { value: "" } });
+        await waitFor(() => expect(screen.getByText("OpenSSH finding")).toBeInTheDocument());
+    });
+
     it("handles unavailable and empty internal finding sources", async () => {
-        render(
-            <ThreatIntelligenceEnvironmentPage
-                loadFindings={() => Promise.reject(new Error("unavailable"))}
-            />,
-        );
+        render(<MemoryRouter><ThreatIntelligenceEnvironmentPage
+            loadFindings={() => Promise.reject(new Error("unavailable"))}
+        /></MemoryRouter>);
         expect(
             await screen.findByText("Internal findings are currently unavailable."),
         ).toBeInTheDocument();
 
         cleanup();
-        render(
-            <ThreatIntelligenceEnvironmentPage
-                loadFindings={() => Promise.resolve([])}
-            />,
-        );
+        render(<MemoryRouter><ThreatIntelligenceEnvironmentPage
+            loadFindings={() => Promise.resolve([])}
+        /></MemoryRouter>);
         expect(
             await screen.findByText("No internal findings are available."),
         ).toBeInTheDocument();
     });
 });
 
-function renderWorkspace(activeNavigationItemId: string | null) {
-    return render(workspace(activeNavigationItemId));
+function renderWorkspace(activeNavigationItemId: string | null, initialEntry: string) {
+    return render(<MemoryRouter initialEntries={[initialEntry]}>{workspace(activeNavigationItemId)}</MemoryRouter>);
 }
 
 function workspace(activeNavigationItemId: string | null) {
@@ -133,4 +155,9 @@ function workspace(activeNavigationItemId: string | null) {
             <ThreatIntelligenceWorkspace />
         </WorkspaceContext.Provider>
     );
+}
+
+function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="location">{location.pathname}{location.search}</output>;
 }

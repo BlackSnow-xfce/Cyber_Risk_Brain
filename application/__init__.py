@@ -33,6 +33,7 @@ from application.finding_explanation_use_case import (
     FindingExplanationUseCase,
     FindingNotFoundError,
     FindingSelectionError,
+    build_finding_explanation_authorization,
 )
 from application.finding_asset_context import (
     FindingAssetContextResolution,
@@ -56,6 +57,7 @@ from application.incident_command_center import (
     IncidentCommandCenterIncidentNotFoundError,
     IncidentCommandCenterQueryService,
 )
+from application.incident_reference_resolution import IncidentReferenceResolutionService
 from application.incident_repository import (
     IncidentContextConfigurationError,
     IncidentContextCreationService,
@@ -63,6 +65,20 @@ from application.incident_repository import (
     IncidentContextRepository,
     IncidentOwnerAssignmentService,
     FileIncidentContextRepository,
+    FindingIncidentReference,
+)
+from application.incident_queue import IncidentQueueItem, IncidentQueueQueryService
+from application.finding_incidents import FindingIncidentQueryService
+from application.trusted_ai_retrieval import (
+    FINDING_RETRIEVAL_OPERATION,
+    FindingResourceReader,
+    FindingTrustedRetrievalService,
+)
+from application.finding_model_egress import (
+    FINDING_EGRESS_CLASSIFICATION,
+    FINDING_EXPLANATION_EGRESS_POLICY,
+    FindingModelEgressPayload,
+    FindingModelEgressProjector,
 )
 from application.incident_web_evidence import (
     IncidentWebEvidenceAssociationService,
@@ -85,6 +101,26 @@ from application.risk_readiness import (
 from application.security_observation_correlation import (
     SecurityObservationCorrelationApplicationService,
     SecurityObservationCorrelationResult,
+)
+from application.security_observation_creation import (
+    SecurityObservationCreationBoundary,
+    SecurityObservationCreationError,
+    SecurityObservationInput,
+    SecurityObservationProducerPolicy,
+)
+from application.target_side_observation import (
+    TARGET_SIDE_DISTCC_PORT,
+    TARGET_SIDE_DISTCC_PRODUCER_ID,
+    TARGET_SIDE_DISTCC_PROTOCOL,
+    TargetSideObservationAdapterError,
+    TargetSideRuntimeObservationAdapter,
+    TargetSideRuntimeSignal,
+)
+from application.target_side_process_observation import (
+    TARGET_SIDE_PROCESS_PRODUCER_ID,
+    TargetSideProcessObservationAdapter,
+    TargetSideProcessObservationAdapterError,
+    TargetSideProcessRuntimeSignal,
 )
 from application.threat_intelligence import (
     ThreatIntelligenceConfigurationError,
@@ -122,6 +158,7 @@ __all__ = [
     "FindingExplanationStatement",
     "FindingExplanationTimeoutError",
     "FindingExplanationUseCase",
+    "build_finding_explanation_authorization",
     "FindingAssetContextResolution",
     "FindingAssetContextResolutionStatus",
     "FindingAssetContextUseCase",
@@ -143,12 +180,24 @@ __all__ = [
     "IncidentWebEvidenceContext",
     "IncidentCommandCenterIncidentNotFoundError",
     "IncidentCommandCenterQueryService",
+    "IncidentReferenceResolutionService",
     "IncidentContextConfigurationError",
     "IncidentContextCreationService",
     "IncidentContextDataError",
     "IncidentContextRepository",
     "IncidentOwnerAssignmentService",
     "FileIncidentContextRepository",
+    "FindingIncidentReference",
+    "IncidentQueueItem",
+    "IncidentQueueQueryService",
+    "FindingIncidentQueryService",
+    "FINDING_RETRIEVAL_OPERATION",
+    "FindingResourceReader",
+    "FindingTrustedRetrievalService",
+    "FINDING_EGRESS_CLASSIFICATION",
+    "FINDING_EXPLANATION_EGRESS_POLICY",
+    "FindingModelEgressPayload",
+    "FindingModelEgressProjector",
     "MissingRiskInput",
     "RiskAssessmentInput",
     "RiskAssessmentReadinessResult",
@@ -161,6 +210,20 @@ __all__ = [
     "RiskReadinessService",
     "SecurityObservationCorrelationApplicationService",
     "SecurityObservationCorrelationResult",
+    "SecurityObservationCreationBoundary",
+    "SecurityObservationCreationError",
+    "SecurityObservationInput",
+    "SecurityObservationProducerPolicy",
+    "TARGET_SIDE_DISTCC_PORT",
+    "TARGET_SIDE_DISTCC_PRODUCER_ID",
+    "TARGET_SIDE_DISTCC_PROTOCOL",
+    "TargetSideObservationAdapterError",
+    "TargetSideRuntimeObservationAdapter",
+    "TargetSideRuntimeSignal",
+    "TARGET_SIDE_PROCESS_PRODUCER_ID",
+    "TargetSideProcessObservationAdapter",
+    "TargetSideProcessObservationAdapterError",
+    "TargetSideProcessRuntimeSignal",
     "ThreatIntelligenceConfigurationError",
     "ThreatIntelligenceDataError",
     "ThreatIntelligenceInvalidResponseError",

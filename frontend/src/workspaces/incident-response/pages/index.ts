@@ -1,4 +1,5 @@
 import IncidentResponseOverviewPage from "./IncidentResponseOverviewPage";
+import IncidentQueuePage from "./IncidentQueuePage";
 
 export interface IncidentResponseAreaDefinition {
     title: string;
@@ -82,4 +83,4 @@ export function isIncidentResponseAreaId(
     return pageId !== null && pageId in incidentResponseAreaRegistry;
 }
 
-export { IncidentResponseOverviewPage };
+export { IncidentResponseOverviewPage, IncidentQueuePage };

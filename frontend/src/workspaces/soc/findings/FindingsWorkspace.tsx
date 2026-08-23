@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -22,6 +22,11 @@ import {
 } from "./FindingsApiClient";
 import FindingsList from "./FindingsList";
 import FindingsToolbar from "./FindingsToolbar";
+import {
+    getFindingIncidents,
+    type FindingIncidentReference,
+    FindingIncidentRequestError,
+} from "./FindingIncidentApiClient";
 
 interface FindingsWorkspaceProps {
     loadFindings?: () => Promise<readonly FindingSummary[]>;
@@ -29,14 +34,19 @@ interface FindingsWorkspaceProps {
     loadThreatIntelligence?: (
         findingId: string,
     ) => Promise<FindingThreatIntelligenceEnrichment>;
+    loadFindingIncidents?: (
+        findingId: string,
+    ) => Promise<readonly FindingIncidentReference[]>;
 }
 
 export default function FindingsWorkspace({
     loadFindings = getFindings,
     loadExplanation = generateFindingExplanation,
     loadThreatIntelligence = getFindingThreatIntelligence,
+    loadFindingIncidents = getFindingIncidents,
 }: FindingsWorkspaceProps) {
     const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
     const [selectedFinding, setSelectedFinding] =
         useState<FindingSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -53,38 +63,91 @@ export default function FindingsWorkspace({
     const [threatIntelligenceLoading, setThreatIntelligenceLoading] =
         useState(false);
     const threatIntelligenceRequestVersion = useRef(0);
+    const [refreshing, setRefreshing] = useState(false);
+    const [findingIncidents, setFindingIncidents] = useState<readonly FindingIncidentReference[]>([]);
+    const [findingIncidentsError, setFindingIncidentsError] = useState<string | null>(null);
+    const [findingIncidentsLoading, setFindingIncidentsLoading] = useState(false);
+    const [detailFeedbackActive, setDetailFeedbackActive] = useState(false);
+    const detailFeedbackTimer = useRef<number | null>(null);
+    const loadThreatIntelligenceRef = useRef(loadThreatIntelligence);
+    loadThreatIntelligenceRef.current = loadThreatIntelligence;
+    const autoFocusRequest = useRef<string | null>(null);
 
-    useEffect(() => {
-        let active = true;
+    const triggerDetailFeedback = () => {
+        setDetailFeedbackActive(false);
+        window.requestAnimationFrame(() => setDetailFeedbackActive(true));
+        if (detailFeedbackTimer.current !== null) {
+            window.clearTimeout(detailFeedbackTimer.current);
+        }
+        detailFeedbackTimer.current = window.setTimeout(() => {
+            setDetailFeedbackActive(false);
+            detailFeedbackTimer.current = null;
+        }, 2050);
+    };
 
-        loadFindings()
+    useEffect(() => () => {
+        if (detailFeedbackTimer.current !== null) {
+            window.clearTimeout(detailFeedbackTimer.current);
+        }
+    }, []);
+
+    const loadLiveFindings = () => {
+        setLoading(true);
+        setError(null);
+
+        return loadFindings()
             .then((loadedFindings) => {
-                if (!active) {
-                    return;
-                }
-
                 setFindings(loadedFindings);
-                setSelectedFinding(loadedFindings[0] ?? null);
+                const requestedFindingId = new URLSearchParams(
+                    window.location.search,
+                ).get("findingId");
+                const requestedFinding = loadedFindings.find(
+                    (finding) => finding.id === requestedFindingId,
+                ) ?? null;
+                setSelectedFinding(requestedFinding ?? loadedFindings[0] ?? null);
+                if (requestedFinding !== null) {
+                    triggerDetailFeedback();
+                }
             })
             .catch(() => {
-                if (active) {
-                    setError("Live findings could not be loaded.");
-                }
+                setError("Live findings could not be loaded.");
             })
             .finally(() => {
-                if (active) {
-                    setLoading(false);
-                }
+                setLoading(false);
             });
+    };
+
+    useEffect(() => {
+        void loadLiveFindings();
 
         return () => {
-            active = false;
             explanationRequestVersion.current += 1;
             threatIntelligenceRequestVersion.current += 1;
         };
     }, [loadFindings]);
 
+    const filteredFindings = useMemo(() => {
+        const query = searchQuery.trim().toLocaleLowerCase();
+        if (!query) {
+            return findings;
+        }
+
+        return findings.filter((finding) =>
+            [finding.id, finding.source, finding.title, finding.vendorSeverity, finding.asset]
+                .some((field) => field.toLocaleLowerCase().includes(query)),
+        );
+    }, [findings, searchQuery]);
+
+    const refreshFindings = () => {
+        if (refreshing) {
+            return;
+        }
+        setRefreshing(true);
+        void loadLiveFindings().finally(() => setRefreshing(false));
+    };
+
     const selectFinding = (finding: FindingSummary) => {
+        triggerDetailFeedback();
         explanationRequestVersion.current += 1;
         setSelectedFinding(finding);
         setExplanation(null);
@@ -94,6 +157,29 @@ export default function FindingsWorkspace({
         setThreatIntelligence(null);
         setThreatIntelligenceError(null);
         setThreatIntelligenceLoading(false);
+        setFindingIncidents([]);
+        setFindingIncidentsError(null);
+        setFindingIncidentsLoading(false);
+    };
+
+    const requestFindingIncidents = async () => {
+        if (selectedFinding === null || findingIncidentsLoading) {
+            return;
+        }
+
+        setFindingIncidentsLoading(true);
+        setFindingIncidentsError(null);
+        try {
+            setFindingIncidents(await loadFindingIncidents(selectedFinding.id));
+        } catch (requestError) {
+            if (requestError instanceof FindingIncidentRequestError && requestError.status === null) {
+                setFindingIncidentsError("Finding incidents could not reach the service.");
+            } else {
+                setFindingIncidentsError("Finding incidents could not be loaded.");
+            }
+        } finally {
+            setFindingIncidentsLoading(false);
+        }
     };
 
     const requestThreatIntelligence = async () => {
@@ -109,7 +195,7 @@ export default function FindingsWorkspace({
         setThreatIntelligenceLoading(true);
 
         try {
-            const result = await loadThreatIntelligence(findingId);
+            const result = await loadThreatIntelligenceRef.current(findingId);
             if (threatIntelligenceRequestVersion.current !== requestVersion) {
                 return;
             }
@@ -120,6 +206,7 @@ export default function FindingsWorkspace({
                 return;
             }
             setThreatIntelligence(result);
+            triggerDetailFeedback();
         } catch (requestError) {
             if (threatIntelligenceRequestVersion.current !== requestVersion) {
                 return;
@@ -133,6 +220,28 @@ export default function FindingsWorkspace({
             }
         }
     };
+
+    useEffect(() => {
+        const focus = new URLSearchParams(window.location.search).get("focus");
+        if (
+            focus !== "threat-intelligence"
+            || selectedFinding === null
+            || autoFocusRequest.current === selectedFinding.id
+        ) {
+            return;
+        }
+
+        autoFocusRequest.current = selectedFinding.id;
+        void requestThreatIntelligence();
+    }, [selectedFinding]);
+
+    useEffect(() => {
+        const focus = new URLSearchParams(window.location.search).get("focus");
+        if (focus !== "threat-intelligence" || threatIntelligence === null) {
+            return;
+        }
+        document.getElementById("finding-threat-intelligence")?.focus();
+    }, [threatIntelligence]);
 
     const requestExplanation = async () => {
         if (selectedFinding === null || explanationLoading) {
@@ -176,7 +285,12 @@ export default function FindingsWorkspace({
 
     return (
         <Stack spacing={2}>
-            <FindingsToolbar />
+            <FindingsToolbar
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
+                onRefresh={refreshFindings}
+                refreshing={refreshing}
+            />
 
             {loading && (
                 <Stack
@@ -185,7 +299,7 @@ export default function FindingsWorkspace({
                     sx={{ alignItems: "center" }}
                 >
                     <CircularProgress size={20} />
-                    <Typography>Loading live findings…</Typography>
+                    <Typography>Loading live findings</Typography>
                 </Stack>
             )}
 
@@ -195,7 +309,11 @@ export default function FindingsWorkspace({
                 <Alert severity="info">No live findings are available.</Alert>
             )}
 
-            {!loading && !error && findings.length > 0 && (
+            {!loading && !error && findings.length > 0 && filteredFindings.length === 0 && (
+                <Alert severity="info">No findings match the current search.</Alert>
+            )}
+
+            {!loading && !error && filteredFindings.length > 0 && (
                 <Box
                     sx={{
                         display: "grid",
@@ -209,7 +327,7 @@ export default function FindingsWorkspace({
                     }}
                 >
                     <FindingsList
-                        findings={findings}
+                        findings={filteredFindings}
                         selectedFindingId={selectedFinding?.id ?? null}
                         onSelect={selectFinding}
                     />
@@ -223,6 +341,11 @@ export default function FindingsWorkspace({
                         threatIntelligenceError={threatIntelligenceError}
                         threatIntelligenceLoading={threatIntelligenceLoading}
                         onLoadThreatIntelligence={requestThreatIntelligence}
+                        incidents={findingIncidents}
+                        incidentsError={findingIncidentsError}
+                        incidentsLoading={findingIncidentsLoading}
+                        onLoadIncidents={requestFindingIncidents}
+                        feedbackActive={detailFeedbackActive}
                     />
                 </Box>
             )}
@@ -233,7 +356,7 @@ export default function FindingsWorkspace({
 function threatIntelligenceErrorMessage(error: unknown): string {
     if (error instanceof ThreatIntelligenceRequestError) {
         if (error.status === 404) {
-            return "The selected finding is no longer available.";
+            return "Threat intelligence is not available for this finding.";
         }
         if (error.status === 502 || error.status === 503 || error.status === 504) {
             return "Threat intelligence sources are currently unavailable.";
@@ -248,7 +371,7 @@ function threatIntelligenceErrorMessage(error: unknown): string {
 function explanationErrorMessage(error: unknown): string {
     if (error instanceof FindingExplanationRequestError) {
         if (error.status === 404) {
-            return "The selected finding is no longer available.";
+            return "Finding explanation is not available for this finding.";
         }
         if (error.status === 503) {
             return "Finding explanation service is temporarily unavailable.";

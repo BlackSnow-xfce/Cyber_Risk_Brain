@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -37,11 +37,39 @@ class IncidentContextDataError(ValueError):
 
 
 class IncidentContextRepository(Protocol):
+    def list(self) -> tuple[SecurityIncidentContext, ...]:
+        ...
+
     def get(self, incident_id: str) -> SecurityIncidentContext | None:
+        ...
+
+    def find_by_finding_id(
+        self, finding_id: str
+    ) -> tuple["FindingIncidentReference", ...]:
         ...
 
     def save(self, context: SecurityIncidentContext) -> None:
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class FindingIncidentReference:
+    """Read-only incident reference derived from a canonical relationship."""
+
+    incident_id: str
+    relationship_id: str
+    relationship_role: IncidentRelationshipRole
+    lifecycle_status: IncidentLifecycleStatus
+
+    def __post_init__(self) -> None:
+        if not self.incident_id.strip():
+            raise ValueError("Incident ID must not be empty.")
+        if not self.relationship_id.strip():
+            raise ValueError("Incident relationship ID must not be empty.")
+        if not isinstance(self.relationship_role, IncidentRelationshipRole):
+            raise ValueError("Incident relationship role must be canonical.")
+        if not isinstance(self.lifecycle_status, IncidentLifecycleStatus):
+            raise ValueError("Incident lifecycle status must be canonical.")
 
 
 class FileIncidentContextRepository:
@@ -58,6 +86,35 @@ class FileIncidentContextRepository:
             if context.incident_id == normalized_id:
                 return context
         return None
+
+    def list(self) -> tuple[SecurityIncidentContext, ...]:
+        """Return every persisted canonical context, failing closed on bad data."""
+        document = self._read_document()
+        return tuple(self._parse_context(record) for record in document["incidents"])
+
+    def find_by_finding_id(
+        self, finding_id: str
+    ) -> tuple[FindingIncidentReference, ...]:
+        normalized_id = self._required_string(finding_id, "Finding ID")
+        document = self._read_document()
+        references: list[FindingIncidentReference] = []
+        for record in document["incidents"]:
+            context = self._parse_context(record)
+            for relationship in context.relationships:
+                if (
+                    relationship.role is IncidentRelationshipRole.INVESTIGATION_CANDIDATE
+                    and isinstance(relationship.target, FindingReference)
+                    and relationship.target.finding_id == normalized_id
+                ):
+                    references.append(
+                        FindingIncidentReference(
+                            incident_id=context.incident_id,
+                            relationship_id=relationship.relationship_id,
+                            relationship_role=relationship.role,
+                            lifecycle_status=context.lifecycle_status,
+                        )
+                    )
+        return tuple(references)
 
     def save(self, context: SecurityIncidentContext) -> None:
         if not isinstance(context, SecurityIncidentContext):

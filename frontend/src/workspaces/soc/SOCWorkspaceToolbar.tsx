@@ -13,26 +13,40 @@ import Panel from "@/ui/panel/Panel";
 
 interface SOCWorkspaceToolbarProps {
     searchLabel: string;
+    searchValue?: string;
+    onSearchChange?: (value: string) => void;
+    onRefresh?: () => void;
+    refreshing?: boolean;
     additionalControls?: ReactNode;
+    showFilter?: boolean;
     showSort?: boolean;
+    compact?: boolean;
 }
 
 export default function SOCWorkspaceToolbar({
     searchLabel,
+    searchValue = "",
+    onSearchChange,
+    onRefresh,
+    refreshing = false,
     additionalControls,
-    showSort = true,
+    showFilter = false,
+    showSort = false,
+    compact = false,
 }: SOCWorkspaceToolbarProps) {
     return (
-        <Panel>
+        <Panel sx={compact ? { p: 0.75, borderRadius: 1.5 } : undefined}>
             <Stack
                 direction={{ xs: "column", md: "row" }}
-                spacing={2}
+                spacing={compact ? 0.75 : 2}
                 sx={{ alignItems: { xs: "stretch", md: "center" } }}
             >
                 <TextField
                     fullWidth
                     size="small"
                     label={searchLabel}
+                    value={searchValue}
+                    onChange={(event) => onSearchChange?.(event.target.value)}
                     slotProps={{
                         input: {
                             startAdornment: (
@@ -52,17 +66,26 @@ export default function SOCWorkspaceToolbar({
                     useFlexGap
                     sx={{ flexWrap: "wrap" }}
                 >
-                    <Button variant="outlined" startIcon={<FilterListIcon />}>
-                        Filter
-                    </Button>
+                    {showFilter && (
+                        <Button variant="outlined" startIcon={<FilterListIcon />} disabled>
+                            Filter
+                        </Button>
+                    )}
                     {showSort && (
                         <Button variant="outlined" startIcon={<SortIcon />}>
                             Sort
                         </Button>
                     )}
-                    <Button variant="outlined" startIcon={<RefreshIcon />}>
-                        Refresh
-                    </Button>
+                    {onRefresh && (
+                        <Button
+                            variant="outlined"
+                            startIcon={<RefreshIcon />}
+                            onClick={onRefresh}
+                            disabled={refreshing}
+                        >
+                            {refreshing ? "Refreshing" : "Refresh"}
+                        </Button>
+                    )}
                 </Stack>
             </Stack>
         </Panel>

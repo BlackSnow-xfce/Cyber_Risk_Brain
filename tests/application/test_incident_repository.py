@@ -41,6 +41,15 @@ def test_unknown_incident_returns_none(monkeypatch) -> None:
     assert repository.get("missing-incident") is None
 
 
+def test_list_returns_all_canonical_contexts(monkeypatch) -> None:
+    _, repository = _repository(monkeypatch)
+    repository.save(_context())
+
+    listed = repository.list()
+
+    assert listed == (_context(),)
+
+
 def test_missing_configuration_is_controlled() -> None:
     repository = FileIncidentContextRepository(None)
 
@@ -65,6 +74,18 @@ def test_invalid_persisted_contract_is_rejected(monkeypatch) -> None:
 
     with pytest.raises(IncidentContextDataError):
         repository.get("bad")
+
+
+def test_list_rejects_invalid_persisted_contract(monkeypatch) -> None:
+    _, repository = _repository(
+        monkeypatch,
+        source=json.dumps(
+            {"contractVersion": "1.0", "incidents": [{"incidentId": "bad"}]}
+        ),
+    )
+
+    with pytest.raises(IncidentContextDataError):
+        repository.list()
 
 
 def test_creation_requires_canonical_context(monkeypatch) -> None:

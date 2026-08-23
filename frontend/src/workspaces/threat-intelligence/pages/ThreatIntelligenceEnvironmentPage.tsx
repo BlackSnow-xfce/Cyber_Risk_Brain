@@ -4,7 +4,10 @@ import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import { useNavigate } from "react-router-dom";
 
 import Panel from "@/ui/panel/Panel";
 import type { FindingSummary } from "@/workspaces/soc/findings/FindingSummary";
@@ -19,9 +22,11 @@ interface ThreatIntelligenceEnvironmentPageProps {
 export default function ThreatIntelligenceEnvironmentPage({
     loadFindings = getFindings,
 }: ThreatIntelligenceEnvironmentPageProps) {
+    const navigate = useNavigate();
     const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [query, setQuery] = useState("");
 
     useEffect(() => {
         let active = true;
@@ -41,6 +46,17 @@ export default function ThreatIntelligenceEnvironmentPage({
             active = false;
         };
     }, [loadFindings]);
+
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const filteredFindings = normalizedQuery === ""
+        ? findings
+        : findings.filter((finding) => [
+            finding.id,
+            finding.title,
+            finding.asset,
+            finding.source,
+            finding.vendorSeverity,
+        ].some((field) => field.toLocaleLowerCase().includes(normalizedQuery)));
 
     return (
         <Stack spacing={3}>
@@ -63,11 +79,26 @@ export default function ThreatIntelligenceEnvironmentPage({
                 </Alert>
             )}
 
+            {!loading && !error && findings.length > 0 && (
+                <TextField
+                    label="Search findings"
+                    placeholder="Title, asset, source or finding ID"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    fullWidth
+                    slotProps={{ htmlInput: { "aria-label": "Search findings" } }}
+                />
+            )}
+
             {!loading && !error && findings.length === 0 && (
                 <Alert severity="info">No internal findings are available.</Alert>
             )}
 
-            {!loading && !error && findings.map((finding) => (
+            {!loading && !error && findings.length > 0 && filteredFindings.length === 0 && (
+                <Alert severity="info">No findings match the current search.</Alert>
+            )}
+
+            {!loading && !error && filteredFindings.map((finding) => (
                 <Panel key={finding.id} component="article">
                     <Stack spacing={1.5}>
                         <Stack
@@ -85,6 +116,13 @@ export default function ThreatIntelligenceEnvironmentPage({
                             <Chip label="TI evidence: Not evaluated" size="small" variant="outlined" />
                             <Chip label="Completeness: Not evaluated" size="small" variant="outlined" />
                         </Stack>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => navigate(`/findings?findingId=${encodeURIComponent(finding.id)}&focus=threat-intelligence`)}
+                        >
+                            Open finding-scoped Threat Intelligence
+                        </Button>
                     </Stack>
                 </Panel>
             ))}

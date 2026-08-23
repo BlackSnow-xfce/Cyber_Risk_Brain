@@ -1,10 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FindingsWorkspace from "./FindingsWorkspace";
 import type { FindingExplanationResult } from "./FindingExplanation";
 import { FindingExplanationRequestError } from "./FindingsApiClient";
 import type { FindingSummary } from "./FindingSummary";
+import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 
 afterEach(cleanup);
 
@@ -98,7 +99,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
-        expect(screen.getByText("Loading live findings…")).toBeInTheDocument();
+        expect(screen.getByText("Loading live findings")).toBeInTheDocument();
     });
 
     it("shows the error state without mock fallback", async () => {
@@ -121,6 +122,127 @@ describe("FindingsWorkspace", () => {
 
         expect(
             await screen.findByText("No live findings are available."),
+        ).toBeInTheDocument();
+    });
+
+    it("filters findings and resets to all findings when search is cleared", async () => {
+        render(
+            <FindingsWorkspace
+                loadFindings={() => Promise.resolve([finding, secondFinding])}
+            />,
+        );
+
+        const search = await screen.findByLabelText("Search findings");
+        fireEvent.change(search, { target: { value: "Second" } });
+
+        expect(screen.getByText("Second controlled finding")).toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: /Controlled scanner finding/ }),
+        ).toBeNull();
+
+        fireEvent.change(search, { target: { value: "" } });
+        expect(screen.getAllByText("Controlled scanner finding").length).toBeGreaterThan(0);
+    });
+
+    it("gives the detail panel update feedback when the selected finding changes", async () => {
+        render(
+            <FindingsWorkspace
+                loadFindings={() => Promise.resolve([finding, secondFinding])}
+            />,
+        );
+
+        await screen.findAllByText("Controlled scanner finding");
+        fireEvent.click(screen.getByRole("button", { name: /Second controlled finding/ }));
+
+        await waitFor(() => {
+            expect(screen.getByRole("complementary")).toHaveClass("finding-details-panel--updated");
+        });
+    });
+
+    it("shows an empty state when search has no matching finding", async () => {
+        render(
+            <FindingsWorkspace
+                loadFindings={() => Promise.resolve([finding])}
+            />,
+        );
+
+        const search = await screen.findByLabelText("Search findings");
+        fireEvent.change(search, { target: { value: "does-not-exist" } });
+
+        expect(
+            screen.getByText("No findings match the current search."),
+        ).toBeInTheDocument();
+    });
+
+    it("restores a deep-linked finding and automatically loads focused threat intelligence", async () => {
+        window.history.pushState({}, "", "/findings?findingId=result-001&focus=threat-intelligence");
+        const loadThreatIntelligence = vi.fn<() => Promise<FindingThreatIntelligenceEnrichment>>().mockResolvedValue({
+            finding_id: finding.id,
+            finding_source: finding.source,
+            finding_title: finding.title,
+            relationships: [],
+        });
+
+        try {
+            render(
+                <FindingsWorkspace
+                    loadFindings={() => Promise.resolve([finding, secondFinding])}
+                    loadThreatIntelligence={loadThreatIntelligence}
+                />,
+            );
+
+            expect(await screen.findByText("Threat Intelligence")).toBeInTheDocument();
+            expect(loadThreatIntelligence).toHaveBeenCalledWith(finding.id);
+            await waitFor(() => {
+                expect(screen.getByRole("complementary")).toHaveClass("finding-details-panel--updated");
+            });
+        } finally {
+            window.history.pushState({}, "", "/");
+        }
+    });
+
+    it("loads linked incidents from the selected finding details", async () => {
+        render(
+            <FindingsWorkspace
+                loadFindings={() => Promise.resolve([finding])}
+                loadFindingIncidents={() =>
+                    Promise.resolve([
+                        {
+                            incident_id: "incident-task0077-distcc-live",
+                            relationship_id: "relationship-1",
+                            relationship_role: "investigation_candidate",
+                            lifecycle_status: "investigating",
+                        },
+                    ])
+                }
+            />,
+        );
+
+        fireEvent.click(await screen.findByRole("button", { name: "Load incidents" }));
+
+        expect(
+            await screen.findByRole("link", {
+                name: /incident-task0077-distcc-live/,
+            }),
+        ).toHaveAttribute(
+            "href",
+            "/incident-response/incidents/incident-task0077-distcc-live/command-center",
+        );
+    });
+
+    it("shows a controlled error when refresh fails", async () => {
+        const loadFindings = vi
+            .fn()
+            .mockResolvedValueOnce([finding])
+            .mockRejectedValueOnce(new Error("offline"));
+
+        render(<FindingsWorkspace loadFindings={loadFindings} />);
+        await screen.findAllByText("Controlled scanner finding");
+
+        fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+        expect(
+            await screen.findByText("Live findings could not be loaded."),
         ).toBeInTheDocument();
     });
 
@@ -250,7 +372,7 @@ describe("FindingsWorkspace", () => {
     });
 
     it.each([
-        [404, "The selected finding is no longer available."],
+        [404, "Finding explanation is not available for this finding."],
         [503, "Finding explanation service is temporarily unavailable."],
         [500, "Finding explanation could not be generated."],
         [null, "Finding explanation request could not reach the service."],

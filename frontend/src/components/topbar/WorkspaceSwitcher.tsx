@@ -6,6 +6,7 @@ import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
+import { useNavigate } from "react-router-dom";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspaceId } from "@/types/workspace";
@@ -51,6 +52,7 @@ export default function WorkspaceSwitcher() {
         workspace,
         setWorkspace,
     } = useWorkspace();
+    const navigate = useNavigate();
 
     const [anchorEl, setAnchorEl] =
         useState<HTMLElement | null>(null);
@@ -275,6 +277,11 @@ export default function WorkspaceSwitcher() {
                                                     setWorkspace(
                                                         item.id,
                                                     );
+                                                    navigate(
+                                                        workspaceRoutes[
+                                                            item.id
+                                                        ],
+                                                    );
                                                     setAnchorEl(
                                                         null,
                                                     );
@@ -400,3 +407,13 @@ export default function WorkspaceSwitcher() {
         </>
     );
 }
+
+const workspaceRoutes: Record<WorkspaceId, string> = {
+    [WorkspaceId.DECISION_CENTER]: "/",
+    [WorkspaceId.THREAT_HUNTING]: "/threat-hunting",
+    [WorkspaceId.THREAT_INTELLIGENCE]: "/threat-intelligence",
+    [WorkspaceId.INCIDENT_RESPONSE]: "/incident-response",
+    [WorkspaceId.EXECUTIVE]: "/executive",
+    [WorkspaceId.RISK_MANAGEMENT]: "/risk-management",
+    [WorkspaceId.ADMINISTRATION]: "/administration",
+};

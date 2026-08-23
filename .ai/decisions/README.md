@@ -226,10 +226,18 @@ Ein abgelöster ADR bleibt erhalten. Der Status verweist eindeutig auf den neuen
 | [ADR-0007](ADR-0007-domain-integration-principles.md) | Domain Integration Principles | ACCEPTED |
 | [ADR-0008](ADR-0008-decision-lifecycle-human-governance.md) | Decision Lifecycle & Human Decision Governance | ACCEPTED |
 | [ADR-0009](ADR-0009-security-incident-context-domain-ownership.md) | Security Incident Context & Domain Ownership | ACCEPTED |
+| [ADR-0010](ADR-0010-llm-trust-boundary-independent-security-enforcement.md) | LLM Trust Boundary and Independent Security Enforcement | ACCEPTED |
+| [ADR-0011](ADR-0011-authorization-before-retrieval-ai-context-admission.md) | Authorization Before Retrieval and AI Context Admission | ACCEPTED |
+| [ADR-0012](ADR-0012-retrieved-content-resource-binding-admission-integrity.md) | Retrieved Content Resource Binding and Admission Integrity | ACCEPTED |
+| [ADR-0013](ADR-0013-trusted-retrieval-boundary-bound-context-construction.md) | Trusted Retrieval Boundary and Bound Context Construction | ACCEPTED |
+| [ADR-0014](ADR-0014-ai-data-classification-minimization-model-boundary-egress.md) | AI Data Classification, Minimization and Model-Boundary Egress | ACCEPTED |
+| [ADR-0015](ADR-0015-ai-output-security-independent-dlp-boundary.md) | AI Output Security and Independent DLP Boundary | ACCEPTED |
 
 ### Proposed
 
-Noch keine ADRs.
+| [ADR-0016](ADR-0016-context-resolution-availability-semantics.md) | Context Resolution & Availability Semantics | ACCEPTED |
+| [ADR-0017](ADR-0017-security-observation-evidence-trust-model.md) | Security Observation & Evidence Trust Model | ACCEPTED |
+| [ADR-0018](ADR-0018-grounded-ai-context-controlled-model-egress.md) | Grounded AI Context & Controlled Model Egress | ACCEPTED |
 
 ### Superseded
 

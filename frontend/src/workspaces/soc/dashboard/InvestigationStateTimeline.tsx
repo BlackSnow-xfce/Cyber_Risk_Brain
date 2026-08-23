@@ -1,0 +1,8 @@
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+
+export default function InvestigationStateTimeline({ finding, incident, ti }: { finding: boolean; incident: boolean; ti: boolean }) {
+    const states = [["Finding", finding ? "KNOWN" : "NOT AVAILABLE"], ["Threat Intelligence", ti ? "RELATED / ON DEMAND" : "NOT AVAILABLE"], ["Asset", finding ? "BOUND" : "NOT AVAILABLE"], ["Incident", incident ? "LINKED" : "NOT AVAILABLE"], ["Evidence / Observation", "NOT LOADED"], ["Execution / Compromise", "NOT VERIFIED"]];
+    return <Box component="section" aria-label="Investigation state timeline" sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, p: 1.1 }}><Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Investigation state</Typography><Stack spacing={0.45} sx={{ mt: 0.8, position: "relative", pl: 0.2, "&:before": { content: "\"\"", position: "absolute", left: 4, top: 5, bottom: 5, width: 1, backgroundColor: "divider" } }}>{states.map(([label, state]) => <Stack key={label} direction="row" spacing={0.8} sx={{ alignItems: "center", position: "relative", zIndex: 1 }}><Box sx={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: state.includes("NOT") ? "background.paper" : "primary.main", border: "2px solid", borderColor: state.includes("NOT") ? "text.disabled" : "primary.light", flexShrink: 0 }} /><Typography variant="caption" sx={{ flex: 1, fontWeight: 600 }}>{label}</Typography><Typography variant="caption" color={state.includes("NOT") ? "text.secondary" : "primary.light"} sx={{ fontWeight: 800 }}>{state}</Typography></Stack>)}</Stack></Box>;
+}

@@ -24,6 +24,8 @@ from core.incident_response import (
     ThreatIntelligenceReference,
 )
 
+from application.incident_reference_resolution import IncidentReferenceResolutionService
+
 
 class IncidentCommandCenterIncidentNotFoundError(LookupError):
     """Raised when the incident owner cannot provide the requested context."""
@@ -31,6 +33,12 @@ class IncidentCommandCenterIncidentNotFoundError(LookupError):
 
 class IncidentCommandCenterQueryService:
     """Assemble a read-only command-center projection from owner results."""
+
+    def __init__(
+        self,
+        reference_resolver: IncidentReferenceResolutionService | None = None,
+    ) -> None:
+        self._reference_resolver = reference_resolver
 
     def project(
         self,
@@ -46,6 +54,9 @@ class IncidentCommandCenterQueryService:
                 "Security incident context was not found."
             )
 
+        resolutions = tuple(resolutions)
+        if not resolutions and self._reference_resolver is not None:
+            resolutions = self._reference_resolver.resolve(incident)
         relationships = incident.relationships
         resolution_map = self._resolution_map(resolutions)
         sections: list[IncidentProjectionSection] = []

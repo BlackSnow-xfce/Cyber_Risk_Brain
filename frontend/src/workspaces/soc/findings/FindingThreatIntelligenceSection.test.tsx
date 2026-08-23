@@ -173,7 +173,7 @@ describe("finding threat intelligence integration", () => {
         fireEvent.click(loadButton);
         fireEvent.click(loadButton);
         expect(lookup).toHaveBeenCalledOnce();
-        expect(screen.getByRole("button", { name: "Loadingâ€¦" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Loading" })).toBeDisabled();
 
         fireEvent.click(screen.getByRole("button", { name: /Second finding/ }));
         await act(async () => {
@@ -181,11 +181,11 @@ describe("finding threat intelligence integration", () => {
             await pending.promise;
         });
         expect(screen.queryByText("CVE-2004-2687")).toBeNull();
-        expect(screen.queryByText("Loading finding threat intelligenceâ€¦")).toBeNull();
+        expect(screen.queryByText("Loading finding threat intelligence")).toBeNull();
     });
 
     it.each([
-        [404, "The selected finding is no longer available."],
+        [404, "Threat intelligence is not available for this finding."],
         [503, "Threat intelligence sources are currently unavailable."],
         [500, "Threat intelligence could not be loaded for this finding."],
         [null, "Threat intelligence request could not reach the service."],

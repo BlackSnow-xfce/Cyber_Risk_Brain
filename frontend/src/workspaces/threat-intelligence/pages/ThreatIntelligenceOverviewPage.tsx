@@ -1,43 +1,44 @@
 import Box from "@mui/material/Box";
+import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import { useEffect, useState } from "react";
 
 import IntelligenceStateCard from "./IntelligenceStateCard";
 import ThreatIntelligencePageHeader from "./ThreatIntelligencePageHeader";
+import type { FindingSummary } from "@/workspaces/soc/findings/FindingSummary";
+import { getFindings } from "@/workspaces/soc/findings/FindingsApiClient";
 
-const overviewSections = [
-    {
-        title: "Active Threats",
-        description: "No active-threat feed is connected to a PredatorAI backend contract.",
-        status: "No data" as const,
-    },
-    {
-        title: "Known Exploited Vulnerabilities",
-        description: "CISA KEV intelligence is not available through the current backend API.",
-        status: "Unavailable" as const,
-    },
-    {
-        title: "High EPSS Vulnerabilities",
-        description: "EPSS data is not available through the current backend API.",
-        status: "Unavailable" as const,
-    },
-    {
-        title: "Emerging Threats",
-        description: "No emerging-threat source is connected.",
-        status: "No data" as const,
-    },
-    {
-        title: "Threat Intelligence Sources",
-        description: "NVD, EPSS and CISA KEV require a future backend read contract.",
-        status: "Unavailable" as const,
-    },
-    {
-        title: "Environment Relevance",
-        description: "Threat-intelligence correlation with internal findings is not evaluated.",
-        status: "Not evaluated" as const,
-    },
-];
+interface ThreatIntelligenceOverviewPageProps {
+    loadFindings?: () => Promise<readonly FindingSummary[]>;
+}
 
-export default function ThreatIntelligenceOverviewPage() {
+export default function ThreatIntelligenceOverviewPage({ loadFindings = getFindings }: ThreatIntelligenceOverviewPageProps) {
+    const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        loadFindings().then((result) => {
+            if (active) setFindings(result);
+        }).catch(() => {
+            if (active) setError(true);
+        }).finally(() => {
+            if (active) setLoading(false);
+        });
+        return () => { active = false; };
+    }, [loadFindings]);
+
+    const overviewSections = [
+        { title: "Findings in environment", description: loading ? "Loading live findings…" : error ? "Live findings are unavailable." : `${findings.length} findings loaded from PredatorAI.`, status: loading ? "Loading" : error ? "Unavailable" : "Available" },
+        { title: "CVE / vulnerability intelligence", description: "Resolve an exact CVE in Explorer or open a finding-scoped TI view.", status: "On demand" },
+        { title: "NVD / CVSS / EPSS / CISA KEV", description: "Displayed when returned by the vulnerability intelligence contract.", status: "Source-backed" },
+        { title: "Provenance and completeness", description: "Each returned fact retains source and availability metadata.", status: "Preserved" },
+        { title: "Environment Relevance", description: "Finding relationships are shown only when the backend returns them.", status: "Not evaluated" },
+        { title: "Unsupported intelligence objects", description: "Attacker, campaign, malware and IOC relationships are not connected.", status: "Not connected" },
+    ];
     return (
         <Stack spacing={3}>
             <ThreatIntelligencePageHeader
@@ -57,9 +58,11 @@ export default function ThreatIntelligenceOverviewPage() {
                 }}
             >
                 {overviewSections.map((section) => (
-                    <IntelligenceStateCard key={section.title} {...section} />
+                    <IntelligenceStateCard key={section.title} title={section.title} description={section.description} status={section.status} />
                 ))}
             </Box>
+            {loading && <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}><CircularProgress size={18} /><Typography variant="body2">Loading live environment context…</Typography></Stack>}
+            {error && <Alert severity="warning">Live findings could not be loaded; no intelligence conclusion is inferred.</Alert>}
         </Stack>
     );
 }

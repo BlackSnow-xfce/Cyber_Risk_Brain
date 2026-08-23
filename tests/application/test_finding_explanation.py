@@ -16,6 +16,7 @@ from application import (
     FindingExplanationModelResponse,
     FindingExplanationProviderError,
     FindingExplanationService,
+    finding_explanation_output_schema,
     FindingExplanationTimeoutError,
     InferenceKind,
     RiskAssessmentInput,
@@ -29,6 +30,14 @@ from core.enterprise_context import (
     AssetIdentifierType,
     ObservedAssetIdentifier,
 )
+from core.ai_context import AIContextClassification
+from core.ai_disclosure import (
+    AIOutputDisclosureDecision,
+    AIOutputDisclosureDecisionValue,
+    AIOutputDisclosureReason,
+)
+from core.ai_egress import AIModelEgressPurpose
+from core.ai_model_selection import AIModelSelectionError, AIModelSelectionPolicy
 from core.models import UniversalFinding
 from infrastructure import OpenAIFindingExplanationModel
 
@@ -167,6 +176,51 @@ class StubModel:
         )
 
 
+def _approved_selection():
+    return AIModelSelectionPolicy().resolve(
+        AIModelEgressPurpose.FINDING_EXPLANATION,
+    )
+
+
+class GovernedModel:
+    provider_id = "openai"
+    model_id = "gpt-5.6"
+    def __init__(self, response_identity=None) -> None:
+        self.selection = None
+        self.response_identity = response_identity
+
+    def generate(
+        self,
+        request: FindingExplanationModelRequest,
+        selection,
+    ) -> FindingExplanationModelResponse:
+        self.selection = selection
+        provider_id, model_id = self.response_identity or (
+            self.provider_id,
+            self.model_id,
+        )
+        return FindingExplanationModelResponse(
+            provider_id=provider_id,
+            model_id=model_id,
+            output=_valid_output(),
+        )
+
+
+class DenyDisclosurePolicy:
+    def evaluate(
+        self,
+        purpose: AIModelEgressPurpose,
+        classification: AIContextClassification,
+    ) -> AIOutputDisclosureDecision:
+        return AIOutputDisclosureDecision(
+            purpose=purpose,
+            classification=classification,
+            decision=AIOutputDisclosureDecisionValue.DENY,
+            reason=AIOutputDisclosureReason.OUTPUT_SECURITY_CHECK_REQUIRED,
+            decision_source_reference="test:deny-disclosure",
+        )
+
+
 def test_input_builder_is_deterministic_and_preserves_missing_context() -> None:
     first, finding, context, risk_result = _input()
     second = FindingExplanationInputBuilder.build(
@@ -229,7 +283,11 @@ def test_prompt_injection_title_is_only_untrusted_data() -> None:
     assert injected not in request.instructions
     assert json.loads(request.untrusted_data_json) == {
         "classification": "UNTRUSTED_SECURITY_DATA",
-        "data": explanation_input.model_data(),
+        "data": explanation_input.model_egress_data(),
+    }
+    assert set(json.loads(request.untrusted_data_json)["data"]) == {
+        "finding.title",
+        "finding.vendor_severity",
     }
     assert result.generation_status is (
         FindingExplanationGenerationStatus.GENERATED
@@ -261,6 +319,63 @@ def test_valid_output_separates_facts_inferences_and_provenance() -> None:
     assert not hasattr(result, "score")
     assert not hasattr(result, "decision")
     assert not hasattr(result, "evidence")
+
+
+def test_output_disclosure_policy_denies_after_single_provider_call() -> None:
+    explanation_input, _, _, _ = _input()
+    model = StubModel(_valid_output())
+
+    result = FindingExplanationService(
+        model,
+        disclosure_policy=DenyDisclosurePolicy(),
+    ).explain(explanation_input)
+
+    assert result.generation_status is (
+        FindingExplanationGenerationStatus.OUTPUT_SECURITY_DENIED
+    )
+    assert result.model_output is None
+    assert result.provider_id == model.provider_id
+    assert len(model.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "leakage_text",
+    [
+        "-----BEGIN RSA PRIVATE KEY-----\\nsecret material\\n-----END RSA PRIVATE KEY-----",
+        "password = hunter2",
+        "api_key: sk-live-example-value",
+    ],
+)
+def test_output_security_denial_blocks_disclosure_without_leaking_output(
+    leakage_text: str,
+) -> None:
+    explanation_input, _, _, _ = _input()
+    output = deepcopy(_valid_output())
+    output["summary"]["text"] = leakage_text
+    model = StubModel(output)
+
+    result = FindingExplanationService(model).explain(explanation_input)
+
+    assert result.generation_status is (
+        FindingExplanationGenerationStatus.OUTPUT_SECURITY_DENIED
+    )
+    assert result.model_output is None
+    assert leakage_text not in repr(result)
+    assert len(model.requests) == 1
+
+
+def test_security_terminology_without_secret_value_remains_disclosable() -> None:
+    explanation_input, _, _, _ = _input()
+    output = deepcopy(_valid_output())
+    output["summary"]["text"] = (
+        "Rotate exposed credentials and review password and API key handling."
+    )
+    model = StubModel(output)
+
+    result = FindingExplanationService(model).explain(explanation_input)
+
+    assert result.generation_status is FindingExplanationGenerationStatus.GENERATED
+    assert len(model.requests) == 1
 
 
 def test_explanation_does_not_start_legacy_or_decision_pipelines(
@@ -431,13 +546,13 @@ def test_openai_adapter_uses_responses_api_and_strict_schema() -> None:
         session=session,
     )
 
-    response = adapter.generate(request)
+    response = adapter.generate(request, _approved_selection())
 
     call = session.calls[0]
     payload = call["json"]
     assert isinstance(payload, dict)
     assert call["url"] == "https://api.openai.com/v1/responses"
-    assert payload["model"] == "gpt-5.6-terra"
+    assert payload["model"] == "gpt-5.6"
     assert payload["text"]["format"]["type"] == "json_schema"
     assert payload["text"]["format"]["strict"] is True
     serialized_schema = json.dumps(payload["text"]["format"]["schema"])
@@ -448,9 +563,55 @@ def test_openai_adapter_uses_responses_api_and_strict_schema() -> None:
     assert payload["input"][1]["role"] == "user"
     assert payload["input"][1]["content"] == request.untrusted_data_json
     assert response.provider_id == "openai"
-    assert response.model_id == "gpt-5.6-terra"
+    assert response.model_id == "gpt-5.6"
     assert response.output == _valid_output()
     assert "configured-test-credential" not in json.dumps(payload)
+
+
+def test_finding_explanation_schema_matches_statement_semantics() -> None:
+    schema = finding_explanation_output_schema()
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+
+    summary = properties["summary"]
+    assert summary["anyOf"][0]["properties"]["kind"]["enum"] == [
+        InferenceKind.GENERAL_SECURITY_REASONING.value
+    ]
+    assert summary["anyOf"][0]["properties"]["basis_fact_ids"]["maxItems"] == 0
+    assert summary["anyOf"][1]["properties"]["kind"]["enum"] == [
+        InferenceKind.CONTEXTUAL_INFERENCE.value
+    ]
+    assert summary["anyOf"][1]["properties"]["basis_fact_ids"]["minItems"] == 1
+
+    organizational = properties["organizational_relevance"]["items"]
+    assert organizational["properties"]["kind"]["enum"] == [
+        InferenceKind.CONTEXTUAL_INFERENCE.value
+    ]
+    assert organizational["properties"]["basis_fact_ids"]["minItems"] == 1
+
+
+def test_openai_adapter_defaults_to_supported_model() -> None:
+    adapter = OpenAIFindingExplanationModel(
+        "configured-test-credential",
+        12.0,
+        session=RecordingSession(_provider_response(_valid_output())),
+    )
+
+    assert adapter.model_id == "gpt-5.6"
+
+
+def test_openai_adapter_uses_explicit_model_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import settings
+
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "configured-test-credential")
+    monkeypatch.setattr(settings, "OPENAI_EXPLANATION_TIMEOUT_SECONDS", "12")
+    monkeypatch.setattr(settings, "OPENAI_FINDING_EXPLANATION_MODEL", "gpt-5.6")
+
+    adapter = OpenAIFindingExplanationModel.from_settings()
+
+    assert adapter.model_id == "gpt-5.6"
 
 
 def test_openai_adapter_missing_configuration_is_controlled() -> None:
@@ -458,8 +619,37 @@ def test_openai_adapter_missing_configuration_is_controlled() -> None:
 
     with pytest.raises(FindingExplanationConfigurationError):
         adapter.generate(
-            FindingExplanationModelRequest("instructions", "{}", {})
+            FindingExplanationModelRequest("instructions", "{}", {}),
+            _approved_selection(),
         )
+
+
+def test_openai_adapter_requires_selection_decision() -> None:
+    adapter = OpenAIFindingExplanationModel(
+        "configured-test-credential",
+        12.0,
+        session=RecordingSession(_provider_response(_valid_output())),
+    )
+
+    with pytest.raises(AIModelSelectionError):
+        adapter.generate(FindingExplanationModelRequest("instructions", "{}", {}))
+
+
+def test_openai_adapter_runtime_model_mismatch_fails_before_network() -> None:
+    session = RecordingSession(_provider_response(_valid_output()))
+    adapter = OpenAIFindingExplanationModel(
+        "configured-test-credential",
+        12.0,
+        session=session,
+        model_id="unapproved-model",
+    )
+
+    with pytest.raises(AIModelSelectionError):
+        adapter.generate(
+            FindingExplanationModelRequest("instructions", "{}", {}),
+            _approved_selection(),
+        )
+    assert session.calls == []
 
 
 @pytest.mark.parametrize(
@@ -495,5 +685,59 @@ def test_openai_adapter_failures_are_controlled(
 
     with pytest.raises(expected_error):
         adapter.generate(
-            FindingExplanationModelRequest("instructions", "{}", {})
+            FindingExplanationModelRequest("instructions", "{}", {}),
+            _approved_selection(),
         )
+
+
+def test_governed_selection_is_traceable_and_used_for_execution() -> None:
+    model = GovernedModel()
+    result = FindingExplanationService(
+        model,
+        model_selection_policy=AIModelSelectionPolicy(),
+    ).explain(_input()[0])
+
+    assert result.generation_status is FindingExplanationGenerationStatus.GENERATED
+    assert model.selection == result.selection_decision
+    assert result.selection_decision is not None
+    assert result.selection_decision.purpose is AIModelEgressPurpose.FINDING_EXPLANATION
+    assert result.selection_decision.provider_id == "openai"
+    assert result.selection_decision.model_id == "gpt-5.6"
+    assert result.selection_decision.execution_binding_version == "1.0"
+    assert (
+        result.selection_decision.selection_policy_reference
+        == "policy:ai-model-selection:finding-explanation:1.0"
+    )
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        ("unknown", "gpt-5.6"),
+        ("openai", "unknown"),
+    ],
+)
+def test_unapproved_runtime_identity_fails_closed(
+    identity: tuple[str, str],
+) -> None:
+    model = GovernedModel(response_identity=identity)
+    result = FindingExplanationService(
+        model,
+        model_selection_policy=AIModelSelectionPolicy(),
+    ).explain(_input()[0])
+
+    assert result.generation_status is FindingExplanationGenerationStatus.CONFIGURATION_ERROR
+    assert result.model_output is None
+    assert result.selection_decision == _approved_selection()
+
+
+def test_model_output_cannot_change_approved_selection() -> None:
+    model = GovernedModel()
+    result = FindingExplanationService(
+        model,
+        model_selection_policy=AIModelSelectionPolicy(),
+    ).explain(_input()[0])
+
+    assert result.selection_decision == _approved_selection()
+    assert result.selection_decision is not None
+    assert result.selection_decision.model_id == "gpt-5.6"

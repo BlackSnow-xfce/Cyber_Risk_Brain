@@ -22,7 +22,13 @@ export default function FindingThreatIntelligenceSection({
     onLoad,
 }: FindingThreatIntelligenceSectionProps) {
     return (
-        <Stack component="section" spacing={2} aria-label="Finding threat intelligence">
+        <Stack
+            component="section"
+            spacing={2}
+            aria-label="Finding threat intelligence"
+            id="finding-threat-intelligence"
+            tabIndex={-1}
+        >
             <Divider />
             <Stack spacing={0.5}>
                 <Typography variant="h6">Threat Intelligence</Typography>
@@ -33,13 +39,13 @@ export default function FindingThreatIntelligenceSection({
             </Stack>
 
             <Button variant="outlined" onClick={onLoad} disabled={loading}>
-                {loading ? "Loadingâ€¦" : "Load Threat Intelligence"}
+                {loading ? "Loading" : "Load Threat Intelligence"}
             </Button>
 
             {loading && (
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <CircularProgress size={20} />
-                    <Typography>Loading finding threat intelligenceâ€¦</Typography>
+                    <Typography>Loading finding threat intelligence</Typography>
                 </Stack>
             )}
 

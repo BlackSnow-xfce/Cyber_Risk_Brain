@@ -25,3 +25,25 @@ export function isSOCPageId(
 ): pageId is SOCPageId {
     return pageId !== null && pageId in socPageRegistry;
 }
+
+export function socPageIdFromPathname(pathname: string): SOCPageId {
+    if (pathname === "/findings" || pathname.startsWith("/findings/")) {
+        return "findings";
+    }
+    if (pathname === "/investigations" || pathname.startsWith("/investigations/")) {
+        return "investigations";
+    }
+    if (pathname === "/assets" || pathname.startsWith("/assets/")) {
+        return "assets";
+    }
+    if (pathname === "/threat-intelligence" || pathname.startsWith("/threat-intelligence/")) {
+        return "threat-intelligence";
+    }
+    if (pathname === "/explainability" || pathname.startsWith("/explainability/")) {
+        return "explainability";
+    }
+    if (pathname === "/exposure" || pathname.startsWith("/exposure/")) {
+        return "exposure";
+    }
+    return defaultSOCPageId;
+}

@@ -7,7 +7,7 @@ import Panel from "@/ui/panel/Panel";
 interface IntelligenceStateCardProps {
     title: string;
     description: string;
-    status: "No data" | "Unavailable" | "Not evaluated";
+    status: string;
 }
 
 export default function IntelligenceStateCard({

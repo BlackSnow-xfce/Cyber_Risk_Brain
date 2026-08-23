@@ -12,16 +12,20 @@ from application import (
     FindingExplanationResult,
     FindingExplanationStatement,
     FindingExplanationUseCase,
+    build_finding_explanation_authorization,
     FindingNotFoundError,
     FindingExplanationService,
     FindingSelectionError,
     IncidentCommandCenterIncidentNotFoundError,
     IncidentCommandCenterQueryService,
+    IncidentReferenceResolutionService,
     IncidentContextConfigurationError,
     IncidentContextDataError,
     FileIncidentContextRepository,
+    IncidentQueueQueryService,
     FindingThreatIntelligenceEnrichment,
     FindingThreatIntelligenceUseCase,
+    FindingIncidentQueryService,
     FindingsConfigurationError,
     FindingsQueryService,
     RiskReadinessService,
@@ -33,6 +37,7 @@ from application import (
     ThreatIntelligenceSourceUnavailableError,
     ThreatIntelligenceTimeoutError,
 )
+from core.ai_model_selection import AIModelSelectionPolicy
 from core.explainability import ExplanationProvenance
 from core.incident_response import (
     AnalystNote,
@@ -63,7 +68,12 @@ from infrastructure import (
     NvdThreatIntelligenceReader,
     OpenAIFindingExplanationModel,
 )
-from settings import ASSET_CONTEXT_PATH, GREENBONE_REPORT_PATH, INCIDENT_CONTEXT_PATH
+from settings import (
+    AI_FINDING_EXPLANATION_ALLOWED_IDS,
+    ASSET_CONTEXT_PATH,
+    GREENBONE_REPORT_PATH,
+    INCIDENT_CONTEXT_PATH,
+)
 
 app = FastAPI(
     title="Cyber Risk Brain",
@@ -121,6 +131,9 @@ class FindingExplanationResponse(BaseModel):
     missing_context: list[FindingExplanationMissingContextResponse]
     provider_id: str | None
     model_id: str | None
+    execution_binding_version: str | None
+    selection_purpose: str | None
+    selection_policy_reference: str | None
     input_contract_version: str
     input_digest: str
     used_fact_ids: list[str]
@@ -237,12 +250,35 @@ class IncidentContextResponse(BaseModel):
     participants: list[IncidentParticipantResponse]
 
 
+class IncidentQueueItemResponse(BaseModel):
+    incident_id: str
+    lifecycle_status: str
+    source: str
+    source_reference: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    owner: IncidentPrincipalResponse | None
+    participant_count: int
+    finding_count: int
+    asset_count: int
+    threat_intelligence_count: int
+    evidence_count: int
+
+
 class IncidentReferenceResponse(BaseModel):
     reference_id: str
     source: str | None = None
     contract_version: str | None = None
     version_id: str | None = None
     evidence_snapshot_id: str | None = None
+
+
+class FindingIncidentReferenceResponse(BaseModel):
+    incident_id: str
+    relationship_id: str
+    relationship_role: str
+    lifecycle_status: str
 
 
 class IncidentProjectionSectionResponse(BaseModel):
@@ -308,12 +344,24 @@ def get_findings_query_service() -> FindingsQueryService:
 
 
 def get_finding_explanation_use_case() -> FindingExplanationUseCase:
+    allowed_finding_ids = frozenset(
+        item.strip()
+        for item in (AI_FINDING_EXPLANATION_ALLOWED_IDS or "").split(",")
+        if item.strip()
+    )
     return FindingExplanationUseCase(
         FindingsQueryService(GREENBONE_REPORT_PATH),
         AssetContextQueryService(ASSET_CONTEXT_PATH),
         RiskReadinessService(),
         FindingExplanationService(
-            OpenAIFindingExplanationModel.from_settings()
+            OpenAIFindingExplanationModel.from_settings(),
+            model_selection_policy=AIModelSelectionPolicy(),
+        ),
+        authorization_scope_factory=lambda finding_id: (
+            build_finding_explanation_authorization(
+                finding_id,
+                allowed_finding_ids,
+            )
         ),
     )
 
@@ -344,13 +392,31 @@ def get_finding_threat_intelligence_use_case() -> (
 
 
 def get_incident_command_center_query_service() -> IncidentCommandCenterQueryService:
-    return IncidentCommandCenterQueryService()
+    return IncidentCommandCenterQueryService(
+        reference_resolver=IncidentReferenceResolutionService(
+            findings=FindingsQueryService(GREENBONE_REPORT_PATH),
+            assets=AssetContextQueryService(ASSET_CONTEXT_PATH),
+            threat_intelligence=get_threat_intelligence_query_service(),
+        )
+    )
 
 
 def get_security_incident_context_reader() -> Callable[
     [str], SecurityIncidentContext | None
 ]:
     return FileIncidentContextRepository(INCIDENT_CONTEXT_PATH).get
+
+
+def get_incident_queue_query_service() -> IncidentQueueQueryService:
+    return IncidentQueueQueryService(
+        FileIncidentContextRepository(INCIDENT_CONTEXT_PATH)
+    )
+
+
+def get_finding_incident_query_service() -> FindingIncidentQueryService:
+    return FindingIncidentQueryService(
+        FileIncidentContextRepository(INCIDENT_CONTEXT_PATH)
+    )
 
 
 def _principal_response(
@@ -386,6 +452,29 @@ def _incident_context_response(
             )
             for participant in incident.participants
         ],
+    )
+
+
+def _incident_queue_item_response(item) -> IncidentQueueItemResponse:
+    incident = item.incident
+    return IncidentQueueItemResponse(
+        incident_id=incident.incident_id,
+        lifecycle_status=incident.lifecycle_status.value,
+        source=incident.source,
+        source_reference=incident.source_reference,
+        title=incident.title,
+        created_at=incident.created_at,
+        updated_at=incident.updated_at,
+        owner=(
+            _principal_response(incident.owner)
+            if incident.owner is not None
+            else None
+        ),
+        participant_count=item.participant_count,
+        finding_count=item.finding_count,
+        asset_count=item.asset_count,
+        threat_intelligence_count=item.threat_intelligence_count,
+        evidence_count=item.evidence_count,
     )
 
 
@@ -701,6 +790,21 @@ def _explanation_response(
         ],
         provider_id=result.provider_id,
         model_id=result.model_id,
+        execution_binding_version=(
+            result.selection_decision.execution_binding_version
+            if result.selection_decision is not None
+            else None
+        ),
+        selection_purpose=(
+            result.selection_decision.purpose.value
+            if result.selection_decision is not None
+            else None
+        ),
+        selection_policy_reference=(
+            result.selection_decision.selection_policy_reference
+            if result.selection_decision is not None
+            else None
+        ),
         input_contract_version=result.input_contract_version,
         input_digest=result.input_digest,
         used_fact_ids=list(result.used_fact_ids),
@@ -751,6 +855,39 @@ def findings(
             asset=finding.asset,
         )
         for finding in universal_findings
+    ]
+
+
+@app.get(
+    "/api/findings/{finding_id}/incidents",
+    response_model=list[FindingIncidentReferenceResponse],
+)
+def finding_incidents(
+    finding_id: str,
+    service: FindingIncidentQueryService = Depends(
+        get_finding_incident_query_service
+    ),
+) -> list[FindingIncidentReferenceResponse]:
+    try:
+        references = service.find_incidents(finding_id)
+    except IncidentContextConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except IncidentContextDataError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Incident context source contains invalid data.",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return [
+        FindingIncidentReferenceResponse(
+            incident_id=reference.incident_id,
+            relationship_id=reference.relationship_id,
+            relationship_role=reference.relationship_role.value,
+            lifecycle_status=reference.lifecycle_status.value,
+        )
+        for reference in references
     ]
 
 
@@ -876,6 +1013,24 @@ def incident_command_center(
         ) from error
 
     return _incident_command_center_response(projection)
+
+
+@app.get(
+    "/api/incidents",
+    response_model=list[IncidentQueueItemResponse],
+)
+def incidents(
+    service: IncidentQueueQueryService = Depends(get_incident_queue_query_service),
+) -> list[IncidentQueueItemResponse]:
+    try:
+        return [_incident_queue_item_response(item) for item in service.list()]
+    except IncidentContextConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except IncidentContextDataError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Incident context source contains invalid data.",
+        ) from error
 
 
 @app.post(

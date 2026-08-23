@@ -12,11 +12,14 @@ from application.finding_explanation import (
     FindingExplanationProviderError,
     FindingExplanationTimeoutError,
 )
+from core.ai_model_selection import (
+    AIModelSelectionDecision,
+    AIModelSelectionError,
+)
 
 
 class OpenAIFindingExplanationModel:
     provider_id = "openai"
-    model_id = "gpt-5.6-terra"
     _RESPONSES_URL = "https://api.openai.com/v1/responses"
 
     def __init__(
@@ -24,10 +27,14 @@ class OpenAIFindingExplanationModel:
         api_key: str | None,
         timeout_seconds: float,
         session: requests.Session | None = None,
+        model_id: str = "gpt-5.6",
     ) -> None:
+        if not model_id.strip():
+            raise ValueError("OpenAI explanation model is required.")
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._session = session or requests.Session()
+        self.model_id = model_id
 
     @classmethod
     def from_settings(cls) -> OpenAIFindingExplanationModel:
@@ -37,12 +44,28 @@ class OpenAIFindingExplanationModel:
             timeout = float(settings.OPENAI_EXPLANATION_TIMEOUT_SECONDS)
         except (TypeError, ValueError):
             timeout = 0.0
-        return cls(settings.OPENAI_API_KEY, timeout)
+        return cls(
+            settings.OPENAI_API_KEY,
+            timeout,
+            model_id=settings.OPENAI_FINDING_EXPLANATION_MODEL,
+        )
 
     def generate(
         self,
         request: FindingExplanationModelRequest,
+        selection: AIModelSelectionDecision | None = None,
     ) -> FindingExplanationModelResponse:
+        if selection is None:
+            raise AIModelSelectionError(
+                "OpenAI execution requires an approved model selection."
+            )
+        if (
+            selection.provider_id != self.provider_id
+            or self.model_id != selection.model_id
+        ):
+            raise AIModelSelectionError(
+                "OpenAI runtime identity does not match approved selection."
+            )
         if self._api_key is None or not self._api_key.strip():
             raise FindingExplanationConfigurationError(
                 "OPENAI_API_KEY is not configured."
@@ -53,7 +76,7 @@ class OpenAIFindingExplanationModel:
             )
 
         payload = {
-            "model": self.model_id,
+            "model": selection.model_id,
             "input": [
                 {
                     "role": "developer",
@@ -115,7 +138,7 @@ class OpenAIFindingExplanationModel:
 
         return FindingExplanationModelResponse(
             provider_id=self.provider_id,
-            model_id=self.model_id,
+            model_id=selection.model_id,
             output=structured_output,
         )
 

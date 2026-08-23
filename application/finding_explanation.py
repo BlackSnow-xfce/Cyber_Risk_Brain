@@ -11,6 +11,24 @@ from application.risk_readiness import (
     RiskAssessmentResult,
     RiskInputState,
 )
+from application.finding_model_egress import (
+    FINDING_EXPLANATION_EGRESS_POLICY,
+    FindingModelEgressPayload,
+    FindingModelEgressProjector,
+)
+from core.ai_context import AIContextClassification
+from core.ai_disclosure import (
+    AIOutputDisclosureDecisionValue,
+    AIOutputDisclosurePolicy,
+    AIOutputSecurityDecision,
+    FindingExplanationOutputSecurityGuard,
+)
+from core.ai_egress import AIModelEgressPurpose
+from core.ai_model_selection import (
+    AIModelSelectionDecision,
+    AIModelSelectionError,
+    AIModelSelectionPolicy,
+)
 from core.enterprise_context import AssetContext
 from core.models import UniversalFinding
 
@@ -29,6 +47,7 @@ class FindingExplanationGenerationStatus(str, Enum):
     PROVIDER_ERROR = "PROVIDER_ERROR"
     TIMEOUT = "TIMEOUT"
     INVALID_OUTPUT = "INVALID_OUTPUT"
+    OUTPUT_SECURITY_DENIED = "OUTPUT_SECURITY_DENIED"
 
 
 @dataclass(frozen=True)
@@ -77,6 +96,7 @@ class FindingExplanationInput:
     mitre_state: RiskInputState
     facts: tuple[FindingExplanationFact, ...]
     missing_context: tuple[FindingExplanationMissingContext, ...]
+    model_egress_payload: FindingModelEgressPayload
     contract_version: str = FINDING_EXPLANATION_CONTRACT_VERSION
     input_digest: str = field(init=False)
 
@@ -155,6 +175,9 @@ class FindingExplanationInput:
             sort_keys=True,
         )
 
+    def model_egress_data(self) -> dict[str, str]:
+        return self.model_egress_payload.as_dict()
+
 
 class FindingExplanationInputBuilder:
     @staticmethod
@@ -163,6 +186,8 @@ class FindingExplanationInputBuilder:
         asset_context: AssetContext | None,
         risk_input: RiskAssessmentInput,
         risk_result: RiskAssessmentResult,
+        *,
+        egress_policy=FINDING_EXPLANATION_EGRESS_POLICY,
     ) -> FindingExplanationInput:
         if finding.id != risk_input.finding_id:
             raise ValueError("Risk input does not match finding.")
@@ -175,6 +200,13 @@ class FindingExplanationInputBuilder:
             and asset_context.observed_identifier.value != finding.asset
         ):
             raise ValueError("Asset context does not match finding.")
+
+        model_egress_payload = FindingModelEgressProjector.project(
+            finding,
+            egress_policy,
+        )
+        if model_egress_payload is None:
+            raise ValueError("Finding model-egress projection failed closed.")
 
         facts = [
             FindingExplanationFact("finding.id", finding.id),
@@ -266,6 +298,7 @@ class FindingExplanationInputBuilder:
             mitre_state=risk_input.mitre_tactic.state,
             facts=tuple(facts),
             missing_context=missing,
+            model_egress_payload=model_egress_payload,
         )
 
 
@@ -345,6 +378,7 @@ class FindingExplanationModel(Protocol):
     def generate(
         self,
         request: FindingExplanationModelRequest,
+        selection: AIModelSelectionDecision | None = None,
     ) -> FindingExplanationModelResponse: ...
 
 
@@ -361,6 +395,7 @@ class FindingExplanationResult:
     used_fact_ids: tuple[str, ...]
     source_references: tuple[str, ...]
     model_output: FindingExplanationModelOutput | None
+    selection_decision: AIModelSelectionDecision | None = None
 
     def __post_init__(self) -> None:
         generated = (
@@ -388,19 +423,43 @@ CONTEXTUAL_INFERENCE must cite one or more supplied fact_ids.
 UNKNOWN and NOT_EVALUATED mean no affirmative or negative conclusion is available.
 Return only the required structured output."""
 
-    def __init__(self, model: FindingExplanationModel) -> None:
+    def __init__(
+        self,
+        model: FindingExplanationModel,
+        *,
+        disclosure_policy: AIOutputDisclosurePolicy | None = None,
+        output_security_guard: FindingExplanationOutputSecurityGuard | None = None,
+        model_selection_policy: AIModelSelectionPolicy | None = None,
+    ) -> None:
         self._model = model
+        self._disclosure_policy = disclosure_policy or AIOutputDisclosurePolicy()
+        self._output_security_guard = (
+            output_security_guard or FindingExplanationOutputSecurityGuard()
+        )
+        self._model_selection_policy = model_selection_policy
 
     def explain(
         self,
         explanation_input: FindingExplanationInput,
     ) -> FindingExplanationResult:
+        selection: AIModelSelectionDecision | None = None
+        if self._model_selection_policy is not None:
+            try:
+                selection = self._model_selection_policy.resolve(
+                    AIModelEgressPurpose.FINDING_EXPLANATION,
+                )
+            except (AttributeError, AIModelSelectionError):
+                return self._failure(
+                    explanation_input,
+                    FindingExplanationGenerationStatus.CONFIGURATION_ERROR,
+                    attempted=False,
+                )
         request = FindingExplanationModelRequest(
             instructions=self._INSTRUCTIONS,
             untrusted_data_json=json.dumps(
                 {
                     "classification": "UNTRUSTED_SECURITY_DATA",
-                    "data": explanation_input.model_data(),
+                    "data": explanation_input.model_egress_data(),
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -410,34 +469,85 @@ Return only the required structured output."""
         )
 
         try:
-            response = self._model.generate(request)
+            response = (
+                self._model.generate(request, selection)
+                if selection is not None
+                else self._model.generate(request)
+            )
+            if selection is not None and (
+                response.provider_id != selection.provider_id
+                or response.model_id != selection.model_id
+            ):
+                raise AIModelSelectionError(
+                    "Runtime model identity diverges from approved selection."
+                )
+            output_text = json.dumps(
+                response.output,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            disclosure_decision = self._disclosure_policy.evaluate(
+                AIModelEgressPurpose.FINDING_EXPLANATION,
+                AIContextClassification.INTERNAL,
+            )
+            if disclosure_decision.decision is not AIOutputDisclosureDecisionValue.ALLOW:
+                return self._failure(
+                    explanation_input,
+                    FindingExplanationGenerationStatus.OUTPUT_SECURITY_DENIED,
+                    attempted=True,
+                    selection=selection,
+                )
+            security_result = self._output_security_guard.evaluate(
+                AIModelEgressPurpose.FINDING_EXPLANATION,
+                AIContextClassification.INTERNAL,
+                output_text,
+            )
+            if security_result.decision is not AIOutputSecurityDecision.PASS:
+                return self._failure(
+                    explanation_input,
+                    FindingExplanationGenerationStatus.OUTPUT_SECURITY_DENIED,
+                    attempted=True,
+                    selection=selection,
+                )
             output = self._validate_output(
                 response.output,
                 {fact.fact_id for fact in explanation_input.facts},
             )
-        except FindingExplanationConfigurationError:
+        except (FindingExplanationConfigurationError, AIModelSelectionError):
             return self._failure(
                 explanation_input,
                 FindingExplanationGenerationStatus.CONFIGURATION_ERROR,
-                attempted=False,
+                attempted=selection is not None,
+                selection=selection,
             )
         except FindingExplanationTimeoutError:
             return self._failure(
                 explanation_input,
                 FindingExplanationGenerationStatus.TIMEOUT,
                 attempted=True,
+                selection=selection,
             )
         except FindingExplanationProviderError:
             return self._failure(
                 explanation_input,
                 FindingExplanationGenerationStatus.PROVIDER_ERROR,
                 attempted=True,
+                selection=selection,
             )
         except FindingExplanationInvalidOutputError:
             return self._failure(
                 explanation_input,
                 FindingExplanationGenerationStatus.INVALID_OUTPUT,
                 attempted=True,
+                selection=selection,
+            )
+        except (TypeError, ValueError):
+            return self._failure(
+                explanation_input,
+                FindingExplanationGenerationStatus.OUTPUT_SECURITY_DENIED,
+                attempted=True,
+                selection=selection,
             )
 
         used_fact_ids = self._used_fact_ids(output)
@@ -469,6 +579,7 @@ Return only the required structured output."""
             used_fact_ids=used_fact_ids,
             source_references=source_references,
             model_output=output,
+            selection_decision=selection,
         )
 
     def _failure(
@@ -477,6 +588,7 @@ Return only the required structured output."""
         status: FindingExplanationGenerationStatus,
         *,
         attempted: bool,
+        selection: AIModelSelectionDecision | None = None,
     ) -> FindingExplanationResult:
         return FindingExplanationResult(
             finding_id=explanation_input.finding_id,
@@ -490,6 +602,7 @@ Return only the required structured output."""
             used_fact_ids=(),
             source_references=(),
             model_output=None,
+            selection_decision=selection,
         )
 
     @classmethod
@@ -652,22 +765,38 @@ Return only the required structured output."""
 
 
 def finding_explanation_output_schema() -> dict[str, object]:
+    def statement_schema(
+        kind: InferenceKind,
+        *,
+        min_fact_ids: int = 0,
+        max_fact_ids: int = 16,
+    ) -> dict[str, object]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["kind", "text", "basis_fact_ids"],
+            "properties": {
+                "kind": {"type": "string", "enum": [kind.value]},
+                "text": {"type": "string"},
+                "basis_fact_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": min_fact_ids,
+                    "maxItems": max_fact_ids,
+                },
+            },
+        }
+
+    general_statement = statement_schema(
+        InferenceKind.GENERAL_SECURITY_REASONING,
+        max_fact_ids=0,
+    )
+    contextual_statement = statement_schema(
+        InferenceKind.CONTEXTUAL_INFERENCE,
+        min_fact_ids=1,
+    )
     statement = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["kind", "text", "basis_fact_ids"],
-        "properties": {
-            "kind": {
-                "type": "string",
-                "enum": [kind.value for kind in InferenceKind],
-            },
-            "text": {"type": "string"},
-            "basis_fact_ids": {
-                "type": "array",
-                "items": {"type": "string"},
-                "maxItems": 16,
-            },
-        },
+        "anyOf": [general_statement, contextual_statement],
     }
     return {
         "type": "object",
@@ -688,7 +817,7 @@ def finding_explanation_output_schema() -> dict[str, object]:
             },
             "organizational_relevance": {
                 "type": "array",
-                "items": statement,
+                "items": contextual_statement,
                 "maxItems": 8,
             },
             "uncertainty_statement": statement,
