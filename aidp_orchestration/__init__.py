@@ -1,6 +1,13 @@
 """Deterministic, fail-closed orchestration primitives for the AIDP workflow."""
 
 from .acceptance import AcceptanceHarness, serialize_acceptance_result
+from .architect_writer import (
+    ArchitectContractWriter,
+    load_architect_task_contract,
+    serialize_architect_task_contract,
+    serialize_writer_decision,
+    serialize_writer_result,
+)
 
 from .contracts import (
     AIDPState,
@@ -18,6 +25,10 @@ from .contracts import (
     ValidationResult,
     ReworkContract,
     ArchitectInboxEntry,
+    ArchitectTaskContract,
+    WriterAction,
+    WriterDecision,
+    WriterResult,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -61,6 +72,10 @@ __all__ = [
     "ValidationResult",
     "ReworkContract",
     "ArchitectInboxEntry",
+    "ArchitectTaskContract",
+    "WriterAction",
+    "WriterDecision",
+    "WriterResult",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -79,4 +94,9 @@ __all__ = [
     "serialize_control_plane_decision",
     "serialize_control_plane_result",
     "serialize_rework_contract",
+    "ArchitectContractWriter",
+    "load_architect_task_contract",
+    "serialize_architect_task_contract",
+    "serialize_writer_decision",
+    "serialize_writer_result",
 ]

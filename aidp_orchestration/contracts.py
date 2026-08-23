@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -61,6 +62,12 @@ class ControlPlaneAction(StrEnum):
     EXECUTE = "EXECUTE"
     READY_FOR_ARCHITECT = "READY_FOR_ARCHITECT"
     WAITING_FOR_PRODUCT_OWNER = "WAITING_FOR_PRODUCT_OWNER"
+
+
+class WriterAction(StrEnum):
+    BLOCKED = "BLOCKED"
+    MATERIALIZE_READY = "MATERIALIZE_READY"
+    MATERIALIZE_REWORK = "MATERIALIZE_REWORK"
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +235,56 @@ class ControlPlaneResult:
     runner_result: RunnerResult | None = None
     architect_inbox_entry: ArchitectInboxEntry | None = None
     architect_inbox_path: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectTaskContract:
+    task_id: str
+    title: str
+    phase: str
+    expected_head: str
+    allowed_scope: tuple[str, ...]
+    prohibited_actions: tuple[str, ...]
+    validation_requirements: tuple[str, ...]
+    acceptance_criteria: tuple[str, ...]
+    product_owner_gate: bool
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if re.fullmatch(r"TASK-\d{4}", self.task_id) is None:
+            raise ValueError("task_id must match TASK-NNNN")
+        for name in ("title", "phase", "expected_head"):
+            value = getattr(self, name)
+            if not value.strip() or "\n" in value or "\r" in value:
+                raise ValueError(f"{name} must be an explicit single-line value")
+        for name in ("allowed_scope", "prohibited_actions", "validation_requirements", "acceptance_criteria"):
+            values = getattr(self, name)
+            if not values or any(not value.strip() or "\n" in value or "\r" in value for value in values):
+                raise ValueError(f"{name} must contain explicit non-empty values")
+        for name in ("allowed_scope", "prohibited_actions", "validation_requirements"):
+            if any("," in value for value in getattr(self, name)):
+                raise ValueError(f"{name} values must not contain commas")
+        if not isinstance(self.product_owner_gate, bool):
+            raise ValueError("product_owner_gate must be boolean")
+        if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+            raise ValueError("created_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class WriterDecision:
+    action: WriterAction
+    task_id: str | None
+    branch: str
+    commit: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResult:
+    decision: WriterDecision
+    materialized_paths: tuple[str, ...] = ()
+    rework_contract_path: str | None = None
     failure_reason: str | None = None
 
 

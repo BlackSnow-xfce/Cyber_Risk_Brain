@@ -8,6 +8,12 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .acceptance import AcceptanceHarness, serialize_acceptance_result
+from .architect_writer import (
+    ArchitectContractWriter,
+    blocked_writer_result,
+    load_architect_task_contract,
+    serialize_writer_result,
+)
 from .contracts import AcceptanceStatus
 from .control_plane import AIDPControlPlane, serialize_control_plane_result
 from .executor import CodexExecutionService, serialize_execution_result
@@ -23,11 +29,20 @@ def main() -> int:
     mode.add_argument("--run-ready", action="store_true", help="execute one repository-authorized ready task")
     mode.add_argument("--acceptance-e2e", action="store_true", help="run Codex against an isolated temporary repository")
     mode.add_argument("--control-plane", action="store_true", help="run one fail-closed control-plane decision")
+    mode.add_argument("--materialize-architect-contract", type=Path, help="materialize one authorized JSON contract")
     parser.add_argument("--task-id", help="task to execute (required with --execute)")
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     repository = AIDPRepository(args.root)
+    if args.materialize_architect_contract is not None:
+        try:
+            contract = load_architect_task_contract(args.materialize_architect_contract)
+            result = ArchitectContractWriter(repository).materialize_task(contract)
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            result = blocked_writer_result(f"invalid ArchitectTaskContract: {exc.__class__.__name__}")
+        print(serialize_writer_result(result))
+        return 2 if result.decision.action.value == "BLOCKED" else 0
     if args.control_plane:
         result = AIDPControlPlane(repository, timeout_seconds=args.timeout).run_once()
         print(serialize_control_plane_result(result))

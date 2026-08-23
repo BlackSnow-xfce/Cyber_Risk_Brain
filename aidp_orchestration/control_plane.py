@@ -224,7 +224,7 @@ class AIDPControlPlane:
             return "rework task and contract task_id do not match"
         if contract.expected_head != expected_head:
             return "rework contract expected_head is stale"
-        if not _scope_is_subset(contract.allowed_rework_scope, metadata.allowed_scope):
+        if not scope_is_subset(contract.allowed_rework_scope, metadata.allowed_scope):
             return "rework contract widens the authorized scope"
         unknown = self.validator_registry.unknown(contract.required_validations)
         if unknown:
@@ -252,7 +252,7 @@ class AIDPControlPlane:
         return ControlPlaneDecision(action, decision.task_id, decision.state, decision.branch, decision.commit, reason)
 
 
-def _scope_is_subset(candidate: tuple[str, ...], authorized: tuple[str, ...]) -> bool:
+def scope_is_subset(candidate: tuple[str, ...], authorized: tuple[str, ...]) -> bool:
     for item in candidate:
         if item in authorized:
             continue
