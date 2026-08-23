@@ -37,6 +37,7 @@ from .contracts import (
     PublishResult,
     TriggerResult,
     TriggerStatus,
+    TriggerPublisherAcceptanceResult,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -71,6 +72,10 @@ from .trigger_publisher import (
     serialize_review_envelope,
     serialize_trigger_result,
 )
+from .trigger_publisher_acceptance import (
+    TriggerPublisherAcceptanceHarness,
+    serialize_trigger_publisher_acceptance_result,
+)
 
 __all__ = [
     "AIDPRepository",
@@ -104,6 +109,7 @@ __all__ = [
     "PublishResult",
     "TriggerResult",
     "TriggerStatus",
+    "TriggerPublisherAcceptanceResult",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -135,4 +141,6 @@ __all__ = [
     "LocalContractInbox",
     "serialize_review_envelope",
     "serialize_trigger_result",
+    "TriggerPublisherAcceptanceHarness",
+    "serialize_trigger_publisher_acceptance_result",
 ]

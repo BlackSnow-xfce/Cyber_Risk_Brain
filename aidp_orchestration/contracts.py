@@ -267,7 +267,7 @@ class ArchitectTaskContract:
     created_at: datetime
 
     def __post_init__(self) -> None:
-        if re.fullmatch(r"TASK-(?:\d{4}|E2E-WRITER-\d{4})", self.task_id) is None:
+        if re.fullmatch(r"TASK-(?:\d{4}|E2E-(?:WRITER|TRIGGER)-\d{4})", self.task_id) is None:
             raise ValueError("task_id must match an authorized task identifier")
         for name in ("title", "phase", "expected_head"):
             value = getattr(self, name)
@@ -375,6 +375,26 @@ class TriggerResult:
     writer_result: WriterResult | None = None
     control_plane_result: ControlPlaneResult | None = None
     publish_result: PublishResult | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TriggerPublisherAcceptanceResult:
+    status: AcceptanceStatus
+    first_trigger_result: TriggerResult | None
+    second_trigger_result: TriggerResult | None
+    execution_commit: str | None
+    review_envelope_commit: str | None
+    review_envelope_path: str | None
+    remote_branch: str
+    remote_head: str | None
+    remote_envelope_verified: bool
+    remote_probe_verified: bool
+    idempotency_verified: bool
+    source_aidp_unchanged: bool
+    cleanup_status: CleanupStatus
+    temporary_repository: str
+    temporary_remote: str
     failure_reason: str | None = None
 
 
