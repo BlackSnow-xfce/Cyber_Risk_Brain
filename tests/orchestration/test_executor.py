@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,8 +18,10 @@ from aidp_orchestration.executor import (
     CodexExecutionService,
     ExecutionLock,
     ProcessOutcome,
+    SubprocessRunner,
     serialize_execution_result,
 )
+from aidp_orchestration.launcher import CodexLauncher
 
 
 class FakeGit:
@@ -64,11 +67,24 @@ def success_runner() -> FakeRunner:
     return FakeRunner([ProcessOutcome(0, '{"type":"completed"}\n', ""), ProcessOutcome(0, "", "")])
 
 
+def test_subprocess_runner_never_enables_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: dict[str, object] = {}
+
+    def run(args, **kwargs):
+        observed.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    SubprocessRunner().run(("node.exe", "codex.js"), cwd=tmp_path, timeout_seconds=1.0)
+    assert observed.get("shell", False) is False
+
+
 def service(tmp_path: Path, runner: FakeRunner, git: FakeGit | None = None) -> CodexExecutionService:
     return CodexExecutionService(
         runner=runner,
         git=git or FakeGit(),
         lock=ExecutionLock(tmp_path / "execution.lock"),
+        launcher=CodexLauncher(("codex-test.exe",)),
     )
 
 
@@ -78,7 +94,7 @@ def test_valid_execution_runs_bound_codex_request_and_validators(tmp_path: Path)
     assert result.status is ExecutionStatus.SUCCESS
     assert result.scope_compliance is ScopeCompliance.COMPLIANT
     assert result.is_review_ready
-    assert runner.calls[0][:3] == ("codex", "exec", "--json")
+    assert runner.calls[0][:3] == ("codex-test.exe", "exec", "--json")
     assert "task_id=TASK-9000" in runner.calls[0][-1]
     assert "execution_id=execution-1" in runner.calls[0][-1]
 
@@ -109,7 +125,12 @@ def test_parallel_lock_blocks_second_execution(tmp_path: Path) -> None:
     first = request(tmp_path)
     lock.acquire(first)
     try:
-        result = CodexExecutionService(runner=FakeRunner([]), git=FakeGit(), lock=lock).execute(first)
+        result = CodexExecutionService(
+            runner=FakeRunner([]),
+            git=FakeGit(),
+            lock=lock,
+            launcher=CodexLauncher(("codex-test.exe",)),
+        ).execute(first)
         assert result.status is ExecutionStatus.BLOCKED
     finally:
         lock.release()
@@ -167,6 +188,11 @@ def test_result_serialization_is_stable_and_excludes_process_output(tmp_path: Pa
 
 def test_lock_is_released_after_process_error(tmp_path: Path) -> None:
     lock_path = tmp_path / "execution.lock"
-    result = CodexExecutionService(runner=FakeRunner([ProcessOutcome(3, "", "")]), git=FakeGit(), lock=ExecutionLock(lock_path)).execute(request(tmp_path))
+    result = CodexExecutionService(
+        runner=FakeRunner([ProcessOutcome(3, "", "")]),
+        git=FakeGit(),
+        lock=ExecutionLock(lock_path),
+        launcher=CodexLauncher(("codex-test.exe",)),
+    ).execute(request(tmp_path))
     assert result.status is ExecutionStatus.ERROR
     assert not lock_path.exists()

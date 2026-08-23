@@ -25,6 +25,7 @@ from .contracts import (
     ScopeCompliance,
 )
 from .executor import CodexExecutionService
+from .launcher import resolve_codex_launcher
 from .repository import AIDPRepository
 from .runner import AIDPRunner, ExecutionService
 from .runtime import LocalRuntimeStore
@@ -69,8 +70,6 @@ class AcceptanceHarness:
         failure_reason: str | None = None
 
         try:
-            if self.service_factory is None and shutil.which("codex") is None:
-                raise RuntimeError("Codex CLI is not available")
             self.build_fixture(fixture_root)
             if self._git(fixture_root, "branch", "--show-current") != E2E_BRANCH:
                 raise RuntimeError("fixture repository is on the wrong branch")
@@ -159,7 +158,8 @@ class AcceptanceHarness:
     def _execution_service(self, root: Path) -> ExecutionService:
         if self.service_factory is not None:
             return self.service_factory(root, self.timeout_seconds)
-        return CodexExecutionService(repository_root=root, timeout_seconds=self.timeout_seconds)
+        launcher = resolve_codex_launcher()
+        return CodexExecutionService(repository_root=root, timeout_seconds=self.timeout_seconds, launcher=launcher)
 
     def _failure_reason(
         self,

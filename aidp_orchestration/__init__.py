@@ -22,6 +22,7 @@ from .executor import (
     SubprocessRunner,
     serialize_execution_result,
 )
+from .launcher import CodexLauncher, CodexLauncherError, resolve_codex_launcher
 from .repository import AIDPRepository
 from .runner import AIDPRunner, serialize_runner_result
 from .runtime import LocalRuntimeStore
@@ -35,6 +36,8 @@ __all__ = [
     "CleanupStatus",
     "CodexExecutionRequest",
     "CodexExecutionResult",
+    "CodexLauncher",
+    "CodexLauncherError",
     "RunnerResult",
     "RunnerStatus",
     "ScopeCompliance",
@@ -49,4 +52,5 @@ __all__ = [
     "AIDPRunner",
     "LocalRuntimeStore",
     "serialize_runner_result",
+    "resolve_codex_launcher",
 ]

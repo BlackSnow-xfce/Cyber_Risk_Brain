@@ -19,6 +19,7 @@ from .contracts import (
 from .repository import AIDPRepository
 from .validators import ValidatorRegistry
 from .executor_types import ProcessOutcome, ProcessRunner
+from .launcher import CodexLauncher, CodexLauncherError, resolve_codex_launcher
 
 
 class SubprocessRunner:
@@ -125,6 +126,7 @@ class CodexExecutionService:
         lock: ExecutionLock | None = None,
         repository_root: Path | None = None,
         timeout_seconds: float = 900.0,
+        launcher: CodexLauncher | None = None,
     ):
         self.runner = runner or SubprocessRunner()
         self.git = git
@@ -132,6 +134,7 @@ class CodexExecutionService:
         self.timeout_seconds = timeout_seconds
         self._lock = lock
         self.repository_root = repository_root.resolve() if repository_root is not None else None
+        self.launcher = launcher
 
     def execute(self, request: CodexExecutionRequest) -> CodexExecutionResult:
         root = Path(request.repository).resolve()
@@ -147,13 +150,18 @@ class CodexExecutionService:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
+            launcher = self.launcher or resolve_codex_launcher()
+        except CodexLauncherError as exc:
+            return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
+
+        try:
             lock = self._lock or ExecutionLock.for_repository(root)
             lock.acquire(request)
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
-            outcome = self.runner.run(self._codex_command(request), cwd=root, timeout_seconds=self.timeout_seconds)
+            outcome = self.runner.run(self._codex_command(request, launcher), cwd=root, timeout_seconds=self.timeout_seconds)
             if outcome.timed_out:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, "Codex process timed out", ScopeCompliance.NOT_EVALUATED)
             if outcome.error:
@@ -207,7 +215,7 @@ class CodexExecutionService:
             raise ValueError("worktree is not clean")
 
     @staticmethod
-    def _codex_command(request: CodexExecutionRequest) -> tuple[str, ...]:
+    def _codex_command(request: CodexExecutionRequest, launcher: CodexLauncher) -> tuple[str, ...]:
         prompt = (
             "Execute only the repository task described by the provided task file.\n"
             f"task_id={request.task_id}\n"
@@ -220,8 +228,8 @@ class CodexExecutionService:
             f"execution_id={request.execution_id}\n"
             "Repository contracts and the task file are authoritative; do not approve or create tasks."
         )
-        return (
-            "codex", "exec", "--json", "--cd", request.repository,
+        return launcher.argv_prefix + (
+            "exec", "--json", "--cd", request.repository,
             "--sandbox", "workspace-write", "--ask-for-approval", "never", prompt,
         )
 
