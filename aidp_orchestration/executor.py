@@ -229,8 +229,8 @@ class CodexExecutionService:
             "Repository contracts and the task file are authoritative; do not approve or create tasks."
         )
         return launcher.argv_prefix + (
-            "exec", "--json", "--cd", request.repository,
-            "--sandbox", "workspace-write", "--ask-for-approval", "never", prompt,
+            "--ask-for-approval", "never", "exec", "--json", "--cd", request.repository,
+            "--sandbox", "workspace-write", prompt,
         )
 
     @staticmethod

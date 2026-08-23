@@ -94,9 +94,20 @@ def test_valid_execution_runs_bound_codex_request_and_validators(tmp_path: Path)
     assert result.status is ExecutionStatus.SUCCESS
     assert result.scope_compliance is ScopeCompliance.COMPLIANT
     assert result.is_review_ready
-    assert runner.calls[0][:3] == ("codex-test.exe", "exec", "--json")
-    assert "task_id=TASK-9000" in runner.calls[0][-1]
-    assert "execution_id=execution-1" in runner.calls[0][-1]
+    command = runner.calls[0]
+    assert command[:-1] == (
+        "codex-test.exe",
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--json",
+        "--cd",
+        str(tmp_path),
+        "--sandbox",
+        "workspace-write",
+    )
+    assert "task_id=TASK-9000" in command[-1]
+    assert "execution_id=execution-1" in command[-1]
 
 
 @pytest.mark.parametrize(
