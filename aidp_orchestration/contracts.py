@@ -55,6 +55,14 @@ class CleanupStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class ControlPlaneAction(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    BLOCKED = "BLOCKED"
+    EXECUTE = "EXECUTE"
+    READY_FOR_ARCHITECT = "READY_FOR_ARCHITECT"
+    WAITING_FOR_PRODUCT_OWNER = "WAITING_FOR_PRODUCT_OWNER"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -156,6 +164,70 @@ class AcceptanceResult:
     temporary_repository: str
     cleanup_status: CleanupStatus
     source_aidp_unchanged: bool
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReworkContract:
+    task_id: str
+    review_iteration: int
+    expected_head: str
+    allowed_rework_scope: tuple[str, ...]
+    findings: tuple[str, ...]
+    required_validations: tuple[str, ...]
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        for name in ("task_id", "expected_head"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must not be empty")
+        if self.review_iteration < 1:
+            raise ValueError("review_iteration must be at least 1")
+        for name in ("allowed_rework_scope", "findings", "required_validations"):
+            values = getattr(self, name)
+            if not values or any(not value.strip() for value in values):
+                raise ValueError(f"{name} must contain explicit non-empty values")
+
+
+@dataclass(frozen=True, slots=True)
+class ControlPlaneDecision:
+    action: ControlPlaneAction
+    task_id: str | None
+    repository_state: AIDPState
+    branch: str
+    commit: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectInboxEntry:
+    task_id: str
+    execution_id: str
+    current_state: AIDPState
+    intended_next_state: AIDPState | None
+    execution_status: ExecutionStatus
+    changed_files: tuple[str, ...]
+    scope_compliance: ScopeCompliance
+    validation_results: tuple[ValidationResult, ...]
+    failure_reason: str | None
+    branch: str
+    start_commit: str
+    resulting_commit: str | None
+    timestamp: datetime
+
+    def __post_init__(self) -> None:
+        for name in ("task_id", "execution_id", "branch", "start_commit"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class ControlPlaneResult:
+    decision: ControlPlaneDecision
+    final_action: ControlPlaneAction
+    runner_result: RunnerResult | None = None
+    architect_inbox_entry: ArchitectInboxEntry | None = None
+    architect_inbox_path: str | None = None
     failure_reason: str | None = None
 
 
