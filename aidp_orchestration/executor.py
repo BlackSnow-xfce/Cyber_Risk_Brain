@@ -56,16 +56,24 @@ class GitInspector:
         return not self._read("git", "status", "--porcelain=v1")
 
     def changed_files(self) -> tuple[str, ...]:
-        output = self._read("git", "status", "--porcelain=v1")
         paths: set[str] = set()
-        for line in output.splitlines():
-            if len(line) < 4:
-                continue
-            value = line[3:]
-            if " -> " in value:
-                value = value.split(" -> ", 1)[1]
-            paths.add(value.strip())
+        commands = (
+            ("git", "diff", "--no-renames", "--name-only", "-z"),
+            ("git", "diff", "--cached", "--no-renames", "--name-only", "-z"),
+            ("git", "ls-files", "--others", "--exclude-standard", "-z"),
+        )
+        for command in commands:
+            paths.update(self._read_null_paths(*command))
         return tuple(sorted(paths))
+
+    def _read_null_paths(self, *args: str) -> tuple[str, ...]:
+        output = subprocess.check_output(args, cwd=self.root)
+        if not output:
+            return ()
+        if not output.endswith(b"\0"):
+            raise RuntimeError("Git returned a malformed NUL-separated path list")
+        decoded = output.decode("utf-8", errors="strict")
+        return tuple(decoded[:-1].split("\0"))
 
     def _read(self, *args: str) -> str:
         return subprocess.check_output(args, cwd=self.root, text=True).strip()
@@ -174,7 +182,7 @@ class CodexExecutionService:
             try:
                 changed = git.changed_files()
                 resulting_commit = git.head()
-            except (OSError, subprocess.SubprocessError) as exc:
+            except (OSError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"git inspection failed: {exc.__class__.__name__}", ScopeCompliance.NOT_EVALUATED)
             scope = AIDPRepository(root).validate_scope(request, changed)
             if scope is not ScopeCompliance.COMPLIANT:
