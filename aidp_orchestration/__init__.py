@@ -29,6 +29,7 @@ from .contracts import (
     WriterAction,
     WriterDecision,
     WriterResult,
+    WriterControlPlaneAcceptanceResult,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -51,6 +52,10 @@ from .launcher import CodexLauncher, CodexLauncherError, resolve_codex_launcher
 from .repository import AIDPRepository
 from .runner import AIDPRunner, serialize_runner_result
 from .runtime import LocalRuntimeStore
+from .writer_control_plane_acceptance import (
+    WriterControlPlaneAcceptanceHarness,
+    serialize_writer_control_plane_acceptance_result,
+)
 
 __all__ = [
     "AIDPRepository",
@@ -76,6 +81,7 @@ __all__ = [
     "WriterAction",
     "WriterDecision",
     "WriterResult",
+    "WriterControlPlaneAcceptanceResult",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -99,4 +105,6 @@ __all__ = [
     "serialize_architect_task_contract",
     "serialize_writer_decision",
     "serialize_writer_result",
+    "WriterControlPlaneAcceptanceHarness",
+    "serialize_writer_control_plane_acceptance_result",
 ]

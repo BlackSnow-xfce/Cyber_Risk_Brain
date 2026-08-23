@@ -19,6 +19,10 @@ from .control_plane import AIDPControlPlane, serialize_control_plane_result
 from .executor import CodexExecutionService, serialize_execution_result
 from .repository import AIDPRepository
 from .runner import AIDPRunner, serialize_runner_result
+from .writer_control_plane_acceptance import (
+    WriterControlPlaneAcceptanceHarness,
+    serialize_writer_control_plane_acceptance_result,
+)
 
 
 def main() -> int:
@@ -30,11 +34,16 @@ def main() -> int:
     mode.add_argument("--acceptance-e2e", action="store_true", help="run Codex against an isolated temporary repository")
     mode.add_argument("--control-plane", action="store_true", help="run one fail-closed control-plane decision")
     mode.add_argument("--materialize-architect-contract", type=Path, help="materialize one authorized JSON contract")
+    mode.add_argument("--acceptance-writer-control-plane", action="store_true", help="run isolated Writer-to-Control-Plane acceptance")
     parser.add_argument("--task-id", help="task to execute (required with --execute)")
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     repository = AIDPRepository(args.root)
+    if args.acceptance_writer_control_plane:
+        result = WriterControlPlaneAcceptanceHarness(args.root, timeout_seconds=args.timeout).run()
+        print(serialize_writer_control_plane_acceptance_result(result))
+        return 0 if result.status is AcceptanceStatus.PASS else 2
     if args.materialize_architect_contract is not None:
         try:
             contract = load_architect_task_contract(args.materialize_architect_contract)

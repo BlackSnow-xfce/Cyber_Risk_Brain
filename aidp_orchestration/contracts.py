@@ -252,8 +252,8 @@ class ArchitectTaskContract:
     created_at: datetime
 
     def __post_init__(self) -> None:
-        if re.fullmatch(r"TASK-\d{4}", self.task_id) is None:
-            raise ValueError("task_id must match TASK-NNNN")
+        if re.fullmatch(r"TASK-(?:\d{4}|E2E-WRITER-\d{4})", self.task_id) is None:
+            raise ValueError("task_id must match an authorized task identifier")
         for name in ("title", "phase", "expected_head"):
             value = getattr(self, name)
             if not value.strip() or "\n" in value or "\r" in value:
@@ -285,6 +285,22 @@ class WriterResult:
     decision: WriterDecision
     materialized_paths: tuple[str, ...] = ()
     rework_contract_path: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterControlPlaneAcceptanceResult:
+    status: AcceptanceStatus
+    writer_result: WriterResult | None
+    ready_commit: str | None
+    control_plane_result: ControlPlaneResult | None
+    changed_files: tuple[str, ...]
+    scope_compliance: ScopeCompliance
+    validation_results: tuple[ValidationResult, ...]
+    architect_inbox_persisted: bool
+    source_aidp_unchanged: bool
+    cleanup_status: CleanupStatus
+    temporary_repository: str
     failure_reason: str | None = None
 
 
