@@ -7,6 +7,14 @@ from .contracts import (
     ScopeCompliance,
     ValidationResult,
 )
+from .executor import (
+    CodexExecutionService,
+    ExecutionLock,
+    GitInspector,
+    ProcessOutcome,
+    SubprocessRunner,
+    serialize_execution_result,
+)
 from .repository import AIDPRepository
 
 __all__ = [
@@ -16,4 +24,10 @@ __all__ = [
     "CodexExecutionResult",
     "ScopeCompliance",
     "ValidationResult",
+    "CodexExecutionService",
+    "ExecutionLock",
+    "GitInspector",
+    "ProcessOutcome",
+    "SubprocessRunner",
+    "serialize_execution_result",
 ]
