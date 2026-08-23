@@ -28,6 +28,11 @@ from .trigger_publisher_acceptance import (
     TriggerPublisherAcceptanceHarness,
     serialize_trigger_publisher_acceptance_result,
 )
+from .watcher_runtime import (
+    AIDPLocalWatcherRuntime,
+    MINIMUM_WATCH_INTERVAL_SECONDS,
+    serialize_watch_runtime_result,
+)
 
 
 def main() -> int:
@@ -42,11 +47,19 @@ def main() -> int:
     mode.add_argument("--acceptance-writer-control-plane", action="store_true", help="run isolated Writer-to-Control-Plane acceptance")
     mode.add_argument("--watch-once", action="store_true", help="consume and publish at most one local Architect contract")
     mode.add_argument("--acceptance-trigger-publisher", action="store_true", help="run isolated Trigger-to-Git-remote acceptance")
+    mode.add_argument("--watch", action="store_true", help="periodically invoke the existing local watch-once boundary")
     parser.add_argument("--task-id", help="task to execute (required with --execute)")
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--watch-interval", type=float, default=10.0)
     args = parser.parse_args()
+    if args.watch and args.watch_interval < MINIMUM_WATCH_INTERVAL_SECONDS:
+        parser.error(f"--watch-interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
     repository = AIDPRepository(args.root)
+    if args.watch:
+        result = AIDPLocalWatcherRuntime(repository, interval_seconds=args.watch_interval).run()
+        print(serialize_watch_runtime_result(result))
+        return 0 if result.status.value == "STOPPED" else 2
     if args.acceptance_trigger_publisher:
         result = TriggerPublisherAcceptanceHarness(args.root, timeout_seconds=args.timeout).run()
         print(serialize_trigger_publisher_acceptance_result(result))

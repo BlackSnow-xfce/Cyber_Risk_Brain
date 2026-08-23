@@ -38,6 +38,9 @@ from .contracts import (
     TriggerResult,
     TriggerStatus,
     TriggerPublisherAcceptanceResult,
+    WatchIterationEvent,
+    WatchRuntimeResult,
+    WatchRuntimeStatus,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -76,6 +79,14 @@ from .trigger_publisher_acceptance import (
     TriggerPublisherAcceptanceHarness,
     serialize_trigger_publisher_acceptance_result,
 )
+from .watcher_runtime import (
+    AIDPLocalWatcherRuntime,
+    DEFAULT_WATCH_INTERVAL_SECONDS,
+    MINIMUM_WATCH_INTERVAL_SECONDS,
+    WatcherRuntimeLock,
+    serialize_watch_iteration_event,
+    serialize_watch_runtime_result,
+)
 
 __all__ = [
     "AIDPRepository",
@@ -110,6 +121,9 @@ __all__ = [
     "TriggerResult",
     "TriggerStatus",
     "TriggerPublisherAcceptanceResult",
+    "WatchIterationEvent",
+    "WatchRuntimeResult",
+    "WatchRuntimeStatus",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",
@@ -143,4 +157,10 @@ __all__ = [
     "serialize_trigger_result",
     "TriggerPublisherAcceptanceHarness",
     "serialize_trigger_publisher_acceptance_result",
+    "AIDPLocalWatcherRuntime",
+    "DEFAULT_WATCH_INTERVAL_SECONDS",
+    "MINIMUM_WATCH_INTERVAL_SECONDS",
+    "WatcherRuntimeLock",
+    "serialize_watch_iteration_event",
+    "serialize_watch_runtime_result",
 ]

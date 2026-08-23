@@ -85,6 +85,11 @@ class TriggerStatus(StrEnum):
     ERROR = "ERROR"
 
 
+class WatchRuntimeStatus(StrEnum):
+    STOPPED = "STOPPED"
+    BLOCKED = "BLOCKED"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -395,6 +400,23 @@ class TriggerPublisherAcceptanceResult:
     cleanup_status: CleanupStatus
     temporary_repository: str
     temporary_remote: str
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WatchIterationEvent:
+    timestamp: datetime
+    iteration: int
+    trigger_status: TriggerStatus
+    contract_id: str | None
+    consumption_state: ConsumptionState | None
+    failure_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WatchRuntimeResult:
+    status: WatchRuntimeStatus
+    iterations: int
     failure_reason: str | None = None
 
 
