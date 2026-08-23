@@ -37,6 +37,13 @@ class ScopeCompliance(StrEnum):
     NOT_EVALUATED = "NOT_EVALUATED"
 
 
+class RunnerStatus(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    EXECUTED = "EXECUTED"
+    BLOCKED = "BLOCKED"
+    ERROR = "ERROR"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -110,12 +117,23 @@ class AuditEvent:
     timestamp: datetime
     task_id: str | None
     previous_state: AIDPState
-    next_state: AIDPState
+    current_state: AIDPState
+    intended_next_state: AIDPState | None
     trigger: str
     branch: str
     commit: str
     execution_id: str | None
     decision_reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerResult:
+    status: RunnerStatus
+    task_id: str | None
+    current_state: AIDPState
+    intended_next_state: AIDPState | None
+    decision_reason: str
+    execution_result: CodexExecutionResult | None = None
 
 
 @dataclass(frozen=True, slots=True)

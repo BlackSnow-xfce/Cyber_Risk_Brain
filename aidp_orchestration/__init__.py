@@ -4,6 +4,8 @@ from .contracts import (
     AIDPState,
     CodexExecutionRequest,
     CodexExecutionResult,
+    RunnerResult,
+    RunnerStatus,
     ScopeCompliance,
     ValidationResult,
 )
@@ -16,12 +18,16 @@ from .executor import (
     serialize_execution_result,
 )
 from .repository import AIDPRepository
+from .runner import AIDPRunner, serialize_runner_result
+from .runtime import LocalRuntimeStore
 
 __all__ = [
     "AIDPRepository",
     "AIDPState",
     "CodexExecutionRequest",
     "CodexExecutionResult",
+    "RunnerResult",
+    "RunnerStatus",
     "ScopeCompliance",
     "ValidationResult",
     "CodexExecutionService",
@@ -30,4 +36,7 @@ __all__ = [
     "ProcessOutcome",
     "SubprocessRunner",
     "serialize_execution_result",
+    "AIDPRunner",
+    "LocalRuntimeStore",
+    "serialize_runner_result",
 ]

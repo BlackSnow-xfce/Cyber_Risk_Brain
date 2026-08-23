@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,18 @@ def test_parallel_lock_blocks_second_execution(tmp_path: Path) -> None:
     try:
         result = CodexExecutionService(runner=FakeRunner([]), git=FakeGit(), lock=lock).execute(first)
         assert result.status is ExecutionStatus.BLOCKED
+    finally:
+        lock.release()
+
+
+def test_default_lock_is_git_internal_and_locally_exclusive(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    lock = ExecutionLock.for_repository(tmp_path)
+    assert lock.path.is_relative_to(tmp_path / ".git")
+    lock.acquire(request(tmp_path))
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            ExecutionLock.for_repository(tmp_path).acquire(request(tmp_path))
     finally:
         lock.release()
 

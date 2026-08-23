@@ -71,11 +71,25 @@ class GitInspector:
 
 
 class ExecutionLock:
-    """Exclusive local lock; it is removed on every release path."""
+    """Exclusive local lock; it is removed on every release path.
+
+    This provides exclusivity only for executions sharing this local Git
+    repository context. It is not a global or distributed lock.
+    """
 
     def __init__(self, path: Path):
         self.path = path
         self._owned = False
+
+    @classmethod
+    def for_repository(cls, root: Path) -> "ExecutionLock":
+        git_path = subprocess.check_output(
+            ("git", "rev-parse", "--git-path", "aidp-orchestration/execution.lock"),
+            cwd=root,
+            text=True,
+        ).strip()
+        path = Path(git_path)
+        return cls(path if path.is_absolute() else root / path)
 
     def acquire(self, request: CodexExecutionRequest) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -132,10 +146,10 @@ class CodexExecutionService:
         except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
-        lock = self._lock or ExecutionLock(root / ".codex-execution.lock")
         try:
+            lock = self._lock or ExecutionLock.for_repository(root)
             lock.acquire(request)
-        except (RuntimeError, OSError) as exc:
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
