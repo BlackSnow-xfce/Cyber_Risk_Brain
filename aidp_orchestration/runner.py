@@ -17,6 +17,8 @@ from .contracts import (
     OrchestrationDecision,
     RunnerResult,
     RunnerStatus,
+    ExecutionStatus,
+    ScopeCompliance,
     utc_now,
 )
 from .executor import CodexExecutionService
@@ -84,28 +86,54 @@ class AIDPRunner:
             self._audit(decision.state, decision.state, decision.next_state, result.decision_reason, decision, None)
             return result
 
+        request: CodexExecutionRequest | None = None
         try:
             if decision.task_id is None:
                 raise ValueError("executable inspection has no task")
             rework_count = 1 if decision.state is AIDPState.REWORK_REQUIRED else 0
             request = self.repository.build_execution_request(decision.task_id, rework_count=rework_count)
-            execution_result = self.execution_service.execute(request)
-            self.runtime_store.persist_result(execution_result)
-            intended_next = self.repository.evaluate_result(request, execution_result)
-            reason = f"execution completed with status {execution_result.status}"
-            self._audit(decision.state, decision.state, intended_next, reason, decision, request.execution_id)
-            return RunnerResult(
-                RunnerStatus.EXECUTED,
-                decision.task_id,
-                decision.state,
-                intended_next,
-                reason,
-                execution_result,
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:
             reason = f"runner failed closed: {exc.__class__.__name__}"
-            self._audit(decision.state, decision.state, None, reason, decision, None)
+            self._audit_safely(decision.state, decision.state, None, reason, decision, None)
             return RunnerResult(RunnerStatus.ERROR, decision.task_id, decision.state, None, reason)
+
+        shutdown_requested = False
+        try:
+            execution_result = self.execution_service.execute(request)
+        except KeyboardInterrupt:
+            shutdown_requested = True
+            execution_result = self._unexpected_result(request, decision.commit, "execution interrupted: KeyboardInterrupt")
+        except Exception as exc:
+            execution_result = self._unexpected_result(request, decision.commit, f"unexpected executor failure: {exc.__class__.__name__}")
+
+        try:
+            self.runtime_store.persist_result(execution_result)
+        except Exception as exc:
+            reason = f"execution result persistence failed: {exc.__class__.__name__}"
+            self._audit_safely(decision.state, decision.state, None, reason, decision, request.execution_id)
+            return RunnerResult(
+                RunnerStatus.ERROR, decision.task_id, decision.state, None,
+                reason, execution_result, shutdown_requested,
+            )
+
+        try:
+            intended_next = self.repository.evaluate_result(request, execution_result)
+        except Exception:
+            intended_next = None
+        reason = f"execution completed with status {execution_result.status}"
+        audited = self._audit_safely(
+            decision.state, decision.state, intended_next, reason, decision, request.execution_id,
+        )
+        if not audited:
+            reason = "execution result persisted but audit persistence failed"
+            return RunnerResult(
+                RunnerStatus.ERROR, decision.task_id, decision.state, intended_next,
+                reason, execution_result, shutdown_requested,
+            )
+        return RunnerResult(
+            RunnerStatus.EXECUTED, decision.task_id, decision.state, intended_next,
+            reason, execution_result, shutdown_requested,
+        )
 
     def _audit(
         self,
@@ -129,6 +157,39 @@ class AIDPRunner:
                 execution_id,
                 reason,
             )
+        )
+
+    def _audit_safely(
+        self,
+        previous: AIDPState,
+        current: AIDPState,
+        intended: AIDPState | None,
+        reason: str,
+        decision: OrchestrationDecision,
+        execution_id: str | None,
+    ) -> bool:
+        try:
+            self._audit(previous, current, intended, reason, decision, execution_id)
+        except Exception:
+            return False
+        return True
+
+    @staticmethod
+    def _unexpected_result(
+        request: CodexExecutionRequest,
+        start_commit: str,
+        reason: str,
+    ) -> CodexExecutionResult:
+        return CodexExecutionResult(
+            request.execution_id,
+            request.task_id,
+            start_commit,
+            None,
+            (),
+            (),
+            ExecutionStatus.ERROR,
+            reason,
+            ScopeCompliance.NOT_EVALUATED,
         )
 
 

@@ -19,7 +19,7 @@ from .contracts import (
 from .repository import AIDPRepository
 from .validators import ValidatorRegistry
 from .executor_types import ProcessOutcome, ProcessRunner
-from .launcher import CodexLauncher, CodexLauncherError, resolve_codex_launcher
+from .launcher import CodexLauncher, resolve_codex_launcher
 
 
 class SubprocessRunner:
@@ -154,18 +154,18 @@ class CodexExecutionService:
             self._preflight(request, root, git)
         except _StaleExecution as exc:
             return self._result(request, start_commit, ExecutionStatus.STALE_EXECUTION, str(exc), ScopeCompliance.NOT_EVALUATED)
-        except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        except Exception as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
             launcher = self.launcher or resolve_codex_launcher()
-        except CodexLauncherError as exc:
+        except Exception as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
             lock = self._lock or ExecutionLock.for_repository(root)
             lock.acquire(request)
-        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        except Exception as exc:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
@@ -195,11 +195,19 @@ class CodexExecutionService:
                     runner=self.runner,
                     timeout_seconds=self.timeout_seconds,
                 )
-            except (OSError, subprocess.SubprocessError) as exc:
+            except Exception as exc:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"validation execution failed: {exc.__class__.__name__}", scope, changed, resulting_commit)
             if not all(item.passed for item in validations):
                 return self._result(request, start_commit, ExecutionStatus.TEST_FAILED, "one or more validations failed", scope, changed, resulting_commit, validations)
             return self._result(request, start_commit, ExecutionStatus.SUCCESS, None, scope, changed, resulting_commit, validations)
+        except Exception as exc:
+            return self._result(
+                request,
+                start_commit,
+                ExecutionStatus.ERROR,
+                f"unexpected execution failure: {exc.__class__.__name__}",
+                ScopeCompliance.NOT_EVALUATED,
+            )
         finally:
             lock.release()
 
@@ -245,7 +253,7 @@ class CodexExecutionService:
     def _safe_head(git: GitInspector, fallback: str) -> str:
         try:
             return git.head()
-        except (OSError, subprocess.SubprocessError):
+        except Exception:
             return fallback
 
     @staticmethod

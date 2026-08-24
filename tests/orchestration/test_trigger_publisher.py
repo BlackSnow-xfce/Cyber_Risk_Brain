@@ -190,3 +190,37 @@ def test_scope_violation_never_commits_or_pushes(tmp_path: Path):
     result = GitReviewPublisher(AIDPRepository(root)).publish(control, "topic")
     assert result.push_status == "NOT_PUSHED"
     assert _git(root, "rev-parse", "HEAD") == head
+
+
+def test_exception_after_executing_reaches_terminal_blocked_consumption(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    control = FakeControlPlane()
+    control.run_once = lambda: (_ for _ in ()).throw(AssertionError("unexpected control failure"))
+    result = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=control,
+        publisher=FakePublisher(), runtime_root=runtime, execution_lock_active=lambda: False,
+    ).run_once()
+    assert result.status is TriggerStatus.BLOCKED
+    assert result.consumption_state is ConsumptionState.BLOCKED
+    assert ConsumptionStore(runtime).current("contract-1") is ConsumptionState.BLOCKED
+    states = [json.loads(line)["consumption_event"]["state"] for line in (runtime / "consumption-events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert states[-2:] == ["EXECUTING", "BLOCKED"]
+
+
+def test_abandoned_executing_state_is_recovered_as_blocked_without_execution(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    consumption = ConsumptionStore(runtime)
+    consumption.append("contract-1", ConsumptionState.RECEIVED, "received")
+    consumption.append("contract-1", ConsumptionState.MATERIALIZED, "materialized")
+    consumption.append("contract-1", ConsumptionState.EXECUTING, "executing")
+    writer, control, publisher = FakeWriter(), FakeControlPlane(), FakePublisher()
+    result = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher,
+        runtime_root=runtime, execution_lock_active=lambda: False,
+    ).run_once()
+    assert result.status is TriggerStatus.BLOCKED
+    assert result.consumption_state is ConsumptionState.BLOCKED
+    assert consumption.current("contract-1") is ConsumptionState.BLOCKED
+    assert writer.calls == control.calls == publisher.calls == 0

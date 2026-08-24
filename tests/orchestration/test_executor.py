@@ -207,3 +207,24 @@ def test_lock_is_released_after_process_error(tmp_path: Path) -> None:
     ).execute(request(tmp_path))
     assert result.status is ExecutionStatus.ERROR
     assert not lock_path.exists()
+
+
+def test_unexpected_process_adapter_failure_becomes_error_and_releases_lock(tmp_path: Path) -> None:
+    class ExplodingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            raise AssertionError("unexpected adapter failure")
+
+    lock_path = tmp_path / "execution.lock"
+    result = CodexExecutionService(
+        runner=ExplodingRunner(), git=FakeGit(), lock=ExecutionLock(lock_path),
+        launcher=CodexLauncher(("codex-test.exe",)),
+    ).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.ERROR
+    assert result.failure_reason == "unexpected execution failure: AssertionError"
+    assert not lock_path.exists()
+
+
+def test_malformed_codex_jsonl_is_explicit_error(tmp_path: Path) -> None:
+    result = service(tmp_path, FakeRunner([ProcessOutcome(0, '{"ok":true}\nmalformed', "")])).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.ERROR
+    assert result.failure_reason == "Codex returned malformed JSONL"

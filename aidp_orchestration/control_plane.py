@@ -150,7 +150,7 @@ class AIDPControlPlane:
 
         try:
             runner_result = self.runner.run_ready()
-        except (OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:
             reason = f"runner failed: {exc.__class__.__name__}"
             return ControlPlaneResult(decision, ControlPlaneAction.BLOCKED, failure_reason=reason)
         execution = runner_result.execution_result

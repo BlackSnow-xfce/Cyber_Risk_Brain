@@ -215,6 +215,11 @@ class AIDPWatchOnce:
         self.publisher = publisher or GitReviewPublisher(repository)
 
     def run_once(self) -> TriggerResult:
+        item: ContractInboxItem | None = None
+        lifecycle_state: ConsumptionState | None = None
+        writer_result = None
+        control_result = None
+        publish_result = None
         try:
             try:
                 items = self.inbox.pending()
@@ -225,11 +230,20 @@ class AIDPWatchOnce:
             if len(items) != 1:
                 return TriggerResult(TriggerStatus.BLOCKED, None, None, failure_reason="contract inbox is ambiguous")
             item = items[0]
-            if self.consumption.current(item.contract_id) is not None:
-                return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, self.consumption.current(item.contract_id), failure_reason="contract_id was already consumed")
+            current = self.consumption.current(item.contract_id)
+            if current in {ConsumptionState.RECEIVED, ConsumptionState.MATERIALIZED, ConsumptionState.EXECUTING}:
+                if current is ConsumptionState.EXECUTING and self.execution_lock_active():
+                    return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, current, failure_reason="contract execution is still locally active")
+                return self._block(
+                    item.contract_id, current,
+                    f"recovered abandoned {current.value} consumption as terminal BLOCKED",
+                )
+            if current is not None:
+                return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, current, failure_reason="contract_id was already consumed")
             if self.execution_lock_active():
                 return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, None, failure_reason="local execution lock is active")
             self.consumption.append(item.contract_id, ConsumptionState.RECEIVED, "immutable contract received")
+            lifecycle_state = ConsumptionState.RECEIVED
             writer_result = (self.writer.materialize_task(item.contract) if isinstance(item.contract, ArchitectTaskContract)
                              else self.writer.materialize_rework(item.contract))
             if writer_result.decision.action is WriterAction.BLOCKED:
@@ -237,22 +251,45 @@ class AIDPWatchOnce:
             if writer_result.materialized_paths:
                 self.publisher.commit_materialization(writer_result)
             self.consumption.append(item.contract_id, ConsumptionState.MATERIALIZED, "contract materialized")
+            lifecycle_state = ConsumptionState.MATERIALIZED
             decision = self.control_plane.decide()
             if decision.action is not ControlPlaneAction.EXECUTE:
                 return self._block(item.contract_id, ConsumptionState.MATERIALIZED, f"control plane decided {decision.action.value}", writer_result)
             self.consumption.append(item.contract_id, ConsumptionState.EXECUTING, "control plane authorized execution")
+            lifecycle_state = ConsumptionState.EXECUTING
             control_result = self.control_plane.run_once()
             publish_result = self.publisher.publish(control_result, decision.branch)
             if publish_result.push_status != "PUSHED":
-                return self._block(item.contract_id, ConsumptionState.EXECUTING, publish_result.failure_reason or "publication failed", writer_result, control_result, publish_result)
+                blocked = self._block(item.contract_id, ConsumptionState.EXECUTING, publish_result.failure_reason or "publication failed", writer_result, control_result, publish_result)
+                lifecycle_state = ConsumptionState.BLOCKED
+                if control_result.runner_result and control_result.runner_result.shutdown_requested:
+                    raise KeyboardInterrupt
+                return blocked
             self.consumption.append(item.contract_id, ConsumptionState.REVIEW_PUBLISHED, "review envelope pushed")
+            lifecycle_state = ConsumptionState.REVIEW_PUBLISHED
             return TriggerResult(TriggerStatus.PUBLISHED, item.contract_id, ConsumptionState.REVIEW_PUBLISHED, writer_result, control_result, publish_result)
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
-            return TriggerResult(TriggerStatus.ERROR, None, None, failure_reason=f"watch-once failed: {exc.__class__.__name__}")
+        except KeyboardInterrupt:
+            if item is not None and lifecycle_state not in {None, ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}:
+                self._block_safely(item.contract_id, lifecycle_state, "watch-once interrupted", writer_result, control_result, publish_result)
+            raise
+        except Exception as exc:
+            reason = f"watch-once failed: {exc.__class__.__name__}"
+            if item is not None and lifecycle_state not in {None, ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}:
+                return self._block_safely(item.contract_id, lifecycle_state, reason, writer_result, control_result, publish_result)
+            return TriggerResult(TriggerStatus.ERROR, None, None, failure_reason=reason)
 
     def _block(self, contract_id: str, state: ConsumptionState, reason: str, writer_result=None, control_result=None, publish_result=None) -> TriggerResult:
         self.consumption.append(contract_id, ConsumptionState.BLOCKED, reason)
         return TriggerResult(TriggerStatus.BLOCKED, contract_id, ConsumptionState.BLOCKED, writer_result, control_result, publish_result, reason)
+
+    def _block_safely(self, contract_id: str, state: ConsumptionState, reason: str, writer_result=None, control_result=None, publish_result=None) -> TriggerResult:
+        try:
+            return self._block(contract_id, state, reason, writer_result, control_result, publish_result)
+        except Exception as exc:
+            return TriggerResult(
+                TriggerStatus.ERROR, contract_id, state, writer_result, control_result,
+                publish_result, f"terminal consumption persistence failed: {exc.__class__.__name__}",
+            )
 
     def _execution_lock_active(self) -> bool:
         lock_path = subprocess.check_output(

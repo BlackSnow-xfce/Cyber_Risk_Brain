@@ -182,3 +182,53 @@ def test_runner_serialization_is_stable_and_execution_result_remains_authoritati
     assert payload["status"] == "EXECUTED"
     assert payload["execution_result"]["status"] == "SUCCESS"
     assert payload["intended_next_state"] == "READY_FOR_ARCHITECT"
+
+
+@pytest.mark.parametrize("status", (ExecutionStatus.ERROR, ExecutionStatus.TEST_FAILED, ExecutionStatus.SCOPE_VIOLATION))
+def test_failed_execution_outcomes_are_persisted_and_audited(tmp_path: Path, status: ExecutionStatus) -> None:
+    repository = FakeRepository(tmp_path, AIDPState.READY_FOR_CODEX)
+    request_value = repository.build_execution_request("TASK-9000")
+    scope = ScopeCompliance.VIOLATION if status is ExecutionStatus.SCOPE_VIOLATION else ScopeCompliance.NOT_EVALUATED
+    execution = CodexExecutionResult(
+        request_value.execution_id, request_value.task_id, "base", None, (),
+        (ValidationResult("pytest", False, "exit_code=1"),) if status is ExecutionStatus.TEST_FAILED else (),
+        status, "terminal failure", scope,
+    )
+    repository.requests.clear()
+    store = LocalRuntimeStore(tmp_path / "runtime")
+    runner = AIDPRunner(repository, execution_service=FakeExecutionService(execution), runtime_store=store)
+    result = runner.run_ready()
+    persisted = json.loads((store.root / "results/execution-1.json").read_text(encoding="utf-8"))
+    audit = json.loads((store.root / "audit.jsonl").read_text(encoding="utf-8"))
+    assert result.status is RunnerStatus.EXECUTED
+    assert persisted["codex_execution_result"]["status"] == status.value
+    assert audit["execution_id"] == "execution-1"
+
+
+def test_unexpected_executor_failure_is_converted_to_persisted_error(tmp_path: Path) -> None:
+    class ExplodingService:
+        def execute(self, request):
+            raise AssertionError("must not escape")
+
+    repository = FakeRepository(tmp_path, AIDPState.READY_FOR_CODEX)
+    store = LocalRuntimeStore(tmp_path / "runtime")
+    result = AIDPRunner(repository, execution_service=ExplodingService(), runtime_store=store).run_ready()
+    persisted = json.loads((store.root / "results/execution-1.json").read_text(encoding="utf-8"))
+    assert result.status is RunnerStatus.EXECUTED
+    assert result.execution_result.status is ExecutionStatus.ERROR
+    assert persisted["codex_execution_result"]["failure_reason"] == "unexpected executor failure: AssertionError"
+    assert (store.root / "audit.jsonl").is_file()
+
+
+def test_keyboard_interrupt_is_persisted_before_shutdown_is_requested(tmp_path: Path) -> None:
+    class InterruptedService:
+        def execute(self, request):
+            raise KeyboardInterrupt
+
+    repository = FakeRepository(tmp_path, AIDPState.READY_FOR_CODEX)
+    store = LocalRuntimeStore(tmp_path / "runtime")
+    result = AIDPRunner(repository, execution_service=InterruptedService(), runtime_store=store).run_ready()
+    assert result.shutdown_requested
+    assert result.execution_result.status is ExecutionStatus.ERROR
+    assert (store.root / "results/execution-1.json").is_file()
+    assert (store.root / "audit.jsonl").is_file()

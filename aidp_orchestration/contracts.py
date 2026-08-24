@@ -187,6 +187,7 @@ class RunnerResult:
     intended_next_state: AIDPState | None
     decision_reason: str
     execution_result: CodexExecutionResult | None = None
+    shutdown_requested: bool = False
 
 
 @dataclass(frozen=True, slots=True)
