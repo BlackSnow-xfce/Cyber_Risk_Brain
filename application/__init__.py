@@ -68,6 +68,13 @@ from application.incident_repository import (
     FindingIncidentReference,
 )
 from application.incident_queue import IncidentQueueItem, IncidentQueueQueryService
+from application.hunt_hypotheses import (
+    FileHuntHypothesisRepository,
+    HuntHypothesisConfigurationError,
+    HuntHypothesisDataError,
+    HuntHypothesisQueryService,
+    HuntHypothesisRepository,
+)
 from application.finding_incidents import FindingIncidentQueryService
 from application.trusted_ai_retrieval import (
     FINDING_RETRIEVAL_OPERATION,
@@ -190,6 +197,11 @@ __all__ = [
     "FindingIncidentReference",
     "IncidentQueueItem",
     "IncidentQueueQueryService",
+    "FileHuntHypothesisRepository",
+    "HuntHypothesisConfigurationError",
+    "HuntHypothesisDataError",
+    "HuntHypothesisQueryService",
+    "HuntHypothesisRepository",
     "FindingIncidentQueryService",
     "FINDING_RETRIEVAL_OPERATION",
     "FindingResourceReader",

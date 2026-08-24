@@ -1,4 +1,5 @@
 import ThreatHunterOverviewPage from "./ThreatHunterOverviewPage";
+import HuntHypothesesPage from "./HuntHypothesesPage";
 
 export interface ThreatHunterAreaDefinition {
     title: string;
@@ -56,4 +57,4 @@ export function isThreatHunterAreaId(
     return pageId !== null && pageId in threatHunterAreaRegistry;
 }
 
-export { ThreatHunterOverviewPage };
+export { HuntHypothesesPage, ThreatHunterOverviewPage };

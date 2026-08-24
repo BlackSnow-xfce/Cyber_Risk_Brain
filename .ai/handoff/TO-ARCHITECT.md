@@ -1,9 +1,9 @@
-# Handoff - Architecture Review TASK-0112
+# Handoff - Architecture Review TASK-0113
 
 Status: CLOSED
 
 Task:
-TASK-0112 - Threat Hunter Hunts Empty-State Foundation
+TASK-0113 - Hunt Hypothesis Read Path Foundation
 
 Task Status:
 DONE / PASS / APPROVED
@@ -13,12 +13,15 @@ Architect
 
 Product Owner Live Acceptance: PASS
 
-TASK-0112 is administratively closed after Architect Review PASS / APPROVED
-and Product Owner Live Acceptance PASS. The Hunts route presents a truthful
-empty state without fabricated security data. Focused frontend tests: 3
-passed; TypeScript, production build, and `git diff --check`: PASS. No routing,
-workspace-navigation, backend, or orchestration implementation changed.
-TASK-0113 has not been created.
+TASK-0113 is administratively closed after Architect Review PASS / APPROVED
+and Product Owner Live Acceptance PASS. The accepted read-only path uses the
+canonical HuntHypothesis 1.0 contract from configured JSON persistence through
+the application query and API to the Threat Hunter UI. Validation remains:
+25 focused Python tests and 92 frontend tests passed; TypeScript, production
+build, and `git diff --check` passed. TASK-0114 was not created.
+
+TASK-0112 remains historically DONE / PASS / APPROVED with Product Owner Live
+Acceptance PASS.
 
 TASK-0111 remains historically DONE / PASS / APPROVED with Product Owner Live
 Acceptance PASS.

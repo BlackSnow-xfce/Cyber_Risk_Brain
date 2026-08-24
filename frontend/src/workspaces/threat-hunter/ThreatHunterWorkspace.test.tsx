@@ -1,12 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceProvider } from "@/context/WorkspaceContext";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 import ThreatHunterWorkspace from "./ThreatHunterWorkspace";
+import { getHuntHypotheses } from "./HuntHypothesisApiClient";
+
+vi.mock("./HuntHypothesisApiClient", () => ({
+    getHuntHypotheses: vi.fn(),
+    HuntHypothesisRequestError: class HuntHypothesisRequestError extends Error {},
+}));
 
 function HistoryControls() {
     const navigate = useNavigate();
@@ -30,6 +36,12 @@ function StaleNavigationState() {
 }
 
 describe("ThreatHunterWorkspace", () => {
+    afterEach(() => cleanup());
+
+    beforeEach(() => {
+        vi.mocked(getHuntHypotheses).mockResolvedValue([]);
+    });
+
     it("renders an explicit foundation overview without claiming connected data", () => {
         render(
             <WorkspaceProvider>
@@ -65,6 +77,26 @@ describe("ThreatHunterWorkspace", () => {
             screen.queryByText("Workspace connection required"),
         ).not.toBeInTheDocument();
         expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    });
+
+    it("uses the route for a direct Hypotheses deep link", async () => {
+        render(
+            <WorkspaceProvider>
+                <MemoryRouter initialEntries={["/threat-hunting/hypotheses"]}>
+                    <ThreatHunterWorkspace />
+                </MemoryRouter>
+            </WorkspaceProvider>,
+        );
+
+        expect(
+            await screen.findByRole("heading", {
+                name: "Hunt Hypotheses",
+                level: 4,
+            }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText("No persisted hunt hypotheses are available."),
+        ).toBeInTheDocument();
     });
 
     it("keeps Overview and Hunts synchronized across Back and Forward", async () => {

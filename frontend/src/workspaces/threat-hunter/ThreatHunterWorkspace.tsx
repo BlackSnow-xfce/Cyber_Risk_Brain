@@ -5,6 +5,7 @@ import ThreatHunterLayout from "./ThreatHunterLayout";
 import ThreatHunterAreaPage from "./pages/ThreatHunterAreaPage";
 import {
     isThreatHunterAreaId,
+    HuntHypothesesPage,
     threatHunterAreaRegistry,
     ThreatHunterOverviewPage,
 } from "./pages";
@@ -24,10 +25,14 @@ export default function ThreatHunterWorkspace() {
 
         return (
             <ThreatHunterLayout>
-                <ThreatHunterAreaPage
-                    title={area.title}
-                    description={area.description}
-                />
+                {selectedAreaId === "hypotheses" ? (
+                    <HuntHypothesesPage />
+                ) : (
+                    <ThreatHunterAreaPage
+                        title={area.title}
+                        description={area.description}
+                    />
+                )}
             </ThreatHunterLayout>
         );
     }

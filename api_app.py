@@ -28,6 +28,10 @@ from application import (
     FindingIncidentQueryService,
     FindingsConfigurationError,
     FindingsQueryService,
+    FileHuntHypothesisRepository,
+    HuntHypothesisConfigurationError,
+    HuntHypothesisDataError,
+    HuntHypothesisQueryService,
     RiskReadinessService,
     ThreatIntelligenceConfigurationError,
     ThreatIntelligenceDataError,
@@ -51,6 +55,7 @@ from core.incident_response import (
     ThreatIntelligenceReference,
 )
 from core.predator_engine import PredatorEngine
+from core.threat_hunting import HuntHypothesis, HuntHypothesisReference
 from core.threat_intelligence import (
     CisaKevInformation,
     CvssInformation,
@@ -73,6 +78,7 @@ from settings import (
     ASSET_CONTEXT_PATH,
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
+    HUNT_HYPOTHESIS_REPOSITORY_PATH,
 )
 
 app = FastAPI(
@@ -98,6 +104,24 @@ class FindingResponse(BaseModel):
     title: str
     vendorSeverity: str
     asset: str
+
+
+class HuntHypothesisReferenceResponse(BaseModel):
+    reference_type: str
+    reference_id: str
+
+
+class HuntHypothesisResponse(BaseModel):
+    hypothesis_id: str
+    title: str
+    statement: str
+    status: str
+    created_at: datetime
+    created_by: str
+    target_references: list[HuntHypothesisReferenceResponse]
+    threat_references: list[HuntHypothesisReferenceResponse]
+    rationale: str
+    contract_version: str
 
 
 class FindingExplanationFactResponse(BaseModel):
@@ -341,6 +365,44 @@ class IncidentCommandCenterResponse(BaseModel):
 
 def get_findings_query_service() -> FindingsQueryService:
     return FindingsQueryService(GREENBONE_REPORT_PATH)
+
+
+def get_hunt_hypothesis_query_service() -> HuntHypothesisQueryService:
+    return HuntHypothesisQueryService(
+        FileHuntHypothesisRepository(HUNT_HYPOTHESIS_REPOSITORY_PATH)
+    )
+
+
+def _hunt_hypothesis_reference_response(
+    reference: HuntHypothesisReference,
+) -> HuntHypothesisReferenceResponse:
+    return HuntHypothesisReferenceResponse(
+        reference_type=reference.reference_type.value,
+        reference_id=reference.reference_id,
+    )
+
+
+def _hunt_hypothesis_response(
+    hypothesis: HuntHypothesis,
+) -> HuntHypothesisResponse:
+    return HuntHypothesisResponse(
+        hypothesis_id=hypothesis.hypothesis_id,
+        title=hypothesis.title,
+        statement=hypothesis.statement,
+        status=hypothesis.status.value,
+        created_at=hypothesis.created_at,
+        created_by=hypothesis.created_by,
+        target_references=[
+            _hunt_hypothesis_reference_response(reference)
+            for reference in hypothesis.target_references
+        ],
+        threat_references=[
+            _hunt_hypothesis_reference_response(reference)
+            for reference in hypothesis.threat_references
+        ],
+        rationale=hypothesis.rationale,
+        contract_version=hypothesis.contract_version,
+    )
 
 
 def get_finding_explanation_use_case() -> FindingExplanationUseCase:
@@ -856,6 +918,26 @@ def findings(
         )
         for finding in universal_findings
     ]
+
+
+@app.get(
+    "/api/hunt-hypotheses",
+    response_model=list[HuntHypothesisResponse],
+)
+def hunt_hypotheses(
+    service: HuntHypothesisQueryService = Depends(
+        get_hunt_hypothesis_query_service
+    ),
+) -> list[HuntHypothesisResponse]:
+    try:
+        return [_hunt_hypothesis_response(item) for item in service.list()]
+    except HuntHypothesisConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except HuntHypothesisDataError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Hunt Hypothesis repository contains invalid data.",
+        ) from error
 
 
 @app.get(
