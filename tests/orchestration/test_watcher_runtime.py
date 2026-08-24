@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,47 @@ def test_second_runtime_lock_is_blocked_and_owner_can_release(tmp_path: Path):
     assert watcher.calls == 0
     owner.release()
     assert not path.exists()
+
+
+def test_stale_watcher_pid_lock_is_safely_reclaimed(tmp_path: Path):
+    path = tmp_path / "watch.lock"
+    path.write_text(json.dumps({"pid": 424242, "process_identity": "old"}) + "\n", encoding="utf-8")
+    identity = lambda pid: "current" if pid == os.getpid() else None
+    lock = WatcherRuntimeLock(path, process_identity=identity)
+    assert lock.acquire()
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted == {"pid": os.getpid(), "process_identity": "current"}
+    lock.release()
+    assert not path.exists()
+
+
+def test_live_watcher_pid_lock_cannot_be_reclaimed(tmp_path: Path):
+    path = tmp_path / "watch.lock"
+    path.write_text(json.dumps({"pid": 777, "process_identity": "live-start"}) + "\n", encoding="utf-8")
+    identity = lambda pid: "current" if pid == os.getpid() else "live-start"
+    lock = WatcherRuntimeLock(path, process_identity=identity)
+    assert not lock.acquire()
+    assert json.loads(path.read_text(encoding="utf-8"))["pid"] == 777
+
+
+def test_reused_pid_with_different_identity_is_reclaimed(tmp_path: Path):
+    path = tmp_path / "watch.lock"
+    path.write_text(json.dumps({"pid": 777, "process_identity": "old-start"}) + "\n", encoding="utf-8")
+    identity = lambda pid: "current" if pid == os.getpid() else "new-start"
+    lock = WatcherRuntimeLock(path, process_identity=identity)
+    assert lock.acquire()
+    lock.release()
+
+
+def test_malformed_lock_fails_closed_without_starting_watcher(tmp_path: Path):
+    path = tmp_path / "watch.lock"
+    path.write_text("not a verifiable PID lock\n", encoding="utf-8")
+    watcher = SequenceWatcher([])
+    lock = WatcherRuntimeLock(path, process_identity=lambda pid: "current")
+    result = _runtime(tmp_path, watcher, lambda _: None, lock=lock).run()
+    assert result.status is WatchRuntimeStatus.BLOCKED
+    assert watcher.calls == 0
+    assert path.read_text(encoding="utf-8") == "not a verifiable PID lock\n"
 
 
 def test_lock_released_after_normal_ctrl_c_stop(tmp_path: Path):

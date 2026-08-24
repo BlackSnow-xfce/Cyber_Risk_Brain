@@ -41,22 +41,32 @@ class ArchitectGitIngress:
             self._fetch()
             commit = self._git("rev-parse", LOCAL_FETCH_REF)
             candidates = self._discover(commit)
-            parsed = [(path, blob, LocalContractInbox.parse(content)) for path, blob, content in candidates]
-            ids = [item.contract_id for _, _, item in parsed]
-            if len(ids) != len(set(ids)):
-                return self._blocked(None, commit, None, "duplicate contract_id in remote branch")
-            history = self._history()
+            authoritative, observed = self._history()
             new: list[tuple[str, str, object]] = []
-            for path, blob, item in parsed:
-                previous = history.get(item.contract_id)
-                if previous is not None:
-                    if previous != blob:
-                        return self._blocked(item.contract_id, commit, blob, "contract_id content mutated")
+            rejected: ArchitectIngressResult | None = None
+            for path, blob, content in candidates:
+                identity = Path(path).stem
+                if (identity, blob) in observed:
                     continue
-                self._validate(item.contract)
+                previous = authoritative.get(identity)
+                if previous is not None and previous != blob:
+                    reason = "contract_id content mutated"
+                    self._append(identity, commit, blob, IngressStatus.BLOCKED, reason)
+                    rejected = ArchitectIngressResult(IngressStatus.BLOCKED, identity, commit, blob, failure_reason=reason)
+                    continue
+                try:
+                    item = LocalContractInbox.parse(content)
+                    if item.contract_id != identity:
+                        raise ValueError("contract_id must match its ingress filename")
+                    self._validate(item.contract)
+                except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+                    reason = f"remote contract rejected: {exc.__class__.__name__}"
+                    self._append(identity, commit, blob, IngressStatus.BLOCKED, reason)
+                    rejected = ArchitectIngressResult(IngressStatus.BLOCKED, identity, commit, blob, failure_reason=reason)
+                    continue
                 new.append((path, blob, item))
             if not new:
-                return ArchitectIngressResult(IngressStatus.NO_ACTION, None, commit, None)
+                return rejected or ArchitectIngressResult(IngressStatus.NO_ACTION, None, commit, None)
             _, blob, item = sorted(new, key=lambda value: value[0])[0]
             path = self.inbox.persist(item)
             self._append(item.contract_id, commit, blob, IngressStatus.MATERIALIZED, "remote contract materialized")
@@ -97,19 +107,24 @@ class ArchitectGitIngress:
         if unknown:
             raise ValueError(f"unknown validator: {unknown[0]}")
 
-    def _history(self) -> dict[str, str]:
-        history: dict[str, str] = {}
+    def _history(self) -> tuple[dict[str, str], set[tuple[str, str]]]:
+        authoritative: dict[str, str] = {}
+        observed: set[tuple[str, str]] = set()
         if not self.state_path.exists():
-            return history
+            return authoritative, observed
         for line in self.state_path.read_text(encoding="utf-8").splitlines():
             value = json.loads(line).get("architect_ingress_event")
             if not isinstance(value, dict) or not isinstance(value.get("contract_id"), str) or not isinstance(value.get("blob_id"), str):
                 raise ValueError("malformed Architect ingress state")
             contract_id, blob = value["contract_id"], value["blob_id"]
-            if contract_id in history and history[contract_id] != blob:
-                raise ValueError("inconsistent Architect ingress state")
-            history[contract_id] = blob
-        return history
+            try:
+                status = IngressStatus(value.get("status"))
+            except ValueError as exc:
+                raise ValueError("malformed Architect ingress status") from exc
+            observed.add((contract_id, blob))
+            if contract_id not in authoritative and status in {IngressStatus.MATERIALIZED, IngressStatus.BLOCKED}:
+                authoritative[contract_id] = blob
+        return authoritative, observed
 
     def _blocked(self, contract_id: str | None, commit: str, blob: str | None, reason: str) -> ArchitectIngressResult:
         if contract_id is not None and blob is not None:

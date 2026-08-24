@@ -88,7 +88,8 @@ def test_unknown_validator_and_extra_prompt_field_are_blocked(tmp_path: Path):
     assert result.status is IngressStatus.BLOCKED
     assert not (runtime / "contract-inbox").exists()
     state = (runtime / "architect-ingress.jsonl")
-    assert not state.exists() or "secret" not in state.read_text(encoding="utf-8")
+    assert state.is_file()
+    assert "secret" not in state.read_text(encoding="utf-8")
 
 
 def test_explicit_valid_branch_and_origin_are_required(tmp_path: Path):
@@ -111,6 +112,34 @@ def test_at_most_one_new_contract_is_materialized(tmp_path: Path):
     ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
     assert ingress.run_once().status is IngressStatus.MATERIALIZED
     assert len(LocalContractInbox(runtime).pending()) == 1
+
+
+def test_malformed_historical_contract_is_rejected_once_and_valid_successor_proceeds(tmp_path: Path):
+    repository, _remote, architect, runtime, contract = _setup(tmp_path)
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    assert ingress.run_once().status is IngressStatus.MATERIALIZED
+    malformed_path = ".ai/orchestration/architect-contracts/architect-ingress-invalid.json"
+    _commit_contract(architect, malformed_path, '{"contract_inbox_item":{"contract_id":"architect-ingress-invalid"}}', "invalid historical contract")
+    successor = ContractInboxItem(
+        "architect-ingress-successor",
+        replace(contract, task_id="TASK-E2E-TRIGGER-0002"),
+        datetime.now(timezone.utc),
+    )
+    _commit_contract(
+        architect,
+        ".ai/orchestration/architect-contracts/architect-ingress-successor.json",
+        serialize_contract_inbox_item(successor),
+        "valid successor contract",
+    )
+    result = ingress.run_once()
+    assert result.status is IngressStatus.MATERIALIZED
+    assert result.contract_id == "architect-ingress-successor"
+    events_before = (runtime / "architect-ingress.jsonl").read_text(encoding="utf-8").splitlines()
+    rejected = [json.loads(line)["architect_ingress_event"] for line in events_before if "architect-ingress-invalid" in line]
+    assert len(rejected) == 1 and rejected[0]["status"] == "BLOCKED"
+    assert len(LocalContractInbox(runtime).pending()) == 2
+    assert ingress.run_once().status is IngressStatus.NO_ACTION
+    assert (runtime / "architect-ingress.jsonl").read_text(encoding="utf-8").splitlines() == events_before
 
 
 def test_watcher_composes_ingress_before_watch_once_and_no_action_remains_normal(tmp_path: Path):

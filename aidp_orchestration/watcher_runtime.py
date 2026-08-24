@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import platform
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -36,9 +37,11 @@ class IngressBoundary(Protocol):
 class WatcherRuntimeLock:
     """Atomic local lock; it provides no global or distributed exclusivity."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, process_identity: Callable[[int], str | None] | None = None):
         self.path = path
         self._owned = False
+        self._content: bytes | None = None
+        self.process_identity = process_identity or _process_identity
 
     @classmethod
     def for_repository(cls, repository_root: Path) -> "WatcherRuntimeLock":
@@ -46,21 +49,64 @@ class WatcherRuntimeLock:
 
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        identity = self.process_identity(os.getpid())
+        if identity is None:
+            raise RuntimeError("current watcher process identity is unavailable")
+        content = json.dumps({"pid": os.getpid(), "process_identity": identity}, sort_keys=True).encode("utf-8") + b"\n"
+        return self._acquire(content, allow_reclaim=True)
+
+    def _acquire(self, content: bytes, *, allow_reclaim: bool) -> bool:
         try:
-            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            descriptor = os.open(
+                self.path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0),
+            )
         except FileExistsError:
-            return False
+            if not allow_reclaim:
+                return False
+            return self._reclaim(content)
         try:
-            os.write(descriptor, f"pid={os.getpid()}\n".encode("ascii"))
+            os.write(descriptor, content)
         finally:
             os.close(descriptor)
         self._owned = True
+        self._content = content
         return True
+
+    def _reclaim(self, content: bytes) -> bool:
+        guard = self.path.with_name(f"{self.path.name}.reclaim")
+        try:
+            descriptor = os.open(
+                guard,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0),
+            )
+        except FileExistsError:
+            return False
+        os.close(descriptor)
+        try:
+            if not self.path.exists() or not self._existing_lock_is_stale():
+                return False
+            self.path.unlink()
+            return self._acquire(content, allow_reclaim=False)
+        finally:
+            guard.unlink(missing_ok=True)
+
+    def _existing_lock_is_stale(self) -> bool:
+        content = self.path.read_bytes()
+        pid, expected_identity = _parse_lock(content)
+        observed_identity = self.process_identity(pid)
+        if observed_identity is None:
+            return True
+        if expected_identity is None:
+            return False
+        return observed_identity != expected_identity
 
     def release(self) -> None:
         if self._owned:
-            self.path.unlink(missing_ok=True)
+            if self.path.exists() and self._content is not None and self.path.read_bytes() == self._content:
+                self.path.unlink()
             self._owned = False
+            self._content = None
 
 
 class AIDPLocalWatcherRuntime:
@@ -91,7 +137,7 @@ class AIDPLocalWatcherRuntime:
             acquired = self.lock.acquire()
         except KeyboardInterrupt:
             return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, 0)
-        except OSError as exc:
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, 0, f"watcher lock failed: {exc.__class__.__name__}")
         if not acquired:
             return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, 0, "another local watcher runtime is active")
@@ -155,3 +201,84 @@ def _json_default(value: object) -> object:
     if isinstance(value, Enum):
         return value.value
     raise TypeError(type(value).__name__)
+
+
+def _parse_lock(content: bytes) -> tuple[int, str | None]:
+    try:
+        text = content.decode("utf-8", errors="strict").strip()
+    except UnicodeError as exc:
+        raise ValueError("watcher lock is not valid UTF-8") from exc
+    if text.startswith("pid="):
+        value = text.removeprefix("pid=")
+        if not value.isdigit():
+            raise ValueError("legacy watcher lock PID is invalid")
+        pid = int(value)
+        if pid <= 0:
+            raise ValueError("legacy watcher lock PID is invalid")
+        return pid, None
+    value = json.loads(text)
+    if not isinstance(value, dict) or set(value) != {"pid", "process_identity"}:
+        raise ValueError("watcher lock schema is invalid")
+    pid, identity = value["pid"], value["process_identity"]
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0 or not isinstance(identity, str) or not identity:
+        raise ValueError("watcher lock identity is invalid")
+    return pid, identity
+
+
+def _process_identity(pid: int) -> str | None:
+    if platform.system() == "Windows":
+        return _windows_process_identity(pid)
+    stat = Path(f"/proc/{pid}/stat")
+    if stat.is_file():
+        value = stat.read_text(encoding="utf-8")
+        closing = value.rfind(")")
+        if closing < 0:
+            raise RuntimeError("process identity is unverifiable")
+        fields = value[closing + 2:].split()
+        if len(fields) < 20:
+            raise RuntimeError("process identity is unverifiable")
+        return fields[19]
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError as exc:
+        raise RuntimeError("process identity is unverifiable") from exc
+    return f"pid:{pid}"
+
+
+def _windows_process_identity(pid: int) -> str | None:
+    import ctypes
+    from ctypes import wintypes
+
+    process = ctypes.WinDLL("kernel32", use_last_error=True)
+    process.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    process.OpenProcess.restype = wintypes.HANDLE
+    process.GetProcessTimes.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
+    )
+    process.GetProcessTimes.restype = wintypes.BOOL
+    process.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    process.GetExitCodeProcess.restype = wintypes.BOOL
+    process.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = process.OpenProcess(0x1000, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == 87:
+            return None
+        raise RuntimeError("process identity is unverifiable")
+    try:
+        creation, exit_time, kernel, user = (wintypes.FILETIME() for _ in range(4))
+        exit_code = wintypes.DWORD()
+        if not process.GetProcessTimes(handle, creation, exit_time, kernel, user):
+            raise RuntimeError("process identity is unverifiable")
+        if not process.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            raise RuntimeError("process identity is unverifiable")
+        if exit_code.value != 259:
+            return None
+        created = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+        return str(created)
+    finally:
+        process.CloseHandle(handle)

@@ -75,9 +75,7 @@ class TriggerPublisherAcceptanceHarness:
             second = watcher.run_once()
             after_second_head = self._remote_head(remote_root, TRIGGER_E2E_BRANCH)
             idempotency = (
-                second.status is TriggerStatus.BLOCKED
-                and second.failure_reason is not None
-                and "consum" in second.failure_reason.lower()
+                second.status in {TriggerStatus.NO_ACTION, TriggerStatus.BLOCKED}
                 and after_second_head == before_second_head
                 and len(self._remote_envelopes(remote_root, after_second_head)) == 1
             )

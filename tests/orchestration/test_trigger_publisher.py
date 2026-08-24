@@ -43,7 +43,7 @@ def _write_inbox(root: Path, contract_id: str = "contract-1") -> None:
         }
     }
     path = root / "contract-inbox" / "one.json"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
@@ -93,7 +93,7 @@ def test_contract_is_consumed_exactly_once_across_restart(tmp_path: Path):
     first = AIDPWatchOnce(AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher, runtime_root=runtime, execution_lock_active=lambda: False).run_once()
     second = AIDPWatchOnce(AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher, runtime_root=runtime, execution_lock_active=lambda: False).run_once()
     assert first.status is TriggerStatus.PUBLISHED
-    assert second.status is TriggerStatus.BLOCKED
+    assert second.status is TriggerStatus.NO_ACTION
     assert writer.calls == control.calls == publisher.calls == 1
     assert ConsumptionStore(runtime).current("contract-1") is ConsumptionState.REVIEW_PUBLISHED
 
@@ -223,4 +223,38 @@ def test_abandoned_executing_state_is_recovered_as_blocked_without_execution(tmp
     assert result.status is TriggerStatus.BLOCKED
     assert result.consumption_state is ConsumptionState.BLOCKED
     assert consumption.current("contract-1") is ConsumptionState.BLOCKED
+    assert writer.calls == control.calls == publisher.calls == 0
+
+
+def test_terminal_blocked_item_is_skipped_and_new_contract_remains_eligible(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime, "old-contract")
+    (runtime / "contract-inbox/one.json").rename(runtime / "contract-inbox/old-contract.json")
+    consumption = ConsumptionStore(runtime)
+    consumption.append("old-contract", ConsumptionState.RECEIVED, "received")
+    consumption.append("old-contract", ConsumptionState.BLOCKED, "terminal")
+    _write_inbox(runtime, "new-contract")
+    writer, control, publisher = FakeWriter(), FakeControlPlane(), FakePublisher()
+    result = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher,
+        runtime_root=runtime, execution_lock_active=lambda: False,
+    ).run_once()
+    assert result.status is TriggerStatus.PUBLISHED
+    assert result.contract_id == "new-contract"
+    assert consumption.current("old-contract") is ConsumptionState.BLOCKED
+    assert consumption.current("new-contract") is ConsumptionState.REVIEW_PUBLISHED
+
+
+def test_terminal_blocked_only_item_returns_no_action_without_retry(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    consumption = ConsumptionStore(runtime)
+    consumption.append("contract-1", ConsumptionState.RECEIVED, "received")
+    consumption.append("contract-1", ConsumptionState.BLOCKED, "terminal")
+    writer, control, publisher = FakeWriter(), FakeControlPlane(), FakePublisher()
+    result = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=writer, control_plane=control, publisher=publisher,
+        runtime_root=runtime, execution_lock_active=lambda: False,
+    ).run_once()
+    assert result.status is TriggerStatus.NO_ACTION
     assert writer.calls == control.calls == publisher.calls == 0

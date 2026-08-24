@@ -227,9 +227,16 @@ class AIDPWatchOnce:
                 return TriggerResult(TriggerStatus.BLOCKED, None, None, failure_reason=f"contract inbox is invalid: {exc.__class__.__name__}")
             if not items:
                 return TriggerResult(TriggerStatus.NO_ACTION, None, None)
-            if len(items) != 1:
+            candidates = tuple(
+                candidate for candidate in items
+                if self.consumption.current(candidate.contract_id)
+                not in {ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}
+            )
+            if not candidates:
+                return TriggerResult(TriggerStatus.NO_ACTION, None, None)
+            if len(candidates) != 1:
                 return TriggerResult(TriggerStatus.BLOCKED, None, None, failure_reason="contract inbox is ambiguous")
-            item = items[0]
+            item = candidates[0]
             current = self.consumption.current(item.contract_id)
             if current in {ConsumptionState.RECEIVED, ConsumptionState.MATERIALIZED, ConsumptionState.EXECUTING}:
                 if current is ConsumptionState.EXECUTING and self.execution_lock_active():
