@@ -15,7 +15,25 @@ from typing import BinaryIO, Sequence, TextIO
 _KILL_ON_JOB_CLOSE = 0x00002000
 _EXTENDED_LIMIT_INFORMATION = 9
 _SW_SHOWNORMAL = 1
+_SW_RESTORE = 9
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_SHOWWINDOW = 0x0040
+_MONITOR_DEFAULTTONULL = 0
+_GENERIC_READ = 0x00020000
+_UOI_NAME = 2
 _READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V1\n"
+
+
+class _Rect(ctypes.Structure):
+    _fields_ = (
+        ("left", ctypes.c_long), ("top", ctypes.c_long),
+        ("right", ctypes.c_long), ("bottom", ctypes.c_long),
+    )
+
+
+class _MonitorInfo(ctypes.Structure):
+    _fields_ = (("cbSize", wintypes.DWORD), ("rcMonitor", _Rect), ("rcWork", _Rect), ("dwFlags", wintypes.DWORD))
 
 
 class _IoCounters(ctypes.Structure):
@@ -128,21 +146,97 @@ class _NullLock:
         return None
 
 
-def _present_console() -> None:
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
+def _desktop_name(user32, desktop) -> str:
+    needed = wintypes.DWORD()
+    user32.GetUserObjectInformationW(desktop, _UOI_NAME, None, 0, ctypes.byref(needed))
+    if not needed.value:
+        raise OSError(ctypes.get_last_error(), "desktop name query failed")
+    buffer = ctypes.create_unicode_buffer(needed.value)
+    if not user32.GetUserObjectInformationW(
+        desktop, _UOI_NAME, buffer, ctypes.sizeof(buffer), ctypes.byref(needed),
+    ):
+        raise OSError(ctypes.get_last_error(), "desktop name read failed")
+    return buffer.value
+
+
+def _rectangles_intersect(first: _Rect, second: _Rect) -> bool:
+    return first.left < second.right and first.right > second.left and first.top < second.bottom and first.bottom > second.top
+
+
+def _present_console(*, kernel32=None, user32=None, desktop_name=_desktop_name) -> None:
+    kernel32 = kernel32 or ctypes.WinDLL("kernel32", use_last_error=True)
+    user32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
     kernel32.GetConsoleWindow.argtypes = ()
     kernel32.GetConsoleWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.c_void_p)
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetThreadDesktop.argtypes = (wintypes.DWORD,)
+    user32.GetThreadDesktop.restype = wintypes.HANDLE
+    user32.OpenInputDesktop.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    user32.OpenInputDesktop.restype = wintypes.HANDLE
+    user32.CloseDesktop.argtypes = (wintypes.HANDLE,)
+    user32.CloseDesktop.restype = wintypes.BOOL
+    user32.GetUserObjectInformationW.argtypes = (
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    user32.GetUserObjectInformationW.restype = wintypes.BOOL
     user32.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
     user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetWindowPos.argtypes = (
+        wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    )
+    user32.SetWindowPos.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = (wintypes.HWND,)
+    user32.SetForegroundWindow.restype = wintypes.BOOL
     user32.IsWindowVisible.argtypes = (wintypes.HWND,)
     user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.IsIconic.argtypes = (wintypes.HWND,)
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.MonitorFromWindow.argtypes = (wintypes.HWND, wintypes.DWORD)
+    user32.MonitorFromWindow.restype = wintypes.HANDLE
+    user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(_Rect))
+    user32.GetWindowRect.restype = wintypes.BOOL
+    user32.GetMonitorInfoW.argtypes = (wintypes.HANDLE, ctypes.POINTER(_MonitorInfo))
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
     window = kernel32.GetConsoleWindow()
     if not window:
         raise RuntimeError("visible console window is unavailable")
-    user32.ShowWindow(window, _SW_SHOWNORMAL)
+
+    window_thread = user32.GetWindowThreadProcessId(window, None)
+    window_desktop = user32.GetThreadDesktop(window_thread) if window_thread else None
+    input_desktop = user32.OpenInputDesktop(0, False, _GENERIC_READ)
+    if not window_desktop or not input_desktop:
+        if input_desktop:
+            user32.CloseDesktop(input_desktop)
+        raise RuntimeError("interactive desktop cannot be verified")
+    try:
+        if desktop_name(user32, window_desktop) != desktop_name(user32, input_desktop):
+            raise RuntimeError("console window is not on the interactive input desktop")
+    finally:
+        user32.CloseDesktop(input_desktop)
+
+    user32.ShowWindow(window, _SW_RESTORE)
+    if not user32.SetWindowPos(window, 0, 0, 0, 0, 0, _SWP_NOMOVE | _SWP_NOSIZE | _SWP_SHOWWINDOW):
+        raise OSError(ctypes.get_last_error(), "console window Z-order update failed")
+    user32.SetForegroundWindow(window)
     if not user32.IsWindowVisible(window):
         raise RuntimeError("console window is not visible")
+    if user32.IsIconic(window):
+        raise RuntimeError("console window remains minimized")
+    monitor = user32.MonitorFromWindow(window, _MONITOR_DEFAULTTONULL)
+    if not monitor:
+        raise RuntimeError("console window does not intersect a visible monitor")
+    window_rect = _Rect()
+    monitor_info = _MonitorInfo()
+    monitor_info.cbSize = ctypes.sizeof(monitor_info)
+    if not user32.GetWindowRect(window, ctypes.byref(window_rect)):
+        raise OSError(ctypes.get_last_error(), "console window bounds query failed")
+    if not user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+        raise OSError(ctypes.get_last_error(), "monitor work area query failed")
+    if not _rectangles_intersect(window_rect, monitor_info.rcWork):
+        raise RuntimeError("console window is outside the visible monitor work area")
 
 
 def relay(

@@ -18,32 +18,77 @@ def test_relay_pump_preserves_capture_and_renders_live_utf8() -> None:
     assert console.getvalue() == "live Grüße 完了"
 
 
-def test_present_console_requires_hwnd_and_explicitly_shows_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[object, ...]] = []
-    kernel32 = SimpleNamespace(GetConsoleWindow=lambda: 42)
+def _presentation_apis(
+    calls: list[tuple[object, ...]], *, hwnd=42, visible=1, iconic=0,
+    monitor=30, set_position=1, window_rect=(20, 20, 500, 400),
+):
+    def window_bounds(_hwnd, pointer):
+        pointer._obj.left, pointer._obj.top, pointer._obj.right, pointer._obj.bottom = window_rect
+        return 1
+
+    def monitor_info(_monitor, pointer):
+        work = pointer._obj.rcWork
+        work.left, work.top, work.right, work.bottom = 0, 0, 1920, 1080
+        return 1
+
+    kernel32 = SimpleNamespace(GetConsoleWindow=lambda: hwnd)
     user32 = SimpleNamespace(
-        ShowWindow=lambda hwnd, mode: calls.append(("show", hwnd, mode)) or 1,
-        IsWindowVisible=lambda hwnd: calls.append(("visible", hwnd)) or 1,
+        GetWindowThreadProcessId=lambda window, process: 7,
+        GetThreadDesktop=lambda thread: 10,
+        OpenInputDesktop=lambda flags, inherit, access: 20,
+        CloseDesktop=lambda desktop: calls.append(("close_desktop", desktop)) or 1,
+        GetUserObjectInformationW=lambda *args: 1,
+        ShowWindow=lambda window, mode: calls.append(("show", window, mode)) or 1,
+        SetWindowPos=lambda window, after, x, y, width, height, flags: calls.append(("top", window, after, flags)) or set_position,
+        SetForegroundWindow=lambda window: calls.append(("foreground", window)) or 1,
+        IsWindowVisible=lambda window: visible,
+        IsIconic=lambda window: iconic,
+        MonitorFromWindow=lambda window, flags: monitor,
+        GetWindowRect=window_bounds,
+        GetMonitorInfoW=monitor_info,
     )
-    monkeypatch.setattr(visible_codex.ctypes, "WinDLL", lambda name, **kwargs: kernel32 if name == "kernel32" else user32)
-    _present_console()
-    assert calls == [("show", 42, 1), ("visible", 42)]
+    return kernel32, user32
 
 
-def test_present_console_fails_without_hwnd(monkeypatch: pytest.MonkeyPatch) -> None:
-    kernel32 = SimpleNamespace(GetConsoleWindow=lambda: 0)
-    user32 = SimpleNamespace(ShowWindow=lambda *args: 1, IsWindowVisible=lambda *args: 1)
-    monkeypatch.setattr(visible_codex.ctypes, "WinDLL", lambda name, **kwargs: kernel32 if name == "kernel32" else user32)
+def test_present_console_verifies_desktop_restores_tops_and_foregrounds() -> None:
+    calls: list[tuple[object, ...]] = []
+    kernel32, user32 = _presentation_apis(calls)
+    _present_console(kernel32=kernel32, user32=user32, desktop_name=lambda api, desktop: "Default")
+    assert ("show", 42, 9) in calls
+    assert ("top", 42, 0, 0x43) in calls
+    assert ("foreground", 42) in calls
+    assert ("close_desktop", 20) in calls
+
+
+def test_present_console_fails_without_hwnd() -> None:
+    kernel32, user32 = _presentation_apis([], hwnd=0)
     with pytest.raises(RuntimeError, match="unavailable"):
-        _present_console()
+        _present_console(kernel32=kernel32, user32=user32, desktop_name=lambda api, desktop: "Default")
 
 
-def test_present_console_fails_when_window_remains_invisible(monkeypatch: pytest.MonkeyPatch) -> None:
-    kernel32 = SimpleNamespace(GetConsoleWindow=lambda: 42)
-    user32 = SimpleNamespace(ShowWindow=lambda *args: 1, IsWindowVisible=lambda *args: 0)
-    monkeypatch.setattr(visible_codex.ctypes, "WinDLL", lambda name, **kwargs: kernel32 if name == "kernel32" else user32)
-    with pytest.raises(RuntimeError, match="not visible"):
-        _present_console()
+def test_present_console_requires_interactive_input_desktop() -> None:
+    kernel32, user32 = _presentation_apis([])
+    with pytest.raises(RuntimeError, match="interactive input desktop"):
+        _present_console(
+            kernel32=kernel32, user32=user32,
+            desktop_name=lambda api, desktop: "Service" if desktop == 10 else "Default",
+        )
+
+
+def test_present_console_fails_when_window_remains_minimized() -> None:
+    kernel32, user32 = _presentation_apis([], iconic=1)
+    with pytest.raises(RuntimeError, match="minimized"):
+        _present_console(kernel32=kernel32, user32=user32, desktop_name=lambda api, desktop: "Default")
+
+
+@pytest.mark.parametrize(
+    ("monitor", "window_rect"),
+    ((0, (20, 20, 500, 400)), (30, (2000, 20, 2500, 400))),
+)
+def test_present_console_requires_visible_monitor_intersection(monitor, window_rect) -> None:
+    kernel32, user32 = _presentation_apis([], monitor=monitor, window_rect=window_rect)
+    with pytest.raises(RuntimeError, match="visible monitor"):
+        _present_console(kernel32=kernel32, user32=user32, desktop_name=lambda api, desktop: "Default")
 
 
 def test_relay_visibility_failure_prevents_codex_launch(monkeypatch: pytest.MonkeyPatch) -> None:
