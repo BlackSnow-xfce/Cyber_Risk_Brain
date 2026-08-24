@@ -5,6 +5,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from aidp_orchestration.contracts import (
     AIDPState, ArchitectTaskContract, CodexExecutionResult, ConsumptionState, ControlPlaneAction,
     ControlPlaneDecision, ControlPlaneResult, TriggerStatus, WriterAction,
@@ -121,6 +123,15 @@ def test_malformed_and_duplicate_contract_ids_fail_closed(tmp_path: Path):
         assert "duplicate" in str(exc)
     else:
         raise AssertionError("duplicate contract_id accepted")
+
+
+def test_contract_parser_accepts_one_utf8_bom_and_rejects_malformed_encoding(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime)
+    content = (runtime / "contract-inbox/one.json").read_bytes()
+    assert LocalContractInbox.parse(b"\xef\xbb\xbf" + content).contract_id == "contract-1"
+    with pytest.raises(UnicodeDecodeError):
+        LocalContractInbox.parse(b"\x81" + content)
 
 
 def test_product_owner_wait_never_publishes(tmp_path: Path):

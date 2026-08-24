@@ -74,7 +74,13 @@ def main() -> int:
             ingress = ArchitectGitIngress(repository, branch=args.architect_contract_branch) if args.architect_contract_branch else None
         except ValueError as exc:
             parser.error(str(exc))
-        result = AIDPLocalWatcherRuntime(repository, interval_seconds=args.watch_interval, ingress=ingress).run()
+        watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout)
+        result = AIDPLocalWatcherRuntime(
+            repository,
+            watcher=watcher,
+            interval_seconds=args.watch_interval,
+            ingress=ingress,
+        ).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2
     if args.acceptance_trigger_publisher:

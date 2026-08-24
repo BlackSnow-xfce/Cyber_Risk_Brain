@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +19,45 @@ from aidp_orchestration.watcher_runtime import (
     AIDPLocalWatcherRuntime, WatcherRuntimeLock, serialize_watch_iteration_event,
     serialize_watch_runtime_result,
 )
+
+
+def test_watch_cli_forwards_configured_execution_timeout(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from aidp_orchestration import __main__ as cli
+
+    observed = {}
+
+    class WatchOnce:
+        def __init__(self, repository, *, timeout_seconds):
+            observed["watcher_repository"] = repository.root
+            observed["timeout_seconds"] = timeout_seconds
+
+    class Runtime:
+        def __init__(self, repository, *, watcher, interval_seconds, ingress):
+            observed["runtime_repository"] = repository.root
+            observed["watcher"] = watcher
+            observed["interval_seconds"] = interval_seconds
+            observed["ingress"] = ingress
+
+        def run(self):
+            return type("Result", (), {"status": type("Status", (), {"value": "STOPPED"})()})()
+
+    monkeypatch.setattr(cli, "AIDPWatchOnce", WatchOnce)
+    monkeypatch.setattr(cli, "AIDPLocalWatcherRuntime", Runtime)
+    monkeypatch.setattr(cli, "serialize_watch_runtime_result", lambda _result: "{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "aidp_orchestration", "--watch", "--root", str(tmp_path),
+            "--timeout", "14400", "--watch-interval", "15",
+        ],
+    )
+    assert cli.main() == 0
+    assert observed["timeout_seconds"] == 14400.0
+    assert observed["interval_seconds"] == 15.0
+    assert observed["watcher"] is not None
 
 
 class SequenceWatcher:

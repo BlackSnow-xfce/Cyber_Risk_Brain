@@ -66,7 +66,7 @@ class LocalContractInbox:
 
     @staticmethod
     def parse(content: bytes) -> ContractInboxItem:
-        payload = json.loads(content.decode("utf-8", errors="strict"))
+        payload = json.loads(content.decode("utf-8-sig", errors="strict"))
         value = payload.get("contract_inbox_item") if isinstance(payload, dict) else None
         if not isinstance(value, dict) or set(value) != {"contract_id", "contract_type", "contract", "received_at"}:
             raise ValueError("malformed contract inbox item")

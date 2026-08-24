@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
@@ -54,6 +55,50 @@ class SubprocessRunner:
             stdout,
             stderr,
             error=stdout_error or stderr_error,
+        )
+
+
+class WindowsVisibleCodexRunner:
+    """Runs the trusted relay in a visible console while retaining captured output."""
+
+    def __init__(self, *, platform: str | None = None, popen=subprocess.Popen):
+        self.platform = platform or os.name
+        self.popen = popen
+
+    def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
+        if self.platform != "nt":
+            return ProcessOutcome(None, "", "", error="visible Codex console is only supported on Windows")
+        relay = (sys.executable, "-m", "aidp_orchestration.visible_codex", "--", *tuple(args))
+        try:
+            process = self.popen(
+                relay,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+                creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010),
+            )
+            try:
+                stdout_value, stderr_value = process.communicate(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout_value, stderr_value = process.communicate()
+                stdout, stdout_error = _decode_process_output(stdout_value, "stdout")
+                stderr, stderr_error = _decode_process_output(stderr_value, "stderr")
+                return ProcessOutcome(
+                    None, stdout, stderr, timed_out=True,
+                    error=stdout_error or stderr_error or "timeout",
+                )
+            except KeyboardInterrupt:
+                process.kill()
+                process.wait()
+                raise
+        except OSError as exc:
+            return ProcessOutcome(None, "", "", error=f"visible process error: {exc.__class__.__name__}")
+        stdout, stdout_error = _decode_process_output(stdout_value, "stdout")
+        stderr, stderr_error = _decode_process_output(stderr_value, "stderr")
+        return ProcessOutcome(
+            process.returncode, stdout, stderr, error=stdout_error or stderr_error,
         )
 
 
@@ -144,6 +189,7 @@ class CodexExecutionService:
         self,
         *,
         runner: ProcessRunner | None = None,
+        codex_runner: ProcessRunner | None = None,
         git: GitInspector | None = None,
         validator_registry: ValidatorRegistry | None = None,
         lock: ExecutionLock | None = None,
@@ -152,6 +198,13 @@ class CodexExecutionService:
         launcher: CodexLauncher | None = None,
     ):
         self.runner = runner or SubprocessRunner()
+        self.codex_runner = codex_runner or (
+            runner
+            if runner is not None
+            else WindowsVisibleCodexRunner()
+            if os.name == "nt"
+            else self.runner
+        )
         self.git = git
         self.validator_registry = validator_registry or ValidatorRegistry()
         self.timeout_seconds = timeout_seconds
@@ -184,7 +237,10 @@ class CodexExecutionService:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
-            outcome = self.runner.run(self._codex_command(request, launcher), cwd=root, timeout_seconds=self.timeout_seconds)
+            outcome = self.codex_runner.run(
+                self._codex_command(request, launcher), cwd=root,
+                timeout_seconds=self.timeout_seconds,
+            )
             if outcome.timed_out:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, "Codex process timed out", ScopeCompliance.NOT_EVALUATED)
             if outcome.error:

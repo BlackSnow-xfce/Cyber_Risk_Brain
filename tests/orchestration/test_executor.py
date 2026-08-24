@@ -19,6 +19,7 @@ from aidp_orchestration.executor import (
     ExecutionLock,
     ProcessOutcome,
     SubprocessRunner,
+    WindowsVisibleCodexRunner,
     serialize_execution_result,
 )
 from aidp_orchestration.launcher import CodexLauncher
@@ -108,6 +109,64 @@ def test_subprocess_runner_rejects_non_utf8_output_with_safe_diagnostic(
     assert "�" in result.stdout
 
 
+class FakeVisibleProcess:
+    def __init__(self, *, output=(b'{"type":"completed"}\n', b"diagnostic"), error=None):
+        self.output = output
+        self.error = error
+        self.returncode = 0
+        self.killed = False
+        self.waited = False
+
+    def communicate(self, timeout=None):
+        if self.error is not None and not self.killed:
+            raise self.error
+        return self.output
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self):
+        self.waited = True
+
+
+def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: Path) -> None:
+    observed = {}
+    process = FakeVisibleProcess()
+    def popen(args, **kwargs):
+        observed["args"] = tuple(args)
+        observed.update(kwargs)
+        return process
+    original = ("node.exe", "codex.js", "exec", "prompt with spaces")
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=popen).run(
+        original, cwd=tmp_path, timeout_seconds=10,
+    )
+    assert observed["args"][-len(original):] == original
+    assert observed["args"][-len(original) - 1] == "--"
+    assert observed["shell"] is False
+    assert observed["creationflags"] == getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    assert outcome.returncode == 0
+    assert outcome.stdout == '{"type":"completed"}\n'
+    assert outcome.stderr == "diagnostic"
+
+
+def test_visible_windows_runner_timeout_kills_relay_job_owner(tmp_path: Path) -> None:
+    process = FakeVisibleProcess(error=subprocess.TimeoutExpired(("relay",), 1))
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
+        ("codex.exe",), cwd=tmp_path, timeout_seconds=1,
+    )
+    assert outcome.timed_out and outcome.error == "timeout"
+    assert process.killed
+
+
+def test_visible_windows_runner_keyboard_interrupt_kills_relay(tmp_path: Path) -> None:
+    process = FakeVisibleProcess(error=KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
+            ("codex.exe",), cwd=tmp_path, timeout_seconds=1,
+        )
+    assert process.killed and process.waited
+
+
 def service(tmp_path: Path, runner: FakeRunner, git: FakeGit | None = None) -> CodexExecutionService:
     return CodexExecutionService(
         runner=runner,
@@ -137,6 +196,32 @@ def test_valid_execution_runs_bound_codex_request_and_validators(tmp_path: Path)
     )
     assert "task_id=TASK-9000" in command[-1]
     assert "execution_id=execution-1" in command[-1]
+
+
+def test_autonomous_command_is_unattended_but_workspace_scoped(tmp_path: Path) -> None:
+    runner = success_runner()
+    service(tmp_path, runner).execute(request(tmp_path))
+    command = runner.calls[0]
+    assert command[1:5] == ("--ask-for-approval", "never", "exec", "--json")
+    assert command[command.index("--sandbox") + 1] == "workspace-write"
+    assert "--approve-for-me" not in command
+    assert "--dangerously-bypass-approvals-and-sandbox" not in command
+    assert "danger-full-access" not in command
+
+
+def test_visible_runner_is_codex_only_and_validators_keep_headless_runner(tmp_path: Path) -> None:
+    codex = FakeRunner([ProcessOutcome(0, '{"type":"completed"}\n', "")])
+    validators = FakeRunner([ProcessOutcome(0, "", "")])
+    result = CodexExecutionService(
+        runner=validators,
+        codex_runner=codex,
+        git=FakeGit(),
+        lock=ExecutionLock(tmp_path / "execution.lock"),
+        launcher=CodexLauncher(("codex-test.exe",)),
+    ).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.SUCCESS
+    assert len(codex.calls) == 1
+    assert len(validators.calls) == 1
 
 
 @pytest.mark.parametrize(

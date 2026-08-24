@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aidp_orchestration.architect_ingress import ArchitectGitIngress
+from aidp_orchestration.architect_ingress import ArchitectGitIngress, PARSER_POLICY
 from aidp_orchestration.architect_ingress_acceptance import (
     INGRESS_E2E_BRANCH, INGRESS_E2E_CONTRACT_ID, ArchitectIngressAcceptanceHarness,
     serialize_architect_ingress_acceptance_result,
@@ -145,6 +145,64 @@ def test_malformed_historical_contract_is_rejected_once_and_valid_successor_proc
     assert len(LocalContractInbox(runtime).pending()) == 2
     assert ingress.run_once().status is IngressStatus.NO_ACTION
     assert (runtime / "architect-ingress.jsonl").read_text(encoding="utf-8").splitlines() == events_before
+
+
+def test_bom_contract_is_reconsidered_once_after_parser_policy_upgrade(tmp_path: Path):
+    repository, _remote, architect, runtime, contract = _setup(tmp_path)
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    assert ingress.run_once().status is IngressStatus.MATERIALIZED
+    item = ContractInboxItem(
+        "architect-task-0112-retry-8", replace(contract, task_id="TASK-E2E-TRIGGER-0002"),
+        datetime.now(timezone.utc),
+    )
+    relative = ".ai/orchestration/architect-contracts/TASK-0112-retry-8.json"
+    path = architect / relative
+    path.write_bytes(b"\xef\xbb\xbf" + serialize_contract_inbox_item(item).encode("utf-8"))
+    _git(architect, "add", "--", relative)
+    _git(architect, "commit", "-m", "BOM contract")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+    commit = _git(architect, "rev-parse", "HEAD")
+    blob = _git(architect, "rev-parse", f"{commit}:{relative}")
+    legacy = {"architect_ingress_event": {
+        "contract_id": "rejected-path-sha256:legacy", "remote_commit": commit,
+        "blob_id": blob, "status": "BLOCKED", "timestamp": "2026-01-01T00:00:00+00:00",
+        "reason": "remote contract rejected: JSONDecodeError", "identity_kind": "rejection",
+        "remote_path": relative,
+    }}
+    with (runtime / "architect-ingress.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(legacy) + "\n")
+    result = ingress.run_once()
+    assert result.status is IngressStatus.MATERIALIZED
+    assert result.contract_id == "architect-task-0112-retry-8"
+    assert ingress.run_once().status is IngressStatus.NO_ACTION
+
+
+def test_still_invalid_legacy_rejection_is_versioned_then_suppressed(tmp_path: Path):
+    repository, _remote, architect, runtime, _contract = _setup(tmp_path)
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    assert ingress.run_once().status is IngressStatus.MATERIALIZED
+    relative = ".ai/orchestration/architect-contracts/TASK-E2E-invalid-bom.json"
+    path = architect / relative
+    path.write_bytes(b"\xef\xbb\xbf{")
+    _git(architect, "add", "--", relative)
+    _git(architect, "commit", "-m", "invalid BOM contract")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+    commit = _git(architect, "rev-parse", "HEAD")
+    blob = _git(architect, "rev-parse", f"{commit}:{relative}")
+    state = runtime / "architect-ingress.jsonl"
+    legacy = {"architect_ingress_event": {
+        "contract_id": "rejected-path-sha256:legacy-invalid", "remote_commit": commit,
+        "blob_id": blob, "status": "BLOCKED", "timestamp": "2026-01-01T00:00:00+00:00",
+        "reason": "old parser", "identity_kind": "rejection", "remote_path": relative,
+    }}
+    with state.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(legacy) + "\n")
+    assert ingress.run_once().status is IngressStatus.BLOCKED
+    events = [json.loads(line)["architect_ingress_event"] for line in state.read_text(encoding="utf-8").splitlines()]
+    assert len([event for event in events if event.get("remote_path") == relative and event.get("parser_policy") == PARSER_POLICY]) == 1
+    count = len(events)
+    assert ingress.run_once().status is IngressStatus.NO_ACTION
+    assert len(state.read_text(encoding="utf-8").splitlines()) == count
 
 
 def test_real_filename_convention_tolerates_legacy_blocked_history(tmp_path: Path):

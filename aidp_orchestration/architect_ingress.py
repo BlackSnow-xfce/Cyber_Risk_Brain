@@ -23,6 +23,7 @@ from .validators import ValidatorRegistry
 
 CONTRACT_PATH = ".ai/orchestration/architect-contracts"
 LOCAL_FETCH_REF = "refs/aidp-orchestration/architect-contracts"
+PARSER_POLICY = "utf8-sig-v1"
 
 
 class ArchitectGitIngress:
@@ -54,7 +55,7 @@ class ArchitectGitIngress:
                     reason = f"remote contract rejected: {exc.__class__.__name__}"
                     self._append(
                         _rejection_identity(path), commit, blob, IngressStatus.BLOCKED, reason,
-                        identity_kind="rejection", remote_path=path,
+                        identity_kind="rejection", remote_path=path, parser_policy=PARSER_POLICY,
                     )
                     rejected = ArchitectIngressResult(IngressStatus.BLOCKED, None, commit, blob, failure_reason=reason)
                     continue
@@ -170,7 +171,8 @@ class ArchitectGitIngress:
                 remote_path = value.get("remote_path")
                 if not isinstance(remote_path, str) or not remote_path:
                     raise ValueError("rejection history has no remote path")
-                rejected_blobs.add((remote_path, blob))
+                if value.get("parser_policy") == PARSER_POLICY:
+                    rejected_blobs.add((remote_path, blob))
                 continue
             raise ValueError("unknown Architect ingress identity kind")
         return authoritative, observed_contracts, rejected_blobs
@@ -190,11 +192,13 @@ class ArchitectGitIngress:
         *,
         identity_kind: str = "contract_id",
         remote_path: str | None = None,
+        parser_policy: str | None = None,
     ) -> None:
         event = {"architect_ingress_event": {
             "contract_id": contract_id, "remote_commit": commit, "blob_id": blob,
             "status": status, "timestamp": utc_now(), "reason": reason,
             "identity_kind": identity_kind, "remote_path": remote_path,
+            "parser_policy": parser_policy,
         }}
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         with self.state_path.open("a", encoding="utf-8") as stream:
