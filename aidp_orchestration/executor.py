@@ -30,16 +30,30 @@ class SubprocessRunner:
             completed = subprocess.run(
                 tuple(args),
                 cwd=cwd,
-                text=True,
                 capture_output=True,
                 timeout=timeout_seconds,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            return ProcessOutcome(None, _text(exc.stdout), _text(exc.stderr), timed_out=True, error="timeout")
+            stdout, stdout_error = _decode_process_output(exc.stdout, "stdout")
+            stderr, stderr_error = _decode_process_output(exc.stderr, "stderr")
+            return ProcessOutcome(
+                None,
+                stdout,
+                stderr,
+                timed_out=True,
+                error=stdout_error or stderr_error or "timeout",
+            )
         except OSError as exc:
             return ProcessOutcome(None, "", "", error=f"process error: {exc.__class__.__name__}")
-        return ProcessOutcome(completed.returncode, completed.stdout, completed.stderr)
+        stdout, stdout_error = _decode_process_output(completed.stdout, "stdout")
+        stderr, stderr_error = _decode_process_output(completed.stderr, "stderr")
+        return ProcessOutcome(
+            completed.returncode,
+            stdout,
+            stderr,
+            error=stdout_error or stderr_error,
+        )
 
 
 class GitInspector:
@@ -292,7 +306,15 @@ def _valid_json_lines(output: str) -> bool:
         return False
 
 
-def _text(value: object) -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value or "")
+def _decode_process_output(value: object, stream: str) -> tuple[str, str | None]:
+    if value is None:
+        return "", None
+    if isinstance(value, str):
+        return value, None
+    if not isinstance(value, bytes):
+        return "", f"process output capture error: unexpected {stream} type"
+    try:
+        return value.decode("utf-8", errors="strict"), None
+    except UnicodeDecodeError as exc:
+        diagnostic = value.decode("utf-8", errors="replace")
+        return diagnostic, f"process output decode error: {stream} is not valid UTF-8 at byte {exc.start}"

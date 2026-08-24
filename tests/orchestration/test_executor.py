@@ -72,11 +72,40 @@ def test_subprocess_runner_never_enables_shell(tmp_path: Path, monkeypatch: pyte
 
     def run(args, **kwargs):
         observed.update(kwargs)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
     monkeypatch.setattr(subprocess, "run", run)
     SubprocessRunner().run(("node.exe", "codex.js"), cwd=tmp_path, timeout_seconds=1.0)
     assert observed.get("shell", False) is False
+    assert observed.get("text", False) is False
+    assert "encoding" not in observed
+
+
+def test_subprocess_runner_decodes_utf8_independently_of_windows_charmap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = '{"message":"Grüße — 完了"}\n'.encode("utf-8")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=output, stderr=b""),
+    )
+    result = SubprocessRunner().run(("codex-test.exe",), cwd=tmp_path, timeout_seconds=1.0)
+    assert result.stdout == '{"message":"Grüße — 完了"}\n'
+    assert result.error is None
+
+
+def test_subprocess_runner_rejects_non_utf8_output_with_safe_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=b'{"message":"\x81"}\n', stderr=b""),
+    )
+    result = SubprocessRunner().run(("codex-test.exe",), cwd=tmp_path, timeout_seconds=1.0)
+    assert result.error == "process output decode error: stdout is not valid UTF-8 at byte 12"
+    assert "�" in result.stdout
 
 
 def service(tmp_path: Path, runner: FakeRunner, git: FakeGit | None = None) -> CodexExecutionService:
@@ -206,6 +235,26 @@ def test_lock_is_released_after_process_error(tmp_path: Path) -> None:
         launcher=CodexLauncher(("codex-test.exe",)),
     ).execute(request(tmp_path))
     assert result.status is ExecutionStatus.ERROR
+    assert not lock_path.exists()
+
+
+def test_output_decode_failure_becomes_error_and_releases_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=b'{"message":"\x81"}\n', stderr=b""),
+    )
+    lock_path = tmp_path / "execution.lock"
+    result = CodexExecutionService(
+        runner=SubprocessRunner(),
+        git=FakeGit(),
+        lock=ExecutionLock(lock_path),
+        launcher=CodexLauncher(("codex-test.exe",)),
+    ).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.ERROR
+    assert result.failure_reason == "process output decode error: stdout is not valid UTF-8 at byte 12"
     assert not lock_path.exists()
 
 
