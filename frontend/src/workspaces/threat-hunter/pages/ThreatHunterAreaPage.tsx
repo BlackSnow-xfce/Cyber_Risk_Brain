@@ -13,6 +13,8 @@ export default function ThreatHunterAreaPage({
     title,
     description,
 }: ThreatHunterAreaPageProps) {
+    const isHuntsArea = title === "Hunts";
+
     return (
         <Stack spacing={3}>
             <Box component="header">
@@ -34,12 +36,15 @@ export default function ThreatHunterAreaPage({
 
             <Panel component="section">
                 <Typography variant="h6">
-                    Workspace connection required
+                    {isHuntsArea
+                        ? "No hunts are available"
+                        : "Workspace connection required"}
                 </Typography>
 
                 <Typography color="text.secondary" sx={{ mt: 1 }}>
-                    This workspace area is structurally available, but no
-                    hunting data source or execution capability is connected.
+                    {isHuntsArea
+                        ? "Connect a hunting data source before hunts can be shown here."
+                        : "This workspace area is structurally available, but no hunting data source or execution capability is connected."}
                 </Typography>
             </Panel>
         </Stack>
