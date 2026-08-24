@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import date, datetime
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -36,6 +36,14 @@ from application import (
     HuntHypothesisReferenceIntegrityError,
     HuntHypothesisReferenceResolutionResult,
     HuntHypothesisReferenceResolutionService,
+    AuthenticatedPrincipal,
+    HuntHypothesisWriteAuthority,
+    LocalOperatorAuthenticationError,
+    LocalOperatorAuthenticator,
+    LocalOperatorAuthorizationError,
+    LocalOperatorConfigurationIntegrityError,
+    LocalOperatorConfigurationUnavailableError,
+    configured_local_operator_origins,
     RiskReadinessService,
     ThreatIntelligenceConfigurationError,
     ThreatIntelligenceDataError,
@@ -83,6 +91,12 @@ from settings import (
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
     HUNT_HYPOTHESIS_REPOSITORY_PATH,
+    LOCAL_OPERATOR_ALLOWED_ORIGINS,
+    LOCAL_OPERATOR_DISPLAY_NAME,
+    LOCAL_OPERATOR_MODE_ENABLED,
+    LOCAL_OPERATOR_PERMISSIONS,
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+    LOCAL_OPERATOR_TOKEN,
 )
 
 app = FastAPI(
@@ -92,10 +106,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=list(
+        configured_local_operator_origins(LOCAL_OPERATOR_ALLOWED_ORIGINS)
+    ),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -140,6 +156,13 @@ class HuntHypothesisResolvedReferenceResponse(BaseModel):
 class HuntHypothesisReferenceResolutionResponse(BaseModel):
     hypothesis_id: str
     references: list[HuntHypothesisResolvedReferenceResponse]
+
+
+class LocalOperatorResponse(BaseModel):
+    principal_id: str
+    display_name: str
+    principal_type: str
+    granted_permissions: list[str]
 
 
 class FindingExplanationFactResponse(BaseModel):
@@ -389,6 +412,57 @@ def get_hunt_hypothesis_query_service() -> HuntHypothesisQueryService:
     return HuntHypothesisQueryService(
         FileHuntHypothesisRepository(HUNT_HYPOTHESIS_REPOSITORY_PATH)
     )
+
+
+def get_local_operator_authenticator() -> LocalOperatorAuthenticator:
+    try:
+        return LocalOperatorAuthenticator.from_values(
+            mode_enabled=LOCAL_OPERATOR_MODE_ENABLED,
+            principal_id=LOCAL_OPERATOR_PRINCIPAL_ID,
+            display_name=LOCAL_OPERATOR_DISPLAY_NAME,
+            token=LOCAL_OPERATOR_TOKEN,
+            permissions=LOCAL_OPERATOR_PERMISSIONS,
+            allowed_origins=LOCAL_OPERATOR_ALLOWED_ORIGINS,
+        )
+    except LocalOperatorConfigurationUnavailableError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Local Operator mode is not configured.",
+        ) from error
+    except LocalOperatorConfigurationIntegrityError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Local Operator configuration is invalid.",
+        ) from error
+
+
+def get_authenticated_local_operator(
+    authorization: str | None = Header(default=None),
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+) -> AuthenticatedPrincipal:
+    try:
+        return authenticator.authenticate(authorization)
+    except LocalOperatorAuthenticationError as error:
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator authentication failed.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+
+
+def require_hunt_hypothesis_create_authority(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_local_operator),
+) -> AuthenticatedPrincipal:
+    try:
+        HuntHypothesisWriteAuthority().require(principal)
+    except LocalOperatorAuthorizationError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="The authenticated operator is not authorized.",
+        ) from error
+    return principal
 
 
 def get_hunt_hypothesis_reference_resolution_service(
@@ -934,6 +1008,18 @@ def root():
 def analyze():
 
     return engine.run()
+
+
+@app.get("/api/operator/me", response_model=LocalOperatorResponse)
+def local_operator_me(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_local_operator),
+) -> LocalOperatorResponse:
+    return LocalOperatorResponse(
+        principal_id=principal.principal_id,
+        display_name=principal.display_name,
+        principal_type=principal.principal_type,
+        granted_permissions=sorted(principal.permissions),
+    )
 
 
 @app.get("/api/findings", response_model=list[FindingResponse])

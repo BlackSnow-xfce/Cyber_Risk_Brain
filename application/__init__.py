@@ -83,6 +83,18 @@ from application.hunt_hypothesis_reference_resolution import (
     HuntHypothesisReferenceResolutionService,
     HuntHypothesisReferenceResolutionStatus,
 )
+from application.local_operator import (
+    AuthenticatedPrincipal,
+    AuthorizationDecision,
+    HUNT_HYPOTHESIS_CREATE_PERMISSION,
+    HuntHypothesisWriteAuthority,
+    LocalOperatorAuthenticationError,
+    LocalOperatorAuthenticator,
+    LocalOperatorAuthorizationError,
+    LocalOperatorConfigurationIntegrityError,
+    LocalOperatorConfigurationUnavailableError,
+    configured_local_operator_origins,
+)
 from application.finding_incidents import FindingIncidentQueryService
 from application.trusted_ai_retrieval import (
     FINDING_RETRIEVAL_OPERATION,
@@ -216,6 +228,16 @@ __all__ = [
     "HuntHypothesisReferenceResolutionResult",
     "HuntHypothesisReferenceResolutionService",
     "HuntHypothesisReferenceResolutionStatus",
+    "AuthenticatedPrincipal",
+    "AuthorizationDecision",
+    "HUNT_HYPOTHESIS_CREATE_PERMISSION",
+    "HuntHypothesisWriteAuthority",
+    "LocalOperatorAuthenticationError",
+    "LocalOperatorAuthenticator",
+    "LocalOperatorAuthorizationError",
+    "LocalOperatorConfigurationIntegrityError",
+    "LocalOperatorConfigurationUnavailableError",
+    "configured_local_operator_origins",
     "FindingIncidentQueryService",
     "FINDING_RETRIEVAL_OPERATION",
     "FindingResourceReader",

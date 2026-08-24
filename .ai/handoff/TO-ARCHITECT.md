@@ -1,9 +1,9 @@
-# Handoff - Architecture Review TASK-0114
+# Handoff - Architecture Review TASK-0115
 
 Status: CLOSED
 
 Task:
-TASK-0114 - Hunt Hypothesis Reference Resolution Foundation
+TASK-0115 - Authenticated Local Operator and Hunt Hypothesis Write-Authority Foundation
 
 Task Status:
 DONE / PASS / APPROVED
@@ -13,16 +13,22 @@ Architect
 
 Product Owner Live Acceptance: PASS
 
-Reference Resolution Live E2E: PASS
+Local Operator Live Authentication: PASS
 
-TASK-0114 is administratively closed after Architect Review PASS / APPROVED,
+TASK-0115 is administratively closed after Architect Review PASS / APPROVED,
+Product Owner Live Acceptance PASS and Local Operator Live Authentication PASS.
+Live verification confirmed the configured human/operator principal and exact
+`hunt_hypothesis:create` permission, no credential disclosure, and HTTP 401
+for unauthenticated access. TASK-0116 was not created.
+
+TASK-0114 remains administratively closed after Architect Review PASS / APPROVED,
 Product Owner Live Acceptance PASS and Reference Resolution Live E2E PASS.
 The approved real DistCC hypothesis resolved its Finding through
 findings/greenbone, its canonical Asset through asset_context and its CVE
 through threat_intelligence contract 1.0. The live UI preserved the required
 identity-only semantic boundary. Validation remains: 77 relevant Python tests
 and 95 frontend tests passed; TypeScript, production build and
-`git diff --check` passed. TASK-0115 was not created.
+`git diff --check` passed. TASK-0115 is now historically complete.
 
 TASK-0113 remains historically DONE / PASS / APPROVED with Product Owner Live
 Acceptance PASS.
