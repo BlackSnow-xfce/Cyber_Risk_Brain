@@ -16,9 +16,11 @@ class RecordingRunner:
     def __init__(self, outcome: ProcessOutcome):
         self.outcome = outcome
         self.commands: list[tuple[str, ...]] = []
+        self.working_directories: list[Path] = []
 
     def run(self, args, *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
         self.commands.append(tuple(args))
+        self.working_directories.append(cwd)
         return self.outcome
 
 
@@ -68,12 +70,49 @@ def test_missing_or_untrusted_windows_executable_fails_closed(tmp_path: Path) ->
 def test_registry_preserves_arguments_and_never_requests_a_shell(tmp_path: Path) -> None:
     npm = tmp_path / "npm.cmd"
     npm.write_text("shim", encoding="utf-8")
+    (tmp_path / "frontend").mkdir()
     runner = RecordingRunner(ProcessOutcome(0, "", ""))
     results = ValidatorRegistry(platform="nt", which=resolver({"npm.cmd": npm})).run(
         ("frontend tests",), root=tmp_path, runner=runner, timeout_seconds=10,
     )
     assert results[0].passed
     assert runner.commands == [(str(npm.resolve()), "test", "--", "--run")]
+    assert runner.working_directories == [tmp_path / "frontend"]
+
+
+@pytest.mark.parametrize(
+    ("requirement", "expected_relative"),
+    (
+        ("frontend tests", "frontend"),
+        ("typescript", "frontend"),
+        ("production build", "frontend"),
+        ("git diff --check", "."),
+        ("pytest", "."),
+        ("python tests", "."),
+    ),
+)
+def test_validator_working_directory_policy(
+    tmp_path: Path, requirement: str, expected_relative: str,
+) -> None:
+    (tmp_path / "frontend").mkdir()
+    runner = RecordingRunner(ProcessOutcome(0, "", ""))
+    result = ValidatorRegistry(platform="posix").run(
+        (requirement,), root=tmp_path, runner=runner, timeout_seconds=10,
+    )[0]
+    assert result.passed
+    expected = tmp_path if expected_relative == "." else tmp_path / expected_relative
+    assert runner.working_directories == [expected]
+
+
+@pytest.mark.parametrize("requirement", ("frontend tests", "typescript", "production build"))
+def test_missing_frontend_working_directory_fails_closed(tmp_path: Path, requirement: str) -> None:
+    runner = RecordingRunner(ProcessOutcome(0, "", ""))
+    result = ValidatorRegistry(platform="posix").run(
+        (requirement,), root=tmp_path, runner=runner, timeout_seconds=10,
+    )[0]
+    assert not result.passed
+    assert result.detail == "validator working directory is missing: frontend"
+    assert runner.commands == []
 
 
 @pytest.mark.parametrize(
@@ -90,6 +129,7 @@ def test_validator_diagnostics_preserve_failure_kind(
     tmp_path: Path, outcome: ProcessOutcome, detail: str,
 ) -> None:
     runner = RecordingRunner(outcome)
+    (tmp_path / "frontend").mkdir()
     result = ValidatorRegistry(platform="posix").run(
         ("typescript",), root=tmp_path, runner=runner, timeout_seconds=10,
     )[0]
@@ -99,6 +139,7 @@ def test_validator_diagnostics_preserve_failure_kind(
 
 def test_missing_executable_diagnostic_is_deterministic(tmp_path: Path) -> None:
     runner = RecordingRunner(ProcessOutcome(0, "", ""))
+    (tmp_path / "frontend").mkdir()
     result = ValidatorRegistry(platform="nt", which=lambda _: None).run(
         ("production build",), root=tmp_path, runner=runner, timeout_seconds=10,
     )[0]

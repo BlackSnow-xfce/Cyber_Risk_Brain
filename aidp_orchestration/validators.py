@@ -50,6 +50,14 @@ class ValidatorRegistry:
         "production build": ("npm", "run", "build"),
         "git diff --check": ("git", "diff", "--check"),
     }
+    _working_directories: dict[str, str] = {
+        "python tests": ".",
+        "pytest": ".",
+        "frontend tests": "frontend",
+        "typescript": "frontend",
+        "production build": "frontend",
+        "git diff --check": ".",
+    }
 
     def __init__(
         self,
@@ -71,12 +79,24 @@ class ValidatorRegistry:
             if command is None:
                 results.append(ValidationResult(requirement, False, "unknown validator"))
                 continue
+            relative_cwd = self._working_directories.get(key)
+            if relative_cwd is None:
+                results.append(ValidationResult(requirement, False, "validator working directory is not configured"))
+                continue
+            validator_cwd = root if relative_cwd == "." else root / relative_cwd
+            if not validator_cwd.is_dir():
+                results.append(ValidationResult(
+                    requirement,
+                    False,
+                    f"validator working directory is missing: {relative_cwd}",
+                ))
+                continue
             try:
                 resolved = resolve_validator_command(command, platform=self.platform, which=self.which)
             except ValidatorExecutableError as exc:
                 results.append(ValidationResult(requirement, False, str(exc)))
                 continue
-            outcome = runner.run(resolved, cwd=root, timeout_seconds=timeout_seconds)
+            outcome = runner.run(resolved, cwd=validator_cwd, timeout_seconds=timeout_seconds)
             passed = outcome.returncode == 0 and not outcome.timed_out and outcome.error is None
             detail = (
                 "passed"
