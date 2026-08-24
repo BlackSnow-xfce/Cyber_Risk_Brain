@@ -28,6 +28,7 @@ from .repository import AIDPRepository
 from .runner import AIDPRunner
 from .runtime import LocalRuntimeStore
 from .validators import ValidatorRegistry
+from .worktree import cleanliness_adapter, worktree_admission_reason
 
 
 class RunnerBoundary(Protocol):
@@ -95,6 +96,7 @@ class AIDPControlPlane:
         architect_inbox: ArchitectInboxBoundary | None = None,
         validator_registry: ValidatorRegistry | None = None,
         is_worktree_clean: Callable[[], bool] | None = None,
+        worktree_changed_files: Callable[[], tuple[str, ...]] | None = None,
         timeout_seconds: float = 900.0,
     ):
         runtime_root = (
@@ -107,7 +109,11 @@ class AIDPControlPlane:
         self.contract_store = contract_store or LocalReworkContractStore(_required_root(runtime_root))
         self.architect_inbox = architect_inbox or LocalArchitectInbox(_required_root(runtime_root))
         self.validator_registry = validator_registry or ValidatorRegistry()
-        self.is_worktree_clean = is_worktree_clean or GitInspector(repository.root).is_clean
+        inspector = GitInspector(repository.root)
+        self.worktree_changed_files = (
+            worktree_changed_files
+            or (cleanliness_adapter(is_worktree_clean) if is_worktree_clean is not None else inspector.changed_files)
+        )
 
     def decide(self) -> ControlPlaneDecision:
         decision = self.repository.inspect()
@@ -121,7 +127,7 @@ class AIDPControlPlane:
         if state in {AIDPState.DONE, AIDPState.ARCHITECT_APPROVED}:
             return self._decision(decision, ControlPlaneAction.NO_ACTION, "no automated transition is authorized")
         if state is AIDPState.READY_FOR_CODEX:
-            reason = self._ready_admission(decision.task_id, state_dir="ready")
+            reason = self._ready_admission(decision.task_id, state_dir="ready", allow_authorized_dirty=True)
             return self._execution_decision(decision, reason)
         if state is AIDPState.REWORK_REQUIRED:
             reason = self._rework_admission(decision.task_id, decision.commit)
@@ -191,19 +197,18 @@ class AIDPControlPlane:
         )
         return ControlPlaneResult(decision, final_action, runner_result, entry, str(inbox_path))
 
-    def _ready_admission(self, task_id: str | None, *, state_dir: str) -> str | None:
+    def _ready_admission(self, task_id: str | None, *, state_dir: str, allow_authorized_dirty: bool = False) -> str | None:
         metadata = self._metadata(task_id, state_dir)
         if metadata is None:
             return "execution metadata is missing or inconsistent"
         unknown = self.validator_registry.unknown(metadata.validation_requirements)
         if unknown:
             return f"unknown validator: {unknown[0]}"
-        try:
-            if not self.is_worktree_clean():
-                return "worktree is dirty before execution"
-        except (OSError, RuntimeError):
-            return "worktree cleanliness could not be established"
-        return None
+        return worktree_admission_reason(
+            self.worktree_changed_files,
+            allowed_scope=metadata.allowed_scope if allow_authorized_dirty else None,
+            prohibited_actions=metadata.prohibited_actions,
+        )
 
     def _rework_admission(self, task_id: str | None, expected_head: str) -> str | None:
         base_reason = self._ready_admission(task_id, state_dir="review")

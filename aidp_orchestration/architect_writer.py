@@ -24,6 +24,7 @@ from .executor import GitInspector
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
 from .validators import ValidatorRegistry
+from .worktree import cleanliness_adapter, worktree_admission_reason
 
 
 class ArchitectContractWriter:
@@ -35,11 +36,16 @@ class ArchitectContractWriter:
         *,
         validator_registry: ValidatorRegistry | None = None,
         is_worktree_clean: Callable[[], bool] | None = None,
+        worktree_changed_files: Callable[[], tuple[str, ...]] | None = None,
         runtime_root: Path | None = None,
     ):
         self.repository = repository
         self.validator_registry = validator_registry or ValidatorRegistry()
-        self.is_worktree_clean = is_worktree_clean or GitInspector(repository.root).is_clean
+        inspector = GitInspector(repository.root)
+        self.worktree_changed_files = (
+            worktree_changed_files
+            or (cleanliness_adapter(is_worktree_clean) if is_worktree_clean is not None else inspector.changed_files)
+        )
         self.runtime_root = runtime_root or LocalRuntimeStore.for_repository(repository.root).root
 
     def materialize_task(self, contract: ArchitectTaskContract) -> WriterResult:
@@ -69,9 +75,6 @@ class ArchitectContractWriter:
         branch, head = self.repository.branch, self.repository.head
         if head != contract.expected_head:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "contract expected_head is stale")
-        cleanliness = self._cleanliness_reason()
-        if cleanliness is not None:
-            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, cleanliness)
         unknown = self.validator_registry.unknown(contract.validation_requirements)
         if unknown:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, f"unknown validator: {unknown[0]}")
@@ -92,9 +95,19 @@ class ArchitectContractWriter:
             metadata = self.repository.parse_metadata(existing)
             if metadata is None or not _same_execution_authority(contract, metadata):
                 return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "contract authority does not match existing READY task")
+            cleanliness = worktree_admission_reason(
+                self.worktree_changed_files,
+                allowed_scope=metadata.allowed_scope,
+                prohibited_actions=metadata.prohibited_actions,
+            )
+            if cleanliness is not None:
+                return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, cleanliness)
             return WriterDecision(WriterAction.MATERIALIZE_READY, contract.task_id, branch, head, "contract reauthorizes the matching READY task")
         if repository_decision.state is not AIDPState.WAITING:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "repository state is not eligible for READY materialization")
+        cleanliness = worktree_admission_reason(self.worktree_changed_files)
+        if cleanliness is not None:
+            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, cleanliness)
         if any(self.repository.ai_root.joinpath("tasks").glob(f"**/{contract.task_id}.md")):
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "task_id already exists")
         return WriterDecision(WriterAction.MATERIALIZE_READY, contract.task_id, branch, head, "contract is authorized for READY materialization")
@@ -121,7 +134,7 @@ class ArchitectContractWriter:
         branch, head = self.repository.branch, self.repository.head
         if head != contract.expected_head:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "rework expected_head is stale")
-        cleanliness = self._cleanliness_reason()
+        cleanliness = worktree_admission_reason(self.worktree_changed_files)
         if cleanliness is not None:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, cleanliness)
         repository_decision = self.repository.inspect()
@@ -139,12 +152,6 @@ class ArchitectContractWriter:
         if any(item not in metadata.validation_requirements for item in contract.required_validations):
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "rework validators exceed task authority")
         return WriterDecision(WriterAction.MATERIALIZE_REWORK, contract.task_id, branch, head, "rework contract is authorized for persistence")
-
-    def _cleanliness_reason(self) -> str | None:
-        try:
-            return None if self.is_worktree_clean() else "worktree is dirty"
-        except (OSError, RuntimeError):
-            return "worktree cleanliness could not be established"
 
     @staticmethod
     def _materialize_files(contents: dict[Path, str]) -> None:

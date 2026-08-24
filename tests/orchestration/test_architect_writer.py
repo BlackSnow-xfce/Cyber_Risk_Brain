@@ -97,10 +97,16 @@ def rework_contract(repo: AIDPRepository, **changes) -> ReworkContract:
     return replace(value, **changes)
 
 
-def writer(repo: AIDPRepository, *, clean: bool = True) -> ArchitectContractWriter:
+def writer(
+    repo: AIDPRepository,
+    *,
+    clean: bool = True,
+    changed_files=None,
+) -> ArchitectContractWriter:
     return ArchitectContractWriter(
         repo,
-        is_worktree_clean=lambda: clean,
+        is_worktree_clean=None if changed_files is not None else lambda: clean,
+        worktree_changed_files=changed_files,
         runtime_root=repo.root / "runtime",
     )
 
@@ -168,6 +174,45 @@ def test_matching_ready_task_can_be_reauthorized_without_aidp_mutation(tmp_path:
     assert result.materialized_paths == ()
     assert result.decision.reason == "contract reauthorizes the matching READY task"
     assert after == before
+
+
+@pytest.mark.parametrize(
+    "paths",
+    (
+        ("aidp_orchestration/continuation.py",),
+        (
+            "aidp_orchestration/continuation.py",
+            "tests/orchestration/test_continuation.py",
+        ),
+    ),
+)
+def test_matching_ready_task_admits_only_authorized_dirty_paths(tmp_path: Path, paths: tuple[str, ...]) -> None:
+    repo = make_repository(tmp_path, active=True)
+    result = writer(repo, changed_files=lambda: paths).materialize_task(task_contract(repo, task_id="TASK-9000"))
+    assert result.decision.action is WriterAction.MATERIALIZE_READY
+
+
+@pytest.mark.parametrize(
+    "paths",
+    (
+        ("frontend/unauthorized.tsx",),
+        ("aidp_orchestration/continuation.py", "frontend/unauthorized.tsx"),
+    ),
+)
+def test_matching_ready_task_blocks_any_unauthorized_dirty_path(tmp_path: Path, paths: tuple[str, ...]) -> None:
+    repo = make_repository(tmp_path, active=True)
+    result = writer(repo, changed_files=lambda: paths).materialize_task(task_contract(repo, task_id="TASK-9000"))
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "outside" in result.failure_reason
+
+
+def test_matching_ready_task_blocks_unreadable_dirty_paths(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path, active=True)
+    def unreadable():
+        raise UnicodeError("malformed status")
+    result = writer(repo, changed_files=unreadable).materialize_task(task_contract(repo, task_id="TASK-9000"))
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "could not be established" in result.failure_reason
 
 
 def test_matching_ready_task_does_not_bypass_expected_head(tmp_path: Path) -> None:

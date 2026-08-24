@@ -141,7 +141,11 @@ def test_valid_execution_runs_bound_codex_request_and_validators(tmp_path: Path)
 
 @pytest.mark.parametrize(
     ("git", "expected"),
-    ((FakeGit(branch="other"), ExecutionStatus.BLOCKED), (FakeGit(head="different"), ExecutionStatus.STALE_EXECUTION), (FakeGit(clean=False), ExecutionStatus.BLOCKED)),
+    (
+        (FakeGit(branch="other"), ExecutionStatus.BLOCKED),
+        (FakeGit(head="different"), ExecutionStatus.STALE_EXECUTION),
+        (FakeGit(clean=False, changed=("outside.py",)), ExecutionStatus.BLOCKED),
+    ),
 )
 def test_preflight_fail_closed(tmp_path: Path, git: FakeGit, expected: ExecutionStatus) -> None:
     runner = FakeRunner([])
@@ -158,6 +162,24 @@ def test_repository_mismatch_blocks_before_process(tmp_path: Path) -> None:
     result = CodexExecutionService(runner=runner, git=FakeGit(), repository_root=tmp_path).execute(req)
     assert result.status is ExecutionStatus.BLOCKED
     assert runner.calls == []
+
+
+def test_executor_admits_only_dirty_paths_within_request_scope(tmp_path: Path) -> None:
+    authorized = service(
+        tmp_path,
+        success_runner(),
+        FakeGit(clean=False, changed=("aidp_orchestration/continued.py",)),
+    ).execute(request(tmp_path))
+    assert authorized.status is ExecutionStatus.SUCCESS
+
+    blocked_runner = FakeRunner([])
+    blocked = service(
+        tmp_path,
+        blocked_runner,
+        FakeGit(clean=False, changed=("aidp_orchestration/continued.py", "frontend/unauthorized.tsx")),
+    ).execute(request(tmp_path))
+    assert blocked.status is ExecutionStatus.BLOCKED
+    assert blocked_runner.calls == []
 
 
 def test_parallel_lock_blocks_second_execution(tmp_path: Path) -> None:

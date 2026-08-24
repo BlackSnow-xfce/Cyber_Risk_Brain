@@ -130,8 +130,18 @@ class AIDPRepository:
         return AIDPState.READY_FOR_ARCHITECT
 
     def validate_scope(self, request: CodexExecutionRequest, changed_files: tuple[str, ...]) -> ScopeCompliance:
-        allowed = request.allowed_scope
-        prohibited = request.prohibited_actions
+        return self.scope_compliance_for_paths(
+            request.allowed_scope,
+            request.prohibited_actions,
+            changed_files,
+        )
+
+    @staticmethod
+    def scope_compliance_for_paths(
+        allowed: tuple[str, ...],
+        prohibited: tuple[str, ...],
+        changed_files: tuple[str, ...],
+    ) -> ScopeCompliance:
         for path in changed_files:
             if any(fnmatch.fnmatch(path, pattern) for pattern in prohibited):
                 return ScopeCompliance.VIOLATION

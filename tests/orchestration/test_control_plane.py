@@ -193,6 +193,31 @@ def test_dirty_worktree_blocks_before_runner(tmp_path: Path) -> None:
     assert runner.calls == 0
 
 
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    (
+        (("aidp_orchestration/control_plane.py",), ControlPlaneAction.EXECUTE),
+        (("tests/orchestration/test_control_plane.py",), ControlPlaneAction.EXECUTE),
+        (("aidp_orchestration/control_plane.py", "frontend/unauthorized.tsx"), ControlPlaneAction.BLOCKED),
+        (("frontend/unauthorized.tsx",), ControlPlaneAction.BLOCKED),
+    ),
+)
+def test_ready_dirty_scope_policy_matches_writer(
+    tmp_path: Path,
+    paths: tuple[str, ...],
+    expected: ControlPlaneAction,
+) -> None:
+    repo = repository(tmp_path, AIDPState.READY_FOR_CODEX)
+    control_plane = AIDPControlPlane(
+        repo,
+        runner=RecordingRunner(successful_runner_result(repo)),
+        contract_store=StaticContractStore(),
+        architect_inbox=LocalArchitectInbox(tmp_path / "runtime"),
+        worktree_changed_files=lambda: paths,
+    )
+    assert control_plane.decide().action is expected
+
+
 def test_valid_rework_contract_admits_existing_runner(tmp_path: Path) -> None:
     repo = repository(tmp_path, AIDPState.REWORK_REQUIRED)
     runner_result = successful_runner_result(repo)

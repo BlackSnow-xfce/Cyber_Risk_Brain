@@ -20,6 +20,7 @@ from .repository import AIDPRepository
 from .validators import ValidatorRegistry
 from .executor_types import ProcessOutcome, ProcessRunner
 from .launcher import CodexLauncher, resolve_codex_launcher
+from .worktree import worktree_admission_reason
 
 
 class SubprocessRunner:
@@ -242,7 +243,16 @@ class CodexExecutionService:
         if git.head() != request.expected_head:
             raise _StaleExecution("repository HEAD is stale")
         if not git.is_clean():
-            raise ValueError("worktree is not clean")
+            changed = git.changed_files()
+            if not changed:
+                raise ValueError("worktree dirty paths could not be established")
+            worktree_reason = worktree_admission_reason(
+                lambda: changed,
+                allowed_scope=request.allowed_scope,
+                prohibited_actions=request.prohibited_actions,
+            )
+            if worktree_reason is not None:
+                raise ValueError(worktree_reason)
 
     @staticmethod
     def _codex_command(request: CodexExecutionRequest, launcher: CodexLauncher) -> tuple[str, ...]:
