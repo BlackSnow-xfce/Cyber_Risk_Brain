@@ -1,3 +1,4 @@
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -34,19 +35,25 @@ export default function ThreatHunterAreaPage({
                 </Typography>
             </Box>
 
-            <Panel component="section">
-                <Typography variant="h6">
-                    {isHuntsArea
-                        ? "No hunts are available"
-                        : "Workspace connection required"}
-                </Typography>
+            {isHuntsArea ? (
+                <Alert severity="info">
+                    <Typography variant="h6">No hunts are available</Typography>
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>
+                        Connect a hunting data source to make hunts available here.
+                    </Typography>
+                </Alert>
+            ) : (
+                <Panel component="section">
+                    <Typography variant="h6">
+                        Workspace connection required
+                    </Typography>
 
-                <Typography color="text.secondary" sx={{ mt: 1 }}>
-                    {isHuntsArea
-                        ? "Create or connect a hunt to begin a proactive investigation."
-                        : "This workspace area is structurally available, but no hunting data source or execution capability is connected."}
-                </Typography>
-            </Panel>
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>
+                        This workspace area is structurally available, but no
+                        hunting data source or execution capability is connected.
+                    </Typography>
+                </Panel>
+            )}
         </Stack>
     );
 }

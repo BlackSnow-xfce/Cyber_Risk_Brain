@@ -56,11 +56,15 @@ describe("ThreatHunterWorkspace", () => {
         expect(
             screen.getByRole("heading", { name: "No hunts are available" }),
         ).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toBeInTheDocument();
         expect(
             screen.getByText(
-                "Create or connect a hunt to begin a proactive investigation.",
+                "Connect a hunting data source to make hunts available here.",
             ),
         ).toBeInTheDocument();
+        expect(
+            screen.queryByText("Workspace connection required"),
+        ).not.toBeInTheDocument();
         expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     });
 
