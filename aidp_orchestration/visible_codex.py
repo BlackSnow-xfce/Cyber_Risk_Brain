@@ -14,6 +14,8 @@ from typing import BinaryIO, Sequence, TextIO
 
 _KILL_ON_JOB_CLOSE = 0x00002000
 _EXTENDED_LIMIT_INFORMATION = 9
+_SW_SHOWNORMAL = 1
+_READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V1\n"
 
 
 class _IoCounters(ctypes.Structure):
@@ -126,28 +128,51 @@ class _NullLock:
         return None
 
 
-def relay(argv: Sequence[str]) -> int:
+def _present_console() -> None:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32.GetConsoleWindow.argtypes = ()
+    kernel32.GetConsoleWindow.restype = wintypes.HWND
+    user32.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    window = kernel32.GetConsoleWindow()
+    if not window:
+        raise RuntimeError("visible console window is unavailable")
+    user32.ShowWindow(window, _SW_SHOWNORMAL)
+    if not user32.IsWindowVisible(window):
+        raise RuntimeError("console window is not visible")
+
+
+def relay(
+    argv: Sequence[str], *, console_presenter=_present_console,
+    popen=subprocess.Popen, job_factory=WindowsJob,
+) -> int:
     if os.name != "nt" or not argv:
         return 125
-    job = WindowsJob()
+    job = job_factory()
     child: subprocess.Popen[bytes] | None = None
     try:
-        child = subprocess.Popen(
-            tuple(argv), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, shell=False,
-            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200),
-        )
-        try:
-            job.assign(child)
-        except Exception:
-            child.kill()
-            child.wait()
-            raise
-        if child.stdout is None or child.stderr is None:
-            raise RuntimeError("Codex capture pipes are unavailable")
+        console_presenter()
         with (
             open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1) as console,
         ):
+            sys.stderr.buffer.write(_READY_TOKEN)
+            sys.stderr.buffer.flush()
+            child = popen(
+                tuple(argv), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=False,
+                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200),
+            )
+            try:
+                job.assign(child)
+            except Exception:
+                child.kill()
+                child.wait()
+                raise
+            if child.stdout is None or child.stderr is None:
+                raise RuntimeError("Codex capture pipes are unavailable")
             render_lock = threading.Lock()
             stdout_thread = threading.Thread(
                 target=_pump, args=(child.stdout, sys.stdout.buffer, console, render_lock), daemon=True,

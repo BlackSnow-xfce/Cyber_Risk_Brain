@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -116,6 +117,7 @@ class FakeVisibleProcess:
         self.returncode = 0
         self.killed = False
         self.waited = False
+        self.stderr = BytesIO(b"AIDP_VISIBLE_CONSOLE_READY_V1\n")
 
     def communicate(self, timeout=None):
         if self.error is not None and not self.killed:
@@ -144,9 +146,45 @@ def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: P
     assert observed["args"][-len(original) - 1] == "--"
     assert observed["shell"] is False
     assert observed["creationflags"] == getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    assert observed["startupinfo"].dwFlags & subprocess.STARTF_USESHOWWINDOW
+    assert observed["startupinfo"].wShowWindow == 1
     assert outcome.returncode == 0
     assert outcome.stdout == '{"type":"completed"}\n'
     assert outcome.stderr == "diagnostic"
+
+
+def test_visible_windows_runner_requires_relay_readiness(tmp_path: Path) -> None:
+    process = FakeVisibleProcess()
+    process.stderr = BytesIO(b"visible Codex relay failed: RuntimeError\n")
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
+        ("codex.exe",), cwd=tmp_path, timeout_seconds=1,
+    )
+    assert outcome.error == "visible Codex console readiness failed"
+    assert process.killed
+
+
+def test_visible_windows_runner_waits_for_readiness_before_communicating(tmp_path: Path) -> None:
+    order: list[str] = []
+
+    class ReadyStream(BytesIO):
+        def readline(self, *args, **kwargs):
+            order.append("ready")
+            return super().readline(*args, **kwargs)
+
+    process = FakeVisibleProcess()
+    process.stderr = ReadyStream(b"AIDP_VISIBLE_CONSOLE_READY_V1\n")
+    original_communicate = process.communicate
+
+    def communicate(timeout=None):
+        order.append("communicate")
+        return original_communicate(timeout)
+
+    process.communicate = communicate
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
+        ("codex.exe",), cwd=tmp_path, timeout_seconds=1,
+    )
+    assert outcome.returncode == 0
+    assert order == ["ready", "communicate"]
 
 
 def test_visible_windows_runner_timeout_kills_relay_job_owner(tmp_path: Path) -> None:

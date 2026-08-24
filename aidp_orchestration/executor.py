@@ -6,6 +6,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
@@ -69,6 +71,9 @@ class WindowsVisibleCodexRunner:
         if self.platform != "nt":
             return ProcessOutcome(None, "", "", error="visible Codex console is only supported on Windows")
         relay = (sys.executable, "-m", "aidp_orchestration.visible_codex", "--", *tuple(args))
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
         try:
             process = self.popen(
                 relay,
@@ -77,9 +82,40 @@ class WindowsVisibleCodexRunner:
                 stderr=subprocess.PIPE,
                 shell=False,
                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010),
+                startupinfo=startupinfo,
             )
+            if process.stderr is None:
+                process.kill()
+                process.wait()
+                return ProcessOutcome(None, "", "", error="visible Codex console readiness channel is unavailable")
+            readiness: list[bytes] = []
+            ready_reader = threading.Thread(target=lambda: readiness.append(process.stderr.readline()), daemon=True)
+            started_at = time.monotonic()
+            ready_reader.start()
             try:
-                stdout_value, stderr_value = process.communicate(timeout=timeout_seconds)
+                ready_reader.join(timeout_seconds)
+            except KeyboardInterrupt:
+                process.kill()
+                process.wait()
+                raise
+            if ready_reader.is_alive():
+                process.kill()
+                process.wait()
+                return ProcessOutcome(None, "", "", timed_out=True, error="visible Codex console readiness timed out")
+            ready_line = readiness[0] if readiness else b""
+            if ready_line != b"AIDP_VISIBLE_CONSOLE_READY_V1\n":
+                process.kill()
+                stdout_value, stderr_value = process.communicate()
+                stderr_value = ready_line + (stderr_value or b"")
+                stdout, stdout_error = _decode_process_output(stdout_value, "stdout")
+                stderr, stderr_error = _decode_process_output(stderr_value, "stderr")
+                return ProcessOutcome(
+                    process.returncode, stdout, stderr,
+                    error=stdout_error or stderr_error or "visible Codex console readiness failed",
+                )
+            remaining_timeout = max(0.0, timeout_seconds - (time.monotonic() - started_at))
+            try:
+                stdout_value, stderr_value = process.communicate(timeout=remaining_timeout)
             except subprocess.TimeoutExpired:
                 process.kill()
                 stdout_value, stderr_value = process.communicate()
