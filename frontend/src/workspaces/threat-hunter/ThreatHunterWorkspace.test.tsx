@@ -53,7 +53,15 @@ describe("ThreatHunterWorkspace", () => {
             </WorkspaceProvider>,
         );
 
-        expect(screen.getByText("Workspace connection required")).toBeInTheDocument();
+        expect(
+            screen.getByRole("heading", { name: "No hunts are available" }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                "Create or connect a hunt to begin a proactive investigation.",
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     });
 
     it("keeps Overview and Hunts synchronized across Back and Forward", async () => {
@@ -76,7 +84,11 @@ describe("ThreatHunterWorkspace", () => {
         expect(await screen.findByText("Threat Hunter Mission Console")).toBeInTheDocument();
 
         screen.getByRole("button", { name: "Forward" }).click();
-        expect(await screen.findByText("Workspace connection required")).toBeInTheDocument();
+        expect(
+            await screen.findAllByRole("heading", {
+                name: "No hunts are available",
+            }),
+        ).not.toHaveLength(0);
         expect(screen.getAllByText("Hunts").length).toBeGreaterThan(0);
     });
 });
