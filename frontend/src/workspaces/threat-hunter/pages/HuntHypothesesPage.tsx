@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
@@ -8,9 +9,14 @@ import Typography from "@mui/material/Typography";
 
 import Panel from "@/ui/panel/Panel";
 
-import type { HuntHypothesisReference } from "../HuntHypothesis";
+import type {
+    HuntHypothesisReference,
+    HuntHypothesisReferenceResolution,
+    HuntHypothesisResolvedReference,
+} from "../HuntHypothesis";
 import {
     getHuntHypotheses,
+    getHuntHypothesisReferenceResolution,
     HuntHypothesisRequestError,
 } from "../HuntHypothesisApiClient";
 import type { HuntHypothesis } from "../HuntHypothesis";
@@ -19,6 +25,11 @@ export default function HuntHypothesesPage() {
     const [hypotheses, setHypotheses] = useState<HuntHypothesis[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [resolutions, setResolutions] = useState<
+        Record<string, HuntHypothesisReferenceResolution>
+    >({});
+    const [resolutionLoading, setResolutionLoading] = useState<string | null>(null);
+    const [resolutionErrors, setResolutionErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
         let current = true;
@@ -42,6 +53,26 @@ export default function HuntHypothesesPage() {
             current = false;
         };
     }, []);
+
+    function resolveReferences(hypothesisId: string) {
+        setResolutionLoading(hypothesisId);
+        setResolutionErrors((current) => {
+            const next = { ...current };
+            delete next[hypothesisId];
+            return next;
+        });
+        void getHuntHypothesisReferenceResolution(hypothesisId)
+            .then((result) => {
+                setResolutions((current) => ({ ...current, [hypothesisId]: result }));
+            })
+            .catch(() => {
+                setResolutionErrors((current) => ({
+                    ...current,
+                    [hypothesisId]: "Reference resolution could not be loaded.",
+                }));
+            })
+            .finally(() => setResolutionLoading(null));
+    }
 
     return (
         <Stack spacing={3}>
@@ -105,6 +136,28 @@ export default function HuntHypothesesPage() {
                                     label="Unresolved threat references"
                                     references={hypothesis.threat_references}
                                 />
+                                <Box>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        disabled={resolutionLoading === hypothesis.hypothesis_id}
+                                        onClick={() => resolveReferences(hypothesis.hypothesis_id)}
+                                    >
+                                        {resolutionLoading === hypothesis.hypothesis_id
+                                            ? "Resolving references…"
+                                            : "Resolve references"}
+                                    </Button>
+                                </Box>
+                                {resolutionErrors[hypothesis.hypothesis_id] && (
+                                    <Alert severity="error">
+                                        {resolutionErrors[hypothesis.hypothesis_id]}
+                                    </Alert>
+                                )}
+                                {resolutions[hypothesis.hypothesis_id] && (
+                                    <ResolutionList
+                                        resolution={resolutions[hypothesis.hypothesis_id]}
+                                    />
+                                )}
                             </Stack>
                         </Panel>
                     ))}
@@ -112,6 +165,57 @@ export default function HuntHypothesesPage() {
             )}
         </Stack>
     );
+}
+
+function ResolutionList({
+    resolution,
+}: {
+    resolution: HuntHypothesisReferenceResolution;
+}) {
+    return (
+        <Box component="section" aria-label="Reference resolution">
+            <Typography variant="subtitle2">Reference resolution</Typography>
+            <Typography variant="caption" color="text.secondary">
+                Identity resolution does not establish evidence or the truth of this hypothesis.
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+                {resolution.references.map((reference) => (
+                    <ResolvedReference
+                        key={`${reference.reference_type}:${reference.reference_id}`}
+                        reference={reference}
+                    />
+                ))}
+            </Stack>
+        </Box>
+    );
+}
+
+function ResolvedReference({ reference }: { reference: HuntHypothesisResolvedReference }) {
+    return (
+        <Box>
+            <Typography variant="body2">
+                {reference.reference_type}: {reference.reference_id}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+                {resolutionLabel(reference)}
+            </Typography>
+        </Box>
+    );
+}
+
+function resolutionLabel(reference: HuntHypothesisResolvedReference): string {
+    const labels = {
+        resolved: "Resolved identity",
+        not_found: "Exact identity not found",
+        source_unavailable: "Authoritative source unavailable",
+        unsupported: "Reference type unsupported",
+    } as const;
+    const sourceContext = [reference.authoritative_source, reference.source_reference]
+        .filter((item): item is string => item !== null)
+        .join(" · ");
+    return sourceContext
+        ? `${labels[reference.resolution_status]} · ${sourceContext}`
+        : labels[reference.resolution_status];
 }
 
 interface ReferenceListProps {

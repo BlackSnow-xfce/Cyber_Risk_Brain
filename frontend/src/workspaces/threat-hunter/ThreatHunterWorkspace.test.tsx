@@ -11,6 +11,7 @@ import { getHuntHypotheses } from "./HuntHypothesisApiClient";
 
 vi.mock("./HuntHypothesisApiClient", () => ({
     getHuntHypotheses: vi.fn(),
+    getHuntHypothesisReferenceResolution: vi.fn(),
     HuntHypothesisRequestError: class HuntHypothesisRequestError extends Error {},
 }));
 

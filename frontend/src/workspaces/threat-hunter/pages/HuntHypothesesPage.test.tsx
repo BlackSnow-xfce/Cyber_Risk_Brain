@@ -1,12 +1,16 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HuntHypothesis } from "../HuntHypothesis";
-import { getHuntHypotheses } from "../HuntHypothesisApiClient";
+import {
+    getHuntHypotheses,
+    getHuntHypothesisReferenceResolution,
+} from "../HuntHypothesisApiClient";
 import HuntHypothesesPage from "./HuntHypothesesPage";
 
 vi.mock("../HuntHypothesisApiClient", () => ({
     getHuntHypotheses: vi.fn(),
+    getHuntHypothesisReferenceResolution: vi.fn(),
     HuntHypothesisRequestError: class HuntHypothesisRequestError extends Error {
         status: number | null;
         constructor(status: number | null) {
@@ -34,6 +38,10 @@ describe("HuntHypothesesPage", () => {
 
     beforeEach(() => {
         vi.mocked(getHuntHypotheses).mockResolvedValue([]);
+        vi.mocked(getHuntHypothesisReferenceResolution).mockResolvedValue({
+            hypothesis_id: hypothesis.hypothesis_id,
+            references: [],
+        });
     });
 
     it("shows loading while the repository request is pending", () => {
@@ -75,6 +83,81 @@ describe("HuntHypothesesPage", () => {
         expect(screen.getByText("Unresolved threat references")).toBeInTheDocument();
         expect(screen.getByText("technique: T1059")).toBeInTheDocument();
         expect(screen.getByText(/unconfirmed assumptions/i)).toBeInTheDocument();
+        expect(screen.queryByText(/confirmed compromise/i)).not.toBeInTheDocument();
+    });
+
+    it("resolves references only on demand and preserves every canonical pointer", async () => {
+        const hypothesisWithMixedReferences: HuntHypothesis = {
+            ...hypothesis,
+            target_references: [
+                { reference_type: "asset", reference_id: "asset-001" },
+                { reference_type: "finding", reference_id: "finding-missing" },
+            ],
+            threat_references: [
+                { reference_type: "cve", reference_id: "CVE-2026-1234" },
+                { reference_type: "technique", reference_id: "T1059" },
+            ],
+        };
+        vi.mocked(getHuntHypotheses).mockResolvedValueOnce([
+            hypothesisWithMixedReferences,
+        ]);
+        vi.mocked(getHuntHypothesisReferenceResolution).mockResolvedValueOnce({
+            hypothesis_id: hypothesis.hypothesis_id,
+            references: [
+                {
+                    reference_type: "asset",
+                    reference_id: "asset-001",
+                    resolution_status: "resolved",
+                    authoritative_source: "asset_context",
+                    resolved_identity: "asset-001",
+                    source_reference: "asset-source:001",
+                },
+                {
+                    reference_type: "finding",
+                    reference_id: "finding-missing",
+                    resolution_status: "not_found",
+                    authoritative_source: "findings",
+                    resolved_identity: null,
+                    source_reference: null,
+                },
+                {
+                    reference_type: "cve",
+                    reference_id: "CVE-2026-1234",
+                    resolution_status: "source_unavailable",
+                    authoritative_source: "threat_intelligence",
+                    resolved_identity: null,
+                    source_reference: null,
+                },
+                {
+                    reference_type: "technique",
+                    reference_id: "T1059",
+                    resolution_status: "unsupported",
+                    authoritative_source: null,
+                    resolved_identity: null,
+                    source_reference: null,
+                },
+            ],
+        });
+
+        render(<HuntHypothesesPage />);
+        await screen.findByText(hypothesis.title);
+
+        expect(getHuntHypothesisReferenceResolution).not.toHaveBeenCalled();
+        expect(screen.getByText("asset: asset-001")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Resolve references" }));
+
+        expect(await screen.findByText(/Resolved identity/)).toBeInTheDocument();
+        expect(screen.getByText(/Exact identity not found/)).toBeInTheDocument();
+        expect(screen.getByText(/Authoritative source unavailable/)).toBeInTheDocument();
+        expect(screen.getByText("Reference type unsupported")).toBeInTheDocument();
+        expect(screen.getAllByText("asset: asset-001")).toHaveLength(2);
+        expect(
+            screen.getByText(/does not establish evidence or the truth/i),
+        ).toBeInTheDocument();
+        expect(getHuntHypothesisReferenceResolution).toHaveBeenCalledWith(
+            hypothesis.hypothesis_id,
+        );
         expect(screen.queryByText(/confirmed compromise/i)).not.toBeInTheDocument();
     });
 });

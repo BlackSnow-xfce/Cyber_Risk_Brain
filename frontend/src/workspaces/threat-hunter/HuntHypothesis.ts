@@ -15,3 +15,21 @@ export interface HuntHypothesis {
     rationale: string;
     contract_version: string;
 }
+
+export type HuntHypothesisReferenceResolutionStatus =
+    | "resolved"
+    | "not_found"
+    | "source_unavailable"
+    | "unsupported";
+
+export interface HuntHypothesisResolvedReference extends HuntHypothesisReference {
+    resolution_status: HuntHypothesisReferenceResolutionStatus;
+    authoritative_source: string | null;
+    resolved_identity: string | null;
+    source_reference: string | null;
+}
+
+export interface HuntHypothesisReferenceResolution {
+    hypothesis_id: string;
+    references: HuntHypothesisResolvedReference[];
+}

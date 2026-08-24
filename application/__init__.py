@@ -75,6 +75,14 @@ from application.hunt_hypotheses import (
     HuntHypothesisQueryService,
     HuntHypothesisRepository,
 )
+from application.hunt_hypothesis_reference_resolution import (
+    HuntHypothesisNotFoundError,
+    HuntHypothesisReferenceIntegrityError,
+    HuntHypothesisReferenceResolution,
+    HuntHypothesisReferenceResolutionResult,
+    HuntHypothesisReferenceResolutionService,
+    HuntHypothesisReferenceResolutionStatus,
+)
 from application.finding_incidents import FindingIncidentQueryService
 from application.trusted_ai_retrieval import (
     FINDING_RETRIEVAL_OPERATION,
@@ -202,6 +210,12 @@ __all__ = [
     "HuntHypothesisDataError",
     "HuntHypothesisQueryService",
     "HuntHypothesisRepository",
+    "HuntHypothesisNotFoundError",
+    "HuntHypothesisReferenceIntegrityError",
+    "HuntHypothesisReferenceResolution",
+    "HuntHypothesisReferenceResolutionResult",
+    "HuntHypothesisReferenceResolutionService",
+    "HuntHypothesisReferenceResolutionStatus",
     "FindingIncidentQueryService",
     "FINDING_RETRIEVAL_OPERATION",
     "FindingResourceReader",

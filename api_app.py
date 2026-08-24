@@ -32,6 +32,10 @@ from application import (
     HuntHypothesisConfigurationError,
     HuntHypothesisDataError,
     HuntHypothesisQueryService,
+    HuntHypothesisNotFoundError,
+    HuntHypothesisReferenceIntegrityError,
+    HuntHypothesisReferenceResolutionResult,
+    HuntHypothesisReferenceResolutionService,
     RiskReadinessService,
     ThreatIntelligenceConfigurationError,
     ThreatIntelligenceDataError,
@@ -122,6 +126,20 @@ class HuntHypothesisResponse(BaseModel):
     threat_references: list[HuntHypothesisReferenceResponse]
     rationale: str
     contract_version: str
+
+
+class HuntHypothesisResolvedReferenceResponse(BaseModel):
+    reference_type: str
+    reference_id: str
+    resolution_status: str
+    authoritative_source: str | None
+    resolved_identity: str | None
+    source_reference: str | None
+
+
+class HuntHypothesisReferenceResolutionResponse(BaseModel):
+    hypothesis_id: str
+    references: list[HuntHypothesisResolvedReferenceResponse]
 
 
 class FindingExplanationFactResponse(BaseModel):
@@ -373,6 +391,16 @@ def get_hunt_hypothesis_query_service() -> HuntHypothesisQueryService:
     )
 
 
+def get_hunt_hypothesis_reference_resolution_service(
+) -> HuntHypothesisReferenceResolutionService:
+    return HuntHypothesisReferenceResolutionService(
+        hypotheses=get_hunt_hypothesis_query_service(),
+        findings=FindingsQueryService(GREENBONE_REPORT_PATH),
+        assets=AssetContextQueryService(ASSET_CONTEXT_PATH),
+        threat_intelligence=get_threat_intelligence_query_service(),
+    )
+
+
 def _hunt_hypothesis_reference_response(
     reference: HuntHypothesisReference,
 ) -> HuntHypothesisReferenceResponse:
@@ -402,6 +430,25 @@ def _hunt_hypothesis_response(
         ],
         rationale=hypothesis.rationale,
         contract_version=hypothesis.contract_version,
+    )
+
+
+def _hunt_hypothesis_reference_resolution_response(
+    result: HuntHypothesisReferenceResolutionResult,
+) -> HuntHypothesisReferenceResolutionResponse:
+    return HuntHypothesisReferenceResolutionResponse(
+        hypothesis_id=result.hypothesis_id,
+        references=[
+            HuntHypothesisResolvedReferenceResponse(
+                reference_type=item.reference_type.value,
+                reference_id=item.reference_id,
+                resolution_status=item.resolution_status.value,
+                authoritative_source=item.authoritative_source,
+                resolved_identity=item.resolved_identity,
+                source_reference=item.source_reference,
+            )
+            for item in result.references
+        ],
     )
 
 
@@ -937,6 +984,33 @@ def hunt_hypotheses(
         raise HTTPException(
             status_code=500,
             detail="Hunt Hypothesis repository contains invalid data.",
+        ) from error
+
+
+@app.get(
+    "/api/hunt-hypotheses/{hypothesis_id}/reference-resolution",
+    response_model=HuntHypothesisReferenceResolutionResponse,
+)
+def hunt_hypothesis_reference_resolution(
+    hypothesis_id: str,
+    service: HuntHypothesisReferenceResolutionService = Depends(
+        get_hunt_hypothesis_reference_resolution_service
+    ),
+) -> HuntHypothesisReferenceResolutionResponse:
+    try:
+        return _hunt_hypothesis_reference_resolution_response(
+            service.resolve(hypothesis_id)
+        )
+    except HuntHypothesisNotFoundError as error:
+        raise HTTPException(
+            status_code=404, detail="Hunt Hypothesis was not found."
+        ) from error
+    except HuntHypothesisConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except (HuntHypothesisDataError, HuntHypothesisReferenceIntegrityError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Hunt Hypothesis reference resolution failed integrity checks.",
         ) from error
 
 

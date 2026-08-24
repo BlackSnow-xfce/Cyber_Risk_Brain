@@ -6,21 +6,21 @@ Current AIDP Task: NONE
 Current Phase: IDLE / WAITING
 
 Current Message:
-TASK-0113 is DONE / PASS / APPROVED after Architect Review and Product Owner
-Live Acceptance PASS. No implementation action is pending. Do not create
-TASK-0114 without explicit authority.
+TASK-0114 is DONE / PASS / APPROVED after Architect Review, Product Owner Live
+Acceptance and Reference Resolution Live E2E PASS. No implementation action is
+pending. Do not create TASK-0115 without explicit authority.
 
 Task:
-TASK-0113 - Hunt Hypothesis Read Path Foundation
+TASK-0114 - Hunt Hypothesis Reference Resolution Foundation
 
 Phase:
 WAITING
 
 Message:
 
-TASK-0113 is complete after Architect Review PASS / APPROVED and Product Owner
-Live Acceptance PASS. TASK-0112 remains complete. TASK-0114 has not been
-created.
+TASK-0114 is complete after Architect Review PASS / APPROVED, Product Owner
+Live Acceptance PASS and Reference Resolution Live E2E PASS. TASK-0113 remains
+complete. TASK-0115 has not been created.
 
 TASK-0109 received final Architect acceptance: `DONE / PASS / APPROVED`.
 TASK-0110 is in REVIEW pending Architect/Product Owner acceptance.
