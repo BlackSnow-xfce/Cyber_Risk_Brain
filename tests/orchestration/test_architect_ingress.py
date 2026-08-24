@@ -135,11 +135,121 @@ def test_malformed_historical_contract_is_rejected_once_and_valid_successor_proc
     assert result.status is IngressStatus.MATERIALIZED
     assert result.contract_id == "architect-ingress-successor"
     events_before = (runtime / "architect-ingress.jsonl").read_text(encoding="utf-8").splitlines()
-    rejected = [json.loads(line)["architect_ingress_event"] for line in events_before if "architect-ingress-invalid" in line]
+    rejected = [
+        json.loads(line)["architect_ingress_event"] for line in events_before
+        if json.loads(line)["architect_ingress_event"].get("remote_path") == malformed_path
+    ]
     assert len(rejected) == 1 and rejected[0]["status"] == "BLOCKED"
+    assert rejected[0]["identity_kind"] == "rejection"
+    assert rejected[0]["contract_id"].startswith("rejected-path-sha256:")
     assert len(LocalContractInbox(runtime).pending()) == 2
     assert ingress.run_once().status is IngressStatus.NO_ACTION
     assert (runtime / "architect-ingress.jsonl").read_text(encoding="utf-8").splitlines() == events_before
+
+
+def test_real_filename_convention_tolerates_legacy_blocked_history(tmp_path: Path):
+    repository, _remote, architect, runtime, contract = _setup(tmp_path)
+    contract_root = ".ai/orchestration/architect-contracts"
+    original_path = f"{contract_root}/{INGRESS_E2E_CONTRACT_ID}.json"
+    _git(architect, "rm", "--", original_path)
+
+    v1 = ContractInboxItem(
+        "architect-task-0112-v1", contract, datetime.now(timezone.utc),
+    )
+    retry2 = ContractInboxItem(
+        "architect-task-0112-retry-2",
+        replace(contract, task_id="TASK-E2E-TRIGGER-0002"),
+        datetime.now(timezone.utc),
+    )
+    paths = {
+        "TASK-0112.json": serialize_contract_inbox_item(v1),
+        "TASK-0112-retry-1.json": '{"contract_inbox_item":{"contract_id":"architect-task-0112-retry-1"}}',
+        "TASK-0112-retry-2.json": serialize_contract_inbox_item(retry2),
+    }
+    for filename, content in paths.items():
+        path = architect / contract_root / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        _git(architect, "add", "--", path.relative_to(architect).as_posix())
+    _git(architect, "commit", "-m", "real architect contract naming")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+
+    commit = _git(architect, "rev-parse", "HEAD")
+    blobs = {
+        filename: _git(architect, "rev-parse", f"{commit}:{contract_root}/{filename}")
+        for filename in paths
+    }
+    state = runtime / "architect-ingress.jsonl"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    legacy_events = [
+        {
+            "contract_id": "architect-task-0112-v1",
+            "blob_id": blobs["TASK-0112.json"],
+            "status": "MATERIALIZED",
+        },
+        {
+            "contract_id": "TASK-0112-retry-1",
+            "blob_id": blobs["TASK-0112-retry-1.json"],
+            "status": "BLOCKED",
+        },
+        {
+            "contract_id": "TASK-0112-retry-2",
+            "blob_id": blobs["TASK-0112-retry-2.json"],
+            "status": "BLOCKED",
+        },
+        {
+            "contract_id": "TASK-0112",
+            "blob_id": blobs["TASK-0112.json"],
+            "status": "BLOCKED",
+        },
+    ]
+    state.write_text("".join(
+        json.dumps({"architect_ingress_event": {
+            **event, "remote_commit": commit, "timestamp": "2026-01-01T00:00:00+00:00",
+            "reason": "legacy Rework #2 observation",
+        }}, sort_keys=True) + "\n"
+        for event in legacy_events
+    ), encoding="utf-8")
+
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    result = ingress.run_once()
+    assert result.status is IngressStatus.MATERIALIZED
+    assert result.contract_id == "architect-task-0112-retry-2"
+    assert LocalContractInbox(runtime).pending()[0].contract_id == "architect-task-0112-retry-2"
+
+    events = [json.loads(line)["architect_ingress_event"] for line in state.read_text(encoding="utf-8").splitlines()]
+    rejected = [event for event in events if event.get("remote_path", "").endswith("TASK-0112-retry-1.json")]
+    assert len(rejected) == 1
+    assert rejected[0]["identity_kind"] == "rejection"
+    assert rejected[0]["contract_id"].startswith("rejected-path-sha256:")
+    event_count = len(events)
+    assert ingress.run_once().status is IngressStatus.NO_ACTION
+    assert len(state.read_text(encoding="utf-8").splitlines()) == event_count
+
+
+def test_mutated_blob_uses_validated_embedded_identity_when_filename_differs(tmp_path: Path):
+    repository, _remote, architect, runtime, contract = _setup(tmp_path)
+    old_path = f".ai/orchestration/architect-contracts/{INGRESS_E2E_CONTRACT_ID}.json"
+    new_path = ".ai/orchestration/architect-contracts/TASK-0112-retry-2.json"
+    item = ContractInboxItem("architect-task-0112-retry-2", contract, datetime.now(timezone.utc))
+    _git(architect, "rm", "--", old_path)
+    target = architect / new_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(serialize_contract_inbox_item(item), encoding="utf-8")
+    _git(architect, "add", "--", new_path)
+    _git(architect, "commit", "-m", "publish differently named contract")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    assert ingress.run_once().contract_id == "architect-task-0112-retry-2"
+    target.write_text(serialize_contract_inbox_item(replace(item, contract=replace(contract, title="Changed"))), encoding="utf-8")
+    _git(architect, "add", "--", new_path)
+    _git(architect, "commit", "-m", "mutate differently named contract")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+    result = ingress.run_once()
+    assert result.status is IngressStatus.BLOCKED
+    assert result.contract_id == "architect-task-0112-retry-2"
+    assert result.failure_reason == "contract_id content mutated"
 
 
 def test_watcher_composes_ingress_before_watch_once_and_no_action_remains_normal(tmp_path: Path):
