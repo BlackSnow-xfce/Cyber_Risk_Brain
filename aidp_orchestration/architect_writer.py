@@ -14,6 +14,7 @@ from .contracts import (
     AIDPState,
     ArchitectTaskContract,
     ReworkContract,
+    TaskMetadata,
     WriterAction,
     WriterDecision,
     WriterResult,
@@ -46,6 +47,8 @@ class ArchitectContractWriter:
         if decision.action is WriterAction.BLOCKED:
             return WriterResult(decision, failure_reason=decision.reason)
         task_path = self.repository.ai_root / "tasks" / "ready" / f"{contract.task_id}.md"
+        if task_path.is_file():
+            return WriterResult(decision)
         codex_handoff = self.repository.ai_root / "handoff" / "TO-CODEX.md"
         architect_handoff = self.repository.ai_root / "handoff" / "TO-ARCHITECT.md"
         contents = {
@@ -69,14 +72,31 @@ class ArchitectContractWriter:
         cleanliness = self._cleanliness_reason()
         if cleanliness is not None:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, cleanliness)
-        repository_decision = self.repository.inspect()
-        if repository_decision.state is not AIDPState.WAITING:
-            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "another active READY or REVIEW task exists")
-        if any(self.repository.ai_root.joinpath("tasks").glob(f"**/{contract.task_id}.md")):
-            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "task_id already exists")
         unknown = self.validator_registry.unknown(contract.validation_requirements)
         if unknown:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, f"unknown validator: {unknown[0]}")
+        repository_decision = self.repository.inspect()
+        ready = self.repository.task_paths("ready")
+        review = self.repository.task_paths("review")
+        active = (*ready, *review)
+        if len(active) > 1:
+            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "another active READY or REVIEW task exists")
+        if active:
+            existing = active[0]
+            if existing.stem != contract.task_id:
+                return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "another active READY or REVIEW task exists")
+            if existing in review:
+                return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "matching task is in REVIEW and is not executable as a READY task")
+            if repository_decision.state is not AIDPState.READY_FOR_CODEX or repository_decision.task_id != contract.task_id:
+                return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "matching READY task state is ambiguous or not executable")
+            metadata = self.repository.parse_metadata(existing)
+            if metadata is None or not _same_execution_authority(contract, metadata):
+                return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "contract authority does not match existing READY task")
+            return WriterDecision(WriterAction.MATERIALIZE_READY, contract.task_id, branch, head, "contract reauthorizes the matching READY task")
+        if repository_decision.state is not AIDPState.WAITING:
+            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "repository state is not eligible for READY materialization")
+        if any(self.repository.ai_root.joinpath("tasks").glob(f"**/{contract.task_id}.md")):
+            return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "task_id already exists")
         return WriterDecision(WriterAction.MATERIALIZE_READY, contract.task_id, branch, head, "contract is authorized for READY materialization")
 
     def materialize_rework(self, contract: ReworkContract) -> WriterResult:
@@ -224,6 +244,17 @@ def _atomic_write(path: Path, content: bytes) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _same_execution_authority(contract: ArchitectTaskContract, metadata: TaskMetadata) -> bool:
+    return (
+        contract.task_id == metadata.task_id
+        and contract.phase == metadata.phase
+        and contract.allowed_scope == metadata.allowed_scope
+        and contract.prohibited_actions == metadata.prohibited_actions
+        and contract.validation_requirements == metadata.validation_requirements
+        and contract.product_owner_gate == metadata.product_owner_gate
+    )
 
 
 def _json_default(value: object) -> object:

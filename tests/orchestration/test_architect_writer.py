@@ -158,6 +158,59 @@ def test_active_task_conflict_blocks(tmp_path: Path) -> None:
     assert "active" in result.failure_reason
 
 
+def test_matching_ready_task_can_be_reauthorized_without_aidp_mutation(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path, active=True)
+    contract = task_contract(repo, task_id="TASK-9000")
+    before = {path: path.read_bytes() for path in repo.ai_root.rglob("*") if path.is_file()}
+    result = writer(repo).materialize_task(contract)
+    after = {path: path.read_bytes() for path in repo.ai_root.rglob("*") if path.is_file()}
+    assert result.decision.action is WriterAction.MATERIALIZE_READY
+    assert result.materialized_paths == ()
+    assert result.decision.reason == "contract reauthorizes the matching READY task"
+    assert after == before
+
+
+def test_matching_ready_task_does_not_bypass_expected_head(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path, active=True)
+    result = writer(repo).materialize_task(task_contract(repo, task_id="TASK-9000", expected_head="stale"))
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "stale" in result.failure_reason
+
+
+@pytest.mark.parametrize(
+    "change",
+    (
+        {"allowed_scope": ("aidp_orchestration/**",)},
+        {"prohibited_actions": (".ai/**",)},
+        {"validation_requirements": ("pytest",)},
+        {"phase": "different"},
+        {"product_owner_gate": True},
+    ),
+)
+def test_matching_ready_task_requires_identical_execution_authority(tmp_path: Path, change: dict[str, object]) -> None:
+    repo = make_repository(tmp_path, active=True)
+    contract = task_contract(repo, task_id="TASK-9000", **change)
+    result = writer(repo).materialize_task(contract)
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "authority" in result.failure_reason
+
+
+def test_matching_review_task_is_not_executable_as_ready(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path, rework=True)
+    result = writer(repo).materialize_task(task_contract(repo, task_id="TASK-9000"))
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "REVIEW" in result.failure_reason
+
+
+def test_multiple_active_tasks_remain_fail_closed(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path, active=True)
+    second = repo.ai_root / "tasks" / "review" / "TASK-9001.md"
+    second.write_text((repo.ai_root / "tasks" / "ready" / "TASK-9000.md").read_text(encoding="utf-8"), encoding="utf-8")
+    result = writer(repo).materialize_task(task_contract(repo, task_id="TASK-9000"))
+    assert result.decision.action is WriterAction.BLOCKED
+    assert "another active" in result.failure_reason
+
+
 def test_existing_task_id_collision_blocks(tmp_path: Path) -> None:
     repo = make_repository(tmp_path)
     collision = tmp_path / ".ai" / "tasks" / "done" / "TASK-9001.md"
