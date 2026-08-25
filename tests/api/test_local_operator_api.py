@@ -83,11 +83,13 @@ def test_authenticated_operator_without_create_permission_is_forbidden() -> None
     assert error.value.status_code == 403
 
 
-def test_application_cors_never_uses_wildcard_or_cookie_credentials() -> None:
+def test_application_cors_uses_only_explicit_credentialed_session_boundaries() -> None:
     middleware = next(item for item in app.user_middleware if item.cls.__name__ == "CORSMiddleware")
     assert "*" not in middleware.kwargs["allow_origins"]
-    assert middleware.kwargs["allow_credentials"] is False
-    assert middleware.kwargs["allow_headers"] == ["Authorization", "Content-Type"]
+    assert middleware.kwargs["allow_credentials"] is True
+    assert middleware.kwargs["allow_headers"] == [
+        "Authorization", "Content-Type", "X-CSRF-Token"
+    ]
 
 
 def _request(authorization: str | None, extra_headers=None):

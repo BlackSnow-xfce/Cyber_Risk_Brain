@@ -1,10 +1,13 @@
 import type {
     HuntHypothesis,
+    HuntHypothesisCreationInput,
     HuntHypothesisReference,
     HuntHypothesisReferenceResolution,
+    LocalOperatorSession,
 } from "./HuntHypothesis";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const LOCAL_OPERATOR_BOOTSTRAP_URL = `${API_BASE_URL}/api/operator/session/bootstrap`;
 
 export class HuntHypothesisRequestError extends Error {
     constructor(readonly status: number | null) {
@@ -24,6 +27,50 @@ export async function getHuntHypotheses(): Promise<HuntHypothesis[]> {
     }
     const payload: unknown = await response.json();
     if (!Array.isArray(payload) || !payload.every(isHuntHypothesis)) {
+        throw new HuntHypothesisRequestError(response.status);
+    }
+    return payload;
+}
+
+export async function getLocalOperatorSession(): Promise<LocalOperatorSession | null> {
+    let response: Response;
+    try {
+        response = await fetch(`${API_BASE_URL}/api/operator/session`, {
+            credentials: "include",
+        });
+    } catch {
+        throw new HuntHypothesisRequestError(null);
+    }
+    if (response.status === 401 || response.status === 503) return null;
+    if (!response.ok) throw new HuntHypothesisRequestError(response.status);
+    const payload: unknown = await response.json();
+    if (!isLocalOperatorSession(payload)) {
+        throw new HuntHypothesisRequestError(response.status);
+    }
+    return payload;
+}
+
+export async function createHuntHypothesis(
+    input: HuntHypothesisCreationInput,
+    csrfToken: string,
+): Promise<HuntHypothesis> {
+    let response: Response;
+    try {
+        response = await fetch(`${API_BASE_URL}/api/hunt-hypotheses`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfToken,
+            },
+            body: JSON.stringify(input),
+        });
+    } catch {
+        throw new HuntHypothesisRequestError(null);
+    }
+    if (!response.ok) throw new HuntHypothesisRequestError(response.status);
+    const payload: unknown = await response.json();
+    if (!isHuntHypothesis(payload)) {
         throw new HuntHypothesisRequestError(response.status);
     }
     return payload;
@@ -65,6 +112,19 @@ function isHuntHypothesis(value: unknown): value is HuntHypothesis {
         value.threat_references.every(isHuntHypothesisReference) &&
         typeof value.rationale === "string" &&
         typeof value.contract_version === "string"
+    );
+}
+
+function isLocalOperatorSession(value: unknown): value is LocalOperatorSession {
+    return (
+        isRecord(value) &&
+        typeof value.principal_id === "string" &&
+        typeof value.display_name === "string" &&
+        value.principal_type === "human/operator" &&
+        Array.isArray(value.granted_permissions) &&
+        value.granted_permissions.every((item) => typeof item === "string") &&
+        typeof value.expires_at === "string" &&
+        typeof value.csrf_token === "string"
     );
 }
 

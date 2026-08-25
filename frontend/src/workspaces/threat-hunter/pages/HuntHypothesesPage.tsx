@@ -4,7 +4,13 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import Panel from "@/ui/panel/Panel";
@@ -13,11 +19,15 @@ import type {
     HuntHypothesisReference,
     HuntHypothesisReferenceResolution,
     HuntHypothesisResolvedReference,
+    LocalOperatorSession,
 } from "../HuntHypothesis";
 import {
+    createHuntHypothesis,
     getHuntHypotheses,
     getHuntHypothesisReferenceResolution,
+    getLocalOperatorSession,
     HuntHypothesisRequestError,
+    LOCAL_OPERATOR_BOOTSTRAP_URL,
 } from "../HuntHypothesisApiClient";
 import type { HuntHypothesis } from "../HuntHypothesis";
 
@@ -30,6 +40,10 @@ export default function HuntHypothesesPage() {
     >({});
     const [resolutionLoading, setResolutionLoading] = useState<string | null>(null);
     const [resolutionErrors, setResolutionErrors] = useState<Record<string, string>>({});
+    const [operatorSession, setOperatorSession] = useState<LocalOperatorSession | null>(null);
+    const [sessionLoading, setSessionLoading] = useState(true);
+    const [creationOpen, setCreationOpen] = useState(false);
+    const [creationError, setCreationError] = useState<string | null>(null);
 
     useEffect(() => {
         let current = true;
@@ -53,6 +67,37 @@ export default function HuntHypothesesPage() {
             current = false;
         };
     }, []);
+
+    useEffect(() => {
+        let current = true;
+        void getLocalOperatorSession()
+            .then((session) => {
+                if (current) setOperatorSession(session);
+            })
+            .catch(() => {
+                if (current) setOperatorSession(null);
+            })
+            .finally(() => {
+                if (current) setSessionLoading(false);
+            });
+        return () => {
+            current = false;
+        };
+    }, []);
+
+    async function createHypothesis(input: Parameters<typeof createHuntHypothesis>[0]) {
+        if (!operatorSession) return false;
+        setCreationError(null);
+        try {
+            await createHuntHypothesis(input, operatorSession.csrf_token);
+            setHypotheses(await getHuntHypotheses());
+            setCreationOpen(false);
+            return true;
+        } catch {
+            setCreationError("The hypothesis could not be created.");
+            return false;
+        }
+    }
 
     function resolveReferences(hypothesisId: string) {
         setResolutionLoading(hypothesisId);
@@ -86,7 +131,26 @@ export default function HuntHypothesesPage() {
                 <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
                     Review persisted, testable assumptions before collecting supporting evidence.
                 </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                    {!sessionLoading && operatorSession && (
+                        <Button variant="contained" onClick={() => setCreationOpen(true)}>
+                            Create hypothesis
+                        </Button>
+                    )}
+                    {!sessionLoading && !operatorSession && (
+                        <Button variant="outlined" href={LOCAL_OPERATOR_BOOTSTRAP_URL}>
+                            Authenticate Local Operator
+                        </Button>
+                    )}
+                </Stack>
             </Box>
+
+            <Alert severity="info">
+                A hypothesis is an unconfirmed investigative assumption and does not
+                constitute evidence or confirmed compromise.
+            </Alert>
+
+            {creationError && <Alert severity="error">{creationError}</Alert>}
 
             {loading && (
                 <Panel component="section">
@@ -163,7 +227,187 @@ export default function HuntHypothesesPage() {
                     ))}
                 </Stack>
             )}
+            <CreateHypothesisDialog
+                open={creationOpen}
+                onClose={() => {
+                    setCreationOpen(false);
+                    setCreationError(null);
+                }}
+                onSubmit={createHypothesis}
+            />
         </Stack>
+    );
+}
+
+const TARGET_TYPES = ["asset", "service", "finding"] as const;
+const THREAT_TYPES = ["cve", "threat_intelligence", "technique", "tactic"] as const;
+
+function CreateHypothesisDialog({
+    open,
+    onClose,
+    onSubmit,
+}: {
+    open: boolean;
+    onClose: () => void;
+    onSubmit: (input: Parameters<typeof createHuntHypothesis>[0]) => Promise<boolean>;
+}) {
+    const [title, setTitle] = useState("");
+    const [statement, setStatement] = useState("");
+    const [rationale, setRationale] = useState("");
+    const [targetReferences, setTargetReferences] = useState<HuntHypothesisReference[]>([]);
+    const [threatReferences, setThreatReferences] = useState<HuntHypothesisReference[]>([]);
+    const [targetType, setTargetType] = useState<(typeof TARGET_TYPES)[number]>("asset");
+    const [targetId, setTargetId] = useState("");
+    const [threatType, setThreatType] = useState<(typeof THREAT_TYPES)[number]>("cve");
+    const [threatId, setThreatId] = useState("");
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+
+    function addReference(
+        reference: HuntHypothesisReference,
+        references: HuntHypothesisReference[],
+        update: (value: HuntHypothesisReference[]) => void,
+        clear: () => void,
+    ) {
+        const normalized = { ...reference, reference_id: reference.reference_id.trim() };
+        if (!normalized.reference_id) {
+            setValidationError("Reference IDs must not be empty.");
+            return;
+        }
+        if (references.some((item) =>
+            item.reference_type === normalized.reference_type &&
+            item.reference_id === normalized.reference_id
+        )) {
+            setValidationError("Duplicate reference pointers are not allowed.");
+            return;
+        }
+        setValidationError(null);
+        update([...references, normalized]);
+        clear();
+    }
+
+    function reset() {
+        setTitle("");
+        setStatement("");
+        setRationale("");
+        setTargetReferences([]);
+        setThreatReferences([]);
+        setTargetId("");
+        setThreatId("");
+        setValidationError(null);
+    }
+
+    async function submit() {
+        if (!title.trim() || !statement.trim() || !rationale.trim()) {
+            setValidationError("Title, statement and rationale are required.");
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const succeeded = await onSubmit({
+                title: title.trim(),
+                statement: statement.trim(),
+                rationale: rationale.trim(),
+                target_references: targetReferences,
+                threat_references: threatReferences,
+            });
+            if (succeeded) reset();
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    return (
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+            <DialogTitle>Create hunt hypothesis</DialogTitle>
+            <DialogContent>
+                <Stack spacing={2} sx={{ pt: 1 }}>
+                    <Alert severity="warning">
+                        A hypothesis is an unconfirmed investigative assumption and does
+                        not constitute evidence or confirmed compromise.
+                    </Alert>
+                    <TextField label="Title" slotProps={{ htmlInput: { "aria-label": "Title" } }} value={title} onChange={(event) => setTitle(event.target.value)} required />
+                    <TextField label="Statement" slotProps={{ htmlInput: { "aria-label": "Statement" } }} value={statement} onChange={(event) => setStatement(event.target.value)} required multiline minRows={2} />
+                    <TextField label="Rationale" slotProps={{ htmlInput: { "aria-label": "Rationale" } }} value={rationale} onChange={(event) => setRationale(event.target.value)} required multiline minRows={2} />
+                    <ReferenceEditor
+                        label="Target references"
+                        types={TARGET_TYPES}
+                        selectedType={targetType}
+                        referenceId={targetId}
+                        references={targetReferences}
+                        onTypeChange={(value) => setTargetType(value as (typeof TARGET_TYPES)[number])}
+                        onIdChange={setTargetId}
+                        onAdd={() => addReference(
+                            { reference_type: targetType, reference_id: targetId },
+                            targetReferences,
+                            setTargetReferences,
+                            () => setTargetId(""),
+                        )}
+                        onRemove={(index) => setTargetReferences(targetReferences.filter((_, current) => current !== index))}
+                    />
+                    <ReferenceEditor
+                        label="Threat references"
+                        types={THREAT_TYPES}
+                        selectedType={threatType}
+                        referenceId={threatId}
+                        references={threatReferences}
+                        onTypeChange={(value) => setThreatType(value as (typeof THREAT_TYPES)[number])}
+                        onIdChange={setThreatId}
+                        onAdd={() => addReference(
+                            { reference_type: threatType, reference_id: threatId },
+                            threatReferences,
+                            setThreatReferences,
+                            () => setThreatId(""),
+                        )}
+                        onRemove={(index) => setThreatReferences(threatReferences.filter((_, current) => current !== index))}
+                    />
+                    {validationError && <Alert severity="error">{validationError}</Alert>}
+                </Stack>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => { reset(); onClose(); }}>Cancel</Button>
+                <Button variant="contained" disabled={submitting} onClick={() => void submit()}>
+                    {submitting ? "Creatingâ€¦" : "Create draft"}
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+}
+
+function ReferenceEditor({
+    label, types, selectedType, referenceId, references,
+    onTypeChange, onIdChange, onAdd, onRemove,
+}: {
+    label: string;
+    types: readonly string[];
+    selectedType: string;
+    referenceId: string;
+    references: HuntHypothesisReference[];
+    onTypeChange: (value: string) => void;
+    onIdChange: (value: string) => void;
+    onAdd: () => void;
+    onRemove: (index: number) => void;
+}) {
+    return (
+        <Box>
+            <Typography variant="subtitle2">{label}</Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+                <TextField select label="Reference type" value={selectedType} onChange={(event) => onTypeChange(event.target.value)} sx={{ minWidth: 190 }}>
+                    {types.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+                </TextField>
+                <TextField label="Reference ID" slotProps={{ htmlInput: { "aria-label": "Reference ID" } }} value={referenceId} onChange={(event) => onIdChange(event.target.value)} fullWidth />
+                <Button variant="outlined" onClick={onAdd}>Add</Button>
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
+                {references.map((reference, index) => (
+                    <Chip
+                        key={`${reference.reference_type}:${reference.reference_id}`}
+                        label={`${reference.reference_type}: ${reference.reference_id}`}
+                        onDelete={() => onRemove(index)}
+                    />
+                ))}
+            </Stack>
+        </Box>
     );
 }
 

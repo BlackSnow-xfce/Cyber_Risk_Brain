@@ -1,16 +1,21 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HuntHypothesis } from "../HuntHypothesis";
 import {
+    createHuntHypothesis,
     getHuntHypotheses,
     getHuntHypothesisReferenceResolution,
+    getLocalOperatorSession,
 } from "../HuntHypothesisApiClient";
 import HuntHypothesesPage from "./HuntHypothesesPage";
 
 vi.mock("../HuntHypothesisApiClient", () => ({
     getHuntHypotheses: vi.fn(),
     getHuntHypothesisReferenceResolution: vi.fn(),
+    getLocalOperatorSession: vi.fn(),
+    createHuntHypothesis: vi.fn(),
+    LOCAL_OPERATOR_BOOTSTRAP_URL: "http://127.0.0.1:8000/api/operator/session/bootstrap",
     HuntHypothesisRequestError: class HuntHypothesisRequestError extends Error {
         status: number | null;
         constructor(status: number | null) {
@@ -38,6 +43,11 @@ describe("HuntHypothesesPage", () => {
 
     beforeEach(() => {
         vi.mocked(getHuntHypotheses).mockResolvedValue([]);
+        vi.mocked(getLocalOperatorSession).mockResolvedValue(null);
+        vi.mocked(createHuntHypothesis).mockResolvedValue({
+            ...hypothesis,
+            status: "draft",
+        });
         vi.mocked(getHuntHypothesisReferenceResolution).mockResolvedValue({
             hypothesis_id: hypothesis.hypothesis_id,
             references: [],
@@ -58,6 +68,100 @@ describe("HuntHypothesesPage", () => {
         expect(
             await screen.findByText("No persisted hunt hypotheses are available."),
         ).toBeInTheDocument();
+    });
+
+    it("directs unauthenticated operators to the backend-owned bootstrap", async () => {
+        render(<HuntHypothesesPage />);
+
+        const link = await screen.findByRole("link", { name: "Authenticate Local Operator" });
+        expect(link).toHaveAttribute(
+            "href",
+            "http://127.0.0.1:8000/api/operator/session/bootstrap",
+        );
+        expect(screen.queryByRole("button", { name: "Create hypothesis" })).not.toBeInTheDocument();
+    });
+
+    it("creates only human-authored fields with the session CSRF token and refreshes", async () => {
+        const created = { ...hypothesis, status: "draft", hypothesis_id: "hypothesis-created" };
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:create"],
+            expires_at: "2026-08-24T15:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        vi.mocked(getHuntHypotheses)
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([created]);
+        vi.mocked(createHuntHypothesis).mockResolvedValueOnce(created);
+        render(<HuntHypothesesPage />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "Create hypothesis" }));
+        fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Manual hypothesis" } });
+        fireEvent.change(screen.getByLabelText("Statement"), { target: { value: "Investigate an assumption." } });
+        fireEvent.change(screen.getByLabelText("Rationale"), { target: { value: "Human review is warranted." } });
+        fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+        await waitFor(() => expect(createHuntHypothesis).toHaveBeenCalledWith(
+            {
+                title: "Manual hypothesis",
+                statement: "Investigate an assumption.",
+                rationale: "Human review is warranted.",
+                target_references: [],
+                threat_references: [],
+            },
+            "csrf-token",
+        ));
+        expect(await screen.findByText("hypothesis-created")).toBeInTheDocument();
+        expect(screen.getByText("draft")).toBeInTheDocument();
+    });
+
+    it("keeps the unconfirmed-assumption warning visible", async () => {
+        render(<HuntHypothesesPage />);
+        expect(await screen.findByText(/does not constitute evidence or confirmed compromise/i)).toBeInTheDocument();
+    });
+
+    it("rejects duplicate pointers before submission", async () => {
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:create"],
+            expires_at: "2026-08-24T15:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        render(<HuntHypothesesPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Create hypothesis" }));
+        const referenceIds = screen.getAllByLabelText("Reference ID");
+        const addButtons = screen.getAllByRole("button", { name: "Add" });
+        fireEvent.change(referenceIds[0], { target: { value: "asset-001" } });
+        fireEvent.click(addButtons[0]);
+        fireEvent.change(referenceIds[0], { target: { value: "asset-001" } });
+        fireEvent.click(addButtons[0]);
+        expect(screen.getByText("Duplicate reference pointers are not allowed.")).toBeInTheDocument();
+    });
+
+    it("reports creation failure without fabricating a new hypothesis", async () => {
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:create"],
+            expires_at: "2026-08-24T15:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        vi.mocked(createHuntHypothesis).mockRejectedValueOnce(new Error("denied"));
+        render(<HuntHypothesesPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Create hypothesis" }));
+        fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Manual hypothesis" } });
+        fireEvent.change(screen.getByLabelText("Statement"), { target: { value: "Investigate an assumption." } });
+        fireEvent.change(screen.getByLabelText("Rationale"), { target: { value: "Human review is warranted." } });
+        fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+        expect(await screen.findByText("The hypothesis could not be created.")).toBeInTheDocument();
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.queryByText("hypothesis-created")).not.toBeInTheDocument();
     });
 
     it("shows repository errors without an empty-state claim", async () => {
@@ -83,7 +187,7 @@ describe("HuntHypothesesPage", () => {
         expect(screen.getByText("Unresolved threat references")).toBeInTheDocument();
         expect(screen.getByText("technique: T1059")).toBeInTheDocument();
         expect(screen.getByText(/unconfirmed assumptions/i)).toBeInTheDocument();
-        expect(screen.queryByText(/confirmed compromise/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/hypothesis confirms compromise/i)).not.toBeInTheDocument();
     });
 
     it("resolves references only on demand and preserves every canonical pointer", async () => {
@@ -158,6 +262,6 @@ describe("HuntHypothesesPage", () => {
         expect(getHuntHypothesisReferenceResolution).toHaveBeenCalledWith(
             hypothesis.hypothesis_id,
         );
-        expect(screen.queryByText(/confirmed compromise/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/hypothesis confirms compromise/i)).not.toBeInTheDocument();
     });
 });

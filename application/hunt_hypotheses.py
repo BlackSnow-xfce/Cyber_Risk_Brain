@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -38,16 +42,28 @@ class HuntHypothesisDataError(ValueError):
     """Raised when persisted Hunt Hypothesis data is not canonical."""
 
 
+class HuntHypothesisConflictError(RuntimeError):
+    """Raised when a hypothesis identity already exists."""
+
+
+class HuntHypothesisPersistenceError(RuntimeError):
+    """Raised when safe repository persistence cannot complete."""
+
+
 class HuntHypothesisRepository(Protocol):
     def list(self) -> tuple[HuntHypothesis, ...]:
         ...
 
+    def create(self, hypothesis: HuntHypothesis) -> HuntHypothesis:
+        ...
+
 
 class FileHuntHypothesisRepository:
-    """Strict read-only JSON adapter for HuntHypothesis 1.0."""
+    """Strict JSON adapter with locked, atomic canonical creation."""
 
-    def __init__(self, path: str | None) -> None:
+    def __init__(self, path: str | None, *, lock_timeout_seconds: float = 5.0) -> None:
         self._path = path
+        self._lock_timeout_seconds = lock_timeout_seconds
 
     def list(self) -> tuple[HuntHypothesis, ...]:
         path = self._configured_path()
@@ -88,6 +104,72 @@ class FileHuntHypothesisRepository:
                 "Hunt Hypothesis repository contains duplicate hypothesis IDs."
             )
         return hypotheses
+
+    def create(self, hypothesis: HuntHypothesis) -> HuntHypothesis:
+        if not isinstance(hypothesis, HuntHypothesis):
+            raise HuntHypothesisDataError("A canonical Hunt Hypothesis is required.")
+        path = self._configured_path()
+        if not path.is_file():
+            raise HuntHypothesisConfigurationError(
+                "HUNT_HYPOTHESIS_REPOSITORY_PATH cannot be read."
+            )
+        lock = _RepositoryLock(
+            path.with_name(f"{path.name}.lock"), self._lock_timeout_seconds
+        )
+        with lock:
+            current = self.list()
+            if any(item.hypothesis_id == hypothesis.hypothesis_id for item in current):
+                raise HuntHypothesisConflictError(
+                    "Hunt Hypothesis identity already exists."
+                )
+            document = {
+                "contract_version": HUNT_HYPOTHESIS_CONTRACT_VERSION,
+                "hypotheses": [item.to_dict() for item in (*current, hypothesis)],
+            }
+            self._atomic_write(path, document)
+            persisted = self.list()
+            if not persisted or persisted[-1] != hypothesis:
+                raise HuntHypothesisPersistenceError(
+                    "Persisted Hunt Hypothesis verification failed."
+                )
+            return persisted[-1]
+
+    @staticmethod
+    def _atomic_write(path: Path, document: dict[str, object]) -> None:
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="\n",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                json.dump(document, temporary, ensure_ascii=False, indent=2)
+                temporary.write("\n")
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = None
+            if os.name != "nt":
+                directory_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        except OSError as error:
+            raise HuntHypothesisPersistenceError(
+                "Hunt Hypothesis repository could not be safely persisted."
+            ) from error
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def _configured_path(self) -> Path:
         if self._path is None or not self._path.strip():
@@ -180,3 +262,88 @@ class HuntHypothesisQueryService:
 
     def list(self) -> tuple[HuntHypothesis, ...]:
         return self._repository.list()
+
+
+_PROCESS_LOCKS: dict[Path, threading.Lock] = {}
+_PROCESS_LOCKS_GUARD = threading.Lock()
+
+
+class _RepositoryLock:
+    def __init__(self, path: Path, timeout_seconds: float) -> None:
+        self._path = path
+        self._timeout_seconds = timeout_seconds
+        self._handle = None
+        with _PROCESS_LOCKS_GUARD:
+            self._process_lock = _PROCESS_LOCKS.setdefault(
+                path.resolve(), threading.Lock()
+            )
+
+    def __enter__(self) -> "_RepositoryLock":
+        if not self._process_lock.acquire(timeout=self._timeout_seconds):
+            raise HuntHypothesisPersistenceError(
+                "Hunt Hypothesis repository lock is unavailable."
+            )
+        try:
+            self._path.parent.mkdir(parents=False, exist_ok=True)
+            self._handle = self._path.open("a+b")
+            self._ensure_lock_byte()
+            deadline = time.monotonic() + self._timeout_seconds
+            while True:
+                try:
+                    self._lock_handle()
+                    return self
+                except (BlockingIOError, OSError) as error:
+                    if time.monotonic() >= deadline:
+                        raise HuntHypothesisPersistenceError(
+                            "Hunt Hypothesis repository lock is unavailable."
+                        ) from error
+                    time.sleep(0.05)
+        except Exception:
+            self._close()
+            self._process_lock.release()
+            raise
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        try:
+            if self._handle is not None:
+                self._unlock_handle()
+        finally:
+            self._close()
+            self._process_lock.release()
+
+    def _ensure_lock_byte(self) -> None:
+        assert self._handle is not None
+        self._handle.seek(0, os.SEEK_END)
+        if self._handle.tell() == 0:
+            self._handle.write(b"\0")
+            self._handle.flush()
+        self._handle.seek(0)
+
+    def _lock_handle(self) -> None:
+        assert self._handle is not None
+        self._handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(self._handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock_handle(self) -> None:
+        assert self._handle is not None
+        self._handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+
+    def _close(self) -> None:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None

@@ -6,21 +6,21 @@ Current AIDP Task: NONE
 Current Phase: IDLE / WAITING
 
 Current Message:
-TASK-0115 is DONE / PASS / APPROVED after Architect Review, Product Owner Live
-Acceptance and Local Operator Live Authentication PASS. No implementation
-action is pending. Do not create TASK-0116 without explicit authority.
+TASK-0116 is DONE / PASS / APPROVED after Architect Review and Product Owner
+Live Acceptance PASS. No implementation action is pending. Do not create
+TASK-0117 without explicit authority.
 
 Task:
-TASK-0115 - Authenticated Local Operator and Hunt Hypothesis Write-Authority Foundation
+TASK-0116 - Controlled Manual Hunt Hypothesis Creation Foundation
 
 Phase:
 WAITING
 
 Message:
 
-TASK-0115 is complete after Architect Review PASS / APPROVED, Product Owner
-Live Acceptance PASS and Local Operator Live Authentication PASS. TASK-0114
-remains complete. TASK-0116 has not been created.
+TASK-0116 is complete. The accepted Local Operator browser session and manual
+draft-creation path remain intact; temporary diagnostics were removed. TASK-0115
+remains DONE / PASS / APPROVED. TASK-0117 was not created.
 
 TASK-0109 received final Architect acceptance: `DONE / PASS / APPROVED`.
 TASK-0110 is in REVIEW pending Architect/Product Owner acceptance.

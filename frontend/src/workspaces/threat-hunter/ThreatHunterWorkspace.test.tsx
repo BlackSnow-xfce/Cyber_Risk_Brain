@@ -12,6 +12,9 @@ import { getHuntHypotheses } from "./HuntHypothesisApiClient";
 vi.mock("./HuntHypothesisApiClient", () => ({
     getHuntHypotheses: vi.fn(),
     getHuntHypothesisReferenceResolution: vi.fn(),
+    getLocalOperatorSession: vi.fn().mockResolvedValue(null),
+    createHuntHypothesis: vi.fn(),
+    LOCAL_OPERATOR_BOOTSTRAP_URL: "http://127.0.0.1:8000/api/operator/session/bootstrap",
     HuntHypothesisRequestError: class HuntHypothesisRequestError extends Error {},
 }));
 

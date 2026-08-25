@@ -113,6 +113,9 @@ class LocalOperatorAuthenticator:
             self._configuration.token.encode("utf-8"),
         ):
             raise LocalOperatorAuthenticationError("Authentication is invalid.")
+        return self.configured_principal()
+
+    def configured_principal(self) -> AuthenticatedPrincipal:
         return AuthenticatedPrincipal(
             principal_id=self._configuration.principal_id,
             display_name=self._configuration.display_name,

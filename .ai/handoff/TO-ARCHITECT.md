@@ -1,9 +1,9 @@
-# Handoff - Architecture Review TASK-0115
+# Handoff - Architecture Review TASK-0116
 
 Status: CLOSED
 
 Task:
-TASK-0115 - Authenticated Local Operator and Hunt Hypothesis Write-Authority Foundation
+TASK-0116 - Controlled Manual Hunt Hypothesis Creation Foundation
 
 Task Status:
 DONE / PASS / APPROVED
@@ -13,13 +13,19 @@ Architect
 
 Product Owner Live Acceptance: PASS
 
-Local Operator Live Authentication: PASS
+TASK-0116 is administratively closed after Architect Review PASS and Product
+Owner Live Acceptance PASS. Live verification covered backend bootstrap,
+immediate session authentication, authenticated manual creation, canonical
+collection refresh and a visible server-authored draft. Temporary diagnostics
+were removed after acceptance. Final validation: 41 focused security/session/
+creation tests, 643 Python tests and 102 frontend tests passed; TypeScript,
+production build and `git diff --check` passed. TASK-0117 was not created.
 
-TASK-0115 is administratively closed after Architect Review PASS / APPROVED,
+TASK-0115 remains administratively closed after Architect Review PASS / APPROVED,
 Product Owner Live Acceptance PASS and Local Operator Live Authentication PASS.
 Live verification confirmed the configured human/operator principal and exact
 `hunt_hypothesis:create` permission, no credential disclosure, and HTTP 401
-for unauthenticated access. TASK-0116 was not created.
+for unauthenticated access. TASK-0116 is now historically complete.
 
 TASK-0114 remains administratively closed after Architect Review PASS / APPROVED,
 Product Owner Live Acceptance PASS and Reference Resolution Live E2E PASS.

@@ -71,9 +71,17 @@ from application.incident_queue import IncidentQueueItem, IncidentQueueQueryServ
 from application.hunt_hypotheses import (
     FileHuntHypothesisRepository,
     HuntHypothesisConfigurationError,
+    HuntHypothesisConflictError,
     HuntHypothesisDataError,
+    HuntHypothesisPersistenceError,
     HuntHypothesisQueryService,
     HuntHypothesisRepository,
+)
+from application.hunt_hypothesis_creation import (
+    HuntHypothesisCreationInput,
+    HuntHypothesisCreationResult,
+    HuntHypothesisCreationService,
+    HuntHypothesisCreationValidationError,
 )
 from application.hunt_hypothesis_reference_resolution import (
     HuntHypothesisNotFoundError,
@@ -94,6 +102,15 @@ from application.local_operator import (
     LocalOperatorConfigurationIntegrityError,
     LocalOperatorConfigurationUnavailableError,
     configured_local_operator_origins,
+)
+from application.local_operator_session import (
+    CreatedLocalOperatorSession,
+    LOCAL_OPERATOR_BACKEND_HOST,
+    LocalOperatorBrowserSession,
+    LocalOperatorSessionAuthenticationError,
+    LocalOperatorSessionConfiguration,
+    LocalOperatorSessionCsrfError,
+    LocalOperatorSessionStore,
 )
 from application.finding_incidents import FindingIncidentQueryService
 from application.trusted_ai_retrieval import (
@@ -219,7 +236,13 @@ __all__ = [
     "IncidentQueueQueryService",
     "FileHuntHypothesisRepository",
     "HuntHypothesisConfigurationError",
+    "HuntHypothesisConflictError",
+    "HuntHypothesisCreationInput",
+    "HuntHypothesisCreationResult",
+    "HuntHypothesisCreationService",
+    "HuntHypothesisCreationValidationError",
     "HuntHypothesisDataError",
+    "HuntHypothesisPersistenceError",
     "HuntHypothesisQueryService",
     "HuntHypothesisRepository",
     "HuntHypothesisNotFoundError",
@@ -238,6 +261,13 @@ __all__ = [
     "LocalOperatorConfigurationIntegrityError",
     "LocalOperatorConfigurationUnavailableError",
     "configured_local_operator_origins",
+    "CreatedLocalOperatorSession",
+    "LOCAL_OPERATOR_BACKEND_HOST",
+    "LocalOperatorBrowserSession",
+    "LocalOperatorSessionAuthenticationError",
+    "LocalOperatorSessionConfiguration",
+    "LocalOperatorSessionCsrfError",
+    "LocalOperatorSessionStore",
     "FindingIncidentQueryService",
     "FINDING_RETRIEVAL_OPERATION",
     "FindingResourceReader",

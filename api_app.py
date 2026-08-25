@@ -1,9 +1,13 @@
 from collections.abc import Callable
 from datetime import date, datetime
+import threading
+from typing import Literal
+from urllib.parse import parse_qs
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from pydantic import BaseModel, ConfigDict
 
 from application import (
     AssetContextConfigurationError,
@@ -30,7 +34,12 @@ from application import (
     FindingsQueryService,
     FileHuntHypothesisRepository,
     HuntHypothesisConfigurationError,
+    HuntHypothesisConflictError,
+    HuntHypothesisCreationInput,
+    HuntHypothesisCreationService,
+    HuntHypothesisCreationValidationError,
     HuntHypothesisDataError,
+    HuntHypothesisPersistenceError,
     HuntHypothesisQueryService,
     HuntHypothesisNotFoundError,
     HuntHypothesisReferenceIntegrityError,
@@ -44,6 +53,12 @@ from application import (
     LocalOperatorConfigurationIntegrityError,
     LocalOperatorConfigurationUnavailableError,
     configured_local_operator_origins,
+    LOCAL_OPERATOR_BACKEND_HOST,
+    LocalOperatorBrowserSession,
+    LocalOperatorSessionAuthenticationError,
+    LocalOperatorSessionConfiguration,
+    LocalOperatorSessionCsrfError,
+    LocalOperatorSessionStore,
     RiskReadinessService,
     ThreatIntelligenceConfigurationError,
     ThreatIntelligenceDataError,
@@ -67,7 +82,11 @@ from core.incident_response import (
     ThreatIntelligenceReference,
 )
 from core.predator_engine import PredatorEngine
-from core.threat_hunting import HuntHypothesis, HuntHypothesisReference
+from core.threat_hunting import (
+    HuntHypothesis,
+    HuntHypothesisReference,
+    HuntHypothesisReferenceType,
+)
 from core.threat_intelligence import (
     CisaKevInformation,
     CvssInformation,
@@ -97,6 +116,10 @@ from settings import (
     LOCAL_OPERATOR_PERMISSIONS,
     LOCAL_OPERATOR_PRINCIPAL_ID,
     LOCAL_OPERATOR_TOKEN,
+    LOCAL_OPERATOR_SESSION_COOKIE_NAME,
+    LOCAL_OPERATOR_SESSION_COOKIE_SECURE,
+    LOCAL_OPERATOR_SESSION_ENABLED,
+    LOCAL_OPERATOR_SESSION_LIFETIME_SECONDS,
 )
 
 app = FastAPI(
@@ -109,11 +132,10 @@ app.add_middleware(
     allow_origins=list(
         configured_local_operator_origins(LOCAL_OPERATOR_ALLOWED_ORIGINS)
     ),
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
-
 
 engine = PredatorEngine()
 
@@ -144,6 +166,30 @@ class HuntHypothesisResponse(BaseModel):
     contract_version: str
 
 
+class HuntHypothesisTargetReferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reference_type: Literal["asset", "service", "finding"]
+    reference_id: str
+
+
+class HuntHypothesisThreatReferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reference_type: Literal["cve", "threat_intelligence", "technique", "tactic"]
+    reference_id: str
+
+
+class HuntHypothesisCreationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    statement: str
+    rationale: str
+    target_references: list[HuntHypothesisTargetReferenceRequest]
+    threat_references: list[HuntHypothesisThreatReferenceRequest]
+
+
 class HuntHypothesisResolvedReferenceResponse(BaseModel):
     reference_type: str
     reference_id: str
@@ -163,6 +209,11 @@ class LocalOperatorResponse(BaseModel):
     display_name: str
     principal_type: str
     granted_permissions: list[str]
+
+
+class LocalOperatorSessionResponse(LocalOperatorResponse):
+    expires_at: datetime
+    csrf_token: str
 
 
 class FindingExplanationFactResponse(BaseModel):
@@ -414,6 +465,12 @@ def get_hunt_hypothesis_query_service() -> HuntHypothesisQueryService:
     )
 
 
+def get_hunt_hypothesis_creation_service() -> HuntHypothesisCreationService:
+    return HuntHypothesisCreationService(
+        FileHuntHypothesisRepository(HUNT_HYPOTHESIS_REPOSITORY_PATH)
+    )
+
+
 def get_local_operator_authenticator() -> LocalOperatorAuthenticator:
     try:
         return LocalOperatorAuthenticator.from_values(
@@ -434,6 +491,137 @@ def get_local_operator_authenticator() -> LocalOperatorAuthenticator:
             status_code=500,
             detail="Local Operator configuration is invalid.",
         ) from error
+
+
+_local_operator_session_store: LocalOperatorSessionStore | None = None
+_local_operator_session_store_lock = threading.Lock()
+
+
+def get_local_operator_session_store() -> LocalOperatorSessionStore:
+    global _local_operator_session_store
+    if _local_operator_session_store is not None:
+        return _local_operator_session_store
+    with _local_operator_session_store_lock:
+        if _local_operator_session_store is not None:
+            return _local_operator_session_store
+        try:
+            configuration = LocalOperatorSessionConfiguration.from_values(
+                enabled=LOCAL_OPERATOR_SESSION_ENABLED,
+                lifetime_seconds=LOCAL_OPERATOR_SESSION_LIFETIME_SECONDS,
+                cookie_secure=LOCAL_OPERATOR_SESSION_COOKIE_SECURE,
+                cookie_name=LOCAL_OPERATOR_SESSION_COOKIE_NAME,
+                allowed_origins=configured_local_operator_origins(
+                    LOCAL_OPERATOR_ALLOWED_ORIGINS
+                ),
+            )
+            _local_operator_session_store = LocalOperatorSessionStore(configuration)
+            return _local_operator_session_store
+        except LocalOperatorConfigurationUnavailableError as error:
+            raise HTTPException(
+                status_code=503,
+                detail="Local Operator browser sessions are not configured.",
+            ) from error
+        except LocalOperatorConfigurationIntegrityError as error:
+            raise HTTPException(
+                status_code=500,
+                detail="Local Operator browser session configuration is invalid.",
+            ) from error
+
+
+def _configured_session_principal(
+    authenticator: LocalOperatorAuthenticator,
+) -> AuthenticatedPrincipal:
+    return authenticator.configured_principal()
+
+
+def _session_cookie_candidates(
+    request: Request, store: LocalOperatorSessionStore
+) -> tuple[str, ...]:
+    cookie_name = store.configuration.cookie_name
+    candidates: list[str] = []
+    for cookie_header in request.headers.getlist("cookie"):
+        for item in cookie_header.split(";"):
+            name, separator, value = item.strip().partition("=")
+            if separator and name == cookie_name and value:
+                candidates.append(value)
+    return tuple(candidates)
+
+
+def _require_loopback_bootstrap(request: Request) -> None:
+    client_host = request.client.host if request.client is not None else None
+    if client_host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Bootstrap access is forbidden.")
+    if request.headers.get("host") != LOCAL_OPERATOR_BACKEND_HOST:
+        raise HTTPException(status_code=403, detail="Bootstrap access is forbidden.")
+
+
+def get_browser_session_principal(
+    request: Request,
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+    store: LocalOperatorSessionStore = Depends(get_local_operator_session_store),
+) -> tuple[AuthenticatedPrincipal, LocalOperatorBrowserSession, str]:
+    principal = _configured_session_principal(authenticator)
+    candidates = _session_cookie_candidates(request, store)
+    try:
+        session_id, session = store.resolve_candidates(
+            candidates, principal
+        )
+    except LocalOperatorSessionAuthenticationError as error:
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator browser session authentication failed.",
+        ) from error
+    return principal, session, session_id
+
+
+def get_creation_principal(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
+    csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+) -> AuthenticatedPrincipal:
+    if authorization is not None:
+        try:
+            return authenticator.authenticate(authorization)
+        except LocalOperatorAuthenticationError as error:
+            raise HTTPException(
+                status_code=401,
+                detail="Local Operator authentication failed.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from error
+    if not request.headers.get("cookie"):
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator authentication failed.",
+        )
+    store = get_local_operator_session_store()
+    principal = _configured_session_principal(authenticator)
+    try:
+        session_id, _ = store.resolve_candidates(
+            _session_cookie_candidates(request, store), principal
+        )
+        store.require_mutation(
+            session_id,
+            principal,
+            origin=origin,
+            csrf_token=csrf_token,
+        )
+    except LocalOperatorSessionAuthenticationError as error:
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator browser session authentication failed.",
+        ) from error
+    except LocalOperatorSessionCsrfError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="Local Operator request verification failed.",
+        ) from error
+    return principal
 
 
 def get_authenticated_local_operator(
@@ -1022,6 +1210,152 @@ def local_operator_me(
     )
 
 
+_BOOTSTRAP_HTML = """<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>PredatorAI Local Operator</title></head>
+<body>
+<main>
+<h1>PredatorAI Local Operator</h1>
+<p>Authenticate this local browser session.</p>
+<form method="post" action="/api/operator/session/bootstrap">
+<label>Local Operator credential
+<input type="password" name="credential" required autocomplete="current-password">
+</label>
+<button type="submit">Authenticate</button>
+</form>
+</main>
+</body>
+</html>"""
+
+
+def _bootstrap_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": (
+            "default-src 'none'; form-action 'self'; frame-ancestors 'none'; "
+            "base-uri 'none'"
+        ),
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+
+@app.get("/api/operator/session/bootstrap", response_class=HTMLResponse)
+def local_operator_session_bootstrap(request: Request) -> HTMLResponse:
+    _require_loopback_bootstrap(request)
+    return HTMLResponse(_BOOTSTRAP_HTML, headers=_bootstrap_headers())
+
+
+@app.post("/api/operator/session/bootstrap")
+async def create_local_operator_session(
+    request: Request,
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+    store: LocalOperatorSessionStore = Depends(get_local_operator_session_store),
+):
+    _require_loopback_bootstrap(request)
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    content_length = request.headers.get("content-length")
+    if content_type != "application/x-www-form-urlencoded":
+        raise HTTPException(status_code=415, detail="Unsupported content type.")
+    if content_length is None or not content_length.isdigit() or int(content_length) > 4096:
+        raise HTTPException(status_code=400, detail="Invalid bootstrap request.")
+    body = await request.body()
+    if len(body) > 4096:
+        raise HTTPException(status_code=400, detail="Invalid bootstrap request.")
+    try:
+        fields = parse_qs(
+            body.decode("utf-8"),
+            keep_blank_values=True,
+            strict_parsing=True,
+        )
+        if set(fields) != {"credential"} or len(fields["credential"]) != 1:
+            raise ValueError("Invalid form fields.")
+        credential = fields["credential"][0]
+        principal = authenticator.authenticate(f"Bearer {credential}")
+    except (UnicodeError, ValueError, LocalOperatorAuthenticationError):
+        return PlainTextResponse(
+            "Local Operator authentication failed.",
+            status_code=401,
+            headers=_bootstrap_headers(),
+        )
+    created = store.create(principal)
+    response = RedirectResponse(
+        f"{store.configuration.frontend_origin}/threat-hunting/hypotheses",
+        status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+    response.set_cookie(
+        key=store.configuration.cookie_name,
+        value=created.session_id,
+        max_age=store.configuration.lifetime_seconds,
+        expires=created.expires_at,
+        path="/",
+        secure=store.configuration.cookie_secure,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
+
+
+@app.get("/api/operator/session", response_model=LocalOperatorSessionResponse)
+def local_operator_session(
+    request: Request,
+    authenticated: tuple[
+        AuthenticatedPrincipal, LocalOperatorBrowserSession, str
+    ] = Depends(get_browser_session_principal),
+    store: LocalOperatorSessionStore = Depends(get_local_operator_session_store),
+) -> LocalOperatorSessionResponse:
+    principal, _, session_id = authenticated
+    session, csrf_token = store.issue_csrf(session_id, principal)
+    return LocalOperatorSessionResponse(
+        principal_id=principal.principal_id,
+        display_name=principal.display_name,
+        principal_type=principal.principal_type,
+        granted_permissions=sorted(principal.permissions),
+        expires_at=session.expires_at,
+        csrf_token=csrf_token,
+    )
+
+
+@app.post("/api/operator/session/logout", status_code=204)
+def logout_local_operator_session(
+    request: Request,
+    origin: str | None = Header(default=None),
+    csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+    store: LocalOperatorSessionStore = Depends(get_local_operator_session_store),
+):
+    principal = _configured_session_principal(authenticator)
+    try:
+        session_id, _ = store.resolve_candidates(
+            _session_cookie_candidates(request, store), principal
+        )
+        store.require_mutation(
+            session_id,
+            principal,
+            origin=origin,
+            csrf_token=csrf_token,
+        )
+    except LocalOperatorSessionAuthenticationError as error:
+        raise HTTPException(status_code=401, detail="Invalid browser session.") from error
+    except LocalOperatorSessionCsrfError as error:
+        raise HTTPException(status_code=403, detail="Request verification failed.") from error
+    store.revoke(session_id)
+    response = PlainTextResponse("", status_code=204)
+    response.delete_cookie(
+        store.configuration.cookie_name,
+        path="/",
+        secure=store.configuration.cookie_secure,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
+
+
 @app.get("/api/findings", response_model=list[FindingResponse])
 def findings(
     service: FindingsQueryService = Depends(
@@ -1070,6 +1404,67 @@ def hunt_hypotheses(
         raise HTTPException(
             status_code=500,
             detail="Hunt Hypothesis repository contains invalid data.",
+        ) from error
+
+
+@app.post(
+    "/api/hunt-hypotheses",
+    response_model=HuntHypothesisResponse,
+    status_code=201,
+)
+def create_hunt_hypothesis(
+    request: HuntHypothesisCreationRequest,
+    principal: AuthenticatedPrincipal = Depends(get_creation_principal),
+    service: HuntHypothesisCreationService = Depends(
+        get_hunt_hypothesis_creation_service
+    ),
+) -> HuntHypothesisResponse:
+    try:
+        creation_input = HuntHypothesisCreationInput(
+            title=request.title,
+            statement=request.statement,
+            rationale=request.rationale,
+            target_references=tuple(
+                HuntHypothesisReference(
+                    reference_type=HuntHypothesisReferenceType(item.reference_type),
+                    reference_id=item.reference_id,
+                )
+                for item in request.target_references
+            ),
+            threat_references=tuple(
+                HuntHypothesisReference(
+                    reference_type=HuntHypothesisReferenceType(item.reference_type),
+                    reference_id=item.reference_id,
+                )
+                for item in request.threat_references
+            ),
+        )
+        result = service.create(creation_input, principal)
+        return _hunt_hypothesis_response(result.hypothesis)
+    except LocalOperatorAuthorizationError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="The authenticated operator is not authorized.",
+        ) from error
+    except HuntHypothesisConflictError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="Hunt Hypothesis identity already exists.",
+        ) from error
+    except (HuntHypothesisConfigurationError, HuntHypothesisPersistenceError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Hunt Hypothesis repository is unavailable.",
+        ) from error
+    except HuntHypothesisDataError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Hunt Hypothesis repository contains invalid data.",
+        ) from error
+    except (HuntHypothesisCreationValidationError, ValueError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail="Hunt Hypothesis creation input is invalid.",
         ) from error
 
 
