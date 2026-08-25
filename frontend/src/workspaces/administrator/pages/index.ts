@@ -1,4 +1,5 @@
 import AdministratorOverviewPage from "./AdministratorOverviewPage";
+import AIModelGovernancePage from "./AIModelGovernancePage";
 
 export interface AdministratorAreaDefinition {
     title: string;
@@ -51,8 +52,8 @@ export const administratorAreaRegistry = {
         description: "Review import activity without deriving or simulating status.",
     },
     "ai-models": {
-        title: "AI Models",
-        description: "Review approved model configuration without implementing an AI engine.",
+        title: "AI Model Governance",
+        description: "Review the live governed model registry without executing providers.",
     },
     policies: {
         title: "Policies",
@@ -101,3 +102,4 @@ export function isAdministratorAreaId(
 }
 
 export { AdministratorOverviewPage };
+export { AIModelGovernancePage };

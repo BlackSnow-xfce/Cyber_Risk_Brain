@@ -4,6 +4,23 @@ from application.asset_context import (
     AssetContextQueryService,
     classify_observed_asset_identifier,
 )
+from application.ai_model_governance import (
+    AI_MODEL_SELECTION_STATE_CONTRACT_VERSION,
+    AIModelAdapterBinding,
+    AIModelCapabilityVisibility,
+    AIModelGovernanceQueryService,
+    AIModelGovernanceVisibility,
+    AIModelRegistrationVisibility,
+    AIModelSelectionChangeResult,
+    AIModelSelectionPersistenceError,
+    AIModelSelectionService,
+    AIModelSelectionUnavailableError,
+    AIProviderGovernanceVisibility,
+    FileAIModelSelectionAuditSink,
+    FileAIModelSelectionStore,
+    PersistedAIModelSelection,
+    PersistedAIModelSelectionPolicy,
+)
 from application.findings_query import (
     FindingsConfigurationError,
     FindingsQueryService,
@@ -92,6 +109,8 @@ from application.hunt_hypothesis_reference_resolution import (
     HuntHypothesisReferenceResolutionStatus,
 )
 from application.local_operator import (
+    AI_MODEL_SELECTION_UPDATE_PERMISSION,
+    AIModelSelectionWriteAuthority,
     AuthenticatedPrincipal,
     AuthorizationDecision,
     HUNT_HYPOTHESIS_CREATE_PERMISSION,
@@ -178,6 +197,23 @@ from application.threat_intelligence import (
 )
 
 __all__ = [
+    "AI_MODEL_SELECTION_STATE_CONTRACT_VERSION",
+    "AI_MODEL_SELECTION_UPDATE_PERMISSION",
+    "AIModelSelectionWriteAuthority",
+    "AIModelAdapterBinding",
+    "AIModelCapabilityVisibility",
+    "AIModelGovernanceQueryService",
+    "AIModelGovernanceVisibility",
+    "AIModelRegistrationVisibility",
+    "AIModelSelectionChangeResult",
+    "AIModelSelectionPersistenceError",
+    "AIModelSelectionService",
+    "AIModelSelectionUnavailableError",
+    "AIProviderGovernanceVisibility",
+    "FileAIModelSelectionAuditSink",
+    "FileAIModelSelectionStore",
+    "PersistedAIModelSelection",
+    "PersistedAIModelSelectionPolicy",
     "AssetContextConfigurationError",
     "AssetContextDataError",
     "AssetContextQueryService",

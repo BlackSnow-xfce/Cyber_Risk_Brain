@@ -226,6 +226,11 @@ class AIModelRegistry:
         self._registrations = registrations
         self._clock = clock
 
+    @property
+    def registrations(self) -> tuple[AIModelRegistration, ...]:
+        """Return the immutable governed registrations for read-only projection."""
+        return self._registrations
+
     def select(
         self,
         capability: AIModelCapability,

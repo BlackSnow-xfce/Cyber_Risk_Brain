@@ -1,9 +1,9 @@
-# Handoff - Architecture Review TASK-0117
+# Handoff - Architecture Review TASK-0119
 
 Status: CLOSED
 
 Task:
-TASK-0117 - Multi-Model Governance and Provider Registry Foundation
+TASK-0119 - Governed Model Selection UI
 
 Task Status:
 DONE / PASS / APPROVED
@@ -14,6 +14,31 @@ Architect
 Architect Review: PASS / APPROVED
 
 Product Owner Live Acceptance: PASS
+
+TASK-0119 is administratively closed as DONE / PASS / APPROVED after Architect
+Review PASS / APPROVED and Product Owner Live Acceptance PASS. It
+implements capability-scoped governed selection through the existing
+registry, verified Local Operator session/CSRF boundary, exact update authority,
+server-side atomic persistence and secret-free audit. Finding Explanation now
+consumes the persisted governed selection through the existing decision contract.
+The UI exposes only registered identities and disables unavailable choices with
+truthful reasons. No selection invokes a provider or permits free-form identity,
+fallback, credentials or new adapters. Validation: 96 focused Python tests, 12
+focused frontend tests, 673 full Python tests and 114 full frontend tests passed;
+TypeScript, production build and `git diff --check` passed. No further action is
+pending for TASK-0119.
+
+TASK-0118 is administratively closed as DONE / PASS / APPROVED after Architect
+Review PASS / APPROVED and Product Owner Live Acceptance PASS. It
+implements a safe read-only projection of the TASK-0117 registry and
+canonical provider contracts. The visible Administrator `AI Models` navigation
+opens `AI Model Governance` at `/administration/ai-models`. Registration,
+capability authorization, enabled state, adapter availability and current
+execution availability remain distinct. No provider execution, mutation,
+credential exposure, fallback or fake registry data was introduced. Validation:
+68 focused Python tests, 8 focused frontend tests, 662 full Python tests and 110
+full frontend tests passed; TypeScript, production build and `git diff --check`
+passed. No further action is pending for TASK-0118.
 
 TASK-0117 is administratively closed as DONE / PASS / APPROVED after Architect
 Review PASS / APPROVED and Product Owner Live Acceptance PASS. It

@@ -63,6 +63,14 @@ OPENAI_EXPLANATION_TIMEOUT_SECONDS = os.getenv(
     "OPENAI_EXPLANATION_TIMEOUT_SECONDS",
     "30",
 )
+AI_MODEL_SELECTION_STATE_PATH = os.getenv(
+    "AI_MODEL_SELECTION_STATE_PATH",
+    "runtime/ai-model-selection.json",
+)
+AI_MODEL_SELECTION_AUDIT_PATH = os.getenv(
+    "AI_MODEL_SELECTION_AUDIT_PATH",
+    "runtime/ai-model-selection-audit.jsonl",
+)
 
 NVD_API_KEY = os.getenv("NVD_API_KEY")
 NVD_TIMEOUT_SECONDS = os.getenv("NVD_TIMEOUT_SECONDS", "15")

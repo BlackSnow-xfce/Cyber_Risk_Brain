@@ -6,17 +6,21 @@ Current AIDP Task: NONE
 Current Phase: WAITING
 
 Current Message:
-TASK-0117 is complete as DONE / PASS / APPROVED after Architect Review and
+TASK-0119 is complete as DONE / PASS / APPROVED after Architect Review and
 Product Owner Live Acceptance PASS. No implementation action is pending. Do not
-create TASK-0118.
+create TASK-0120.
 
 Task:
-TASK-0117 - Multi-Model Governance and Provider Registry Foundation
+TASK-0119 - Governed Model Selection UI
 
 Phase:
 WAITING
 
 Message:
+
+TASK-0119 provides capability-scoped persisted model selection with exact
+Local Operator authority, safe audit and no provider execution. It is complete
+as DONE / PASS / APPROVED.
 
 TASK-0117 now provides governance contracts, registry selection, safe audit
 projection, provider-neutral adapter boundary and explicit TASK-0109 OpenAI

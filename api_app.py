@@ -10,6 +10,12 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from application import (
+    AIModelAdapterBinding,
+    AIModelGovernanceQueryService,
+    AIModelGovernanceVisibility,
+    AIModelSelectionPersistenceError,
+    AIModelSelectionService,
+    AIModelSelectionUnavailableError,
     AssetContextConfigurationError,
     AssetContextQueryService,
     FindingExplanationModelOutput,
@@ -60,6 +66,9 @@ from application import (
     LocalOperatorSessionCsrfError,
     LocalOperatorSessionStore,
     RiskReadinessService,
+    FileAIModelSelectionAuditSink,
+    FileAIModelSelectionStore,
+    PersistedAIModelSelectionPolicy,
     ThreatIntelligenceConfigurationError,
     ThreatIntelligenceDataError,
     ThreatIntelligenceInvalidResponseError,
@@ -68,7 +77,12 @@ from application import (
     ThreatIntelligenceSourceUnavailableError,
     ThreatIntelligenceTimeoutError,
 )
-from core.ai_model_selection import AIModelSelectionPolicy
+from core.ai_model_selection import (
+    AIModelCapability,
+    AIProviderFamily,
+    SUPPORTED_MODEL_ID,
+    default_ai_model_registry,
+)
 from core.explainability import ExplanationProvenance
 from core.incident_response import (
     AnalystNote,
@@ -106,6 +120,8 @@ from infrastructure import (
 )
 from settings import (
     AI_FINDING_EXPLANATION_ALLOWED_IDS,
+    AI_MODEL_SELECTION_AUDIT_PATH,
+    AI_MODEL_SELECTION_STATE_PATH,
     ASSET_CONTEXT_PATH,
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
@@ -120,6 +136,8 @@ from settings import (
     LOCAL_OPERATOR_SESSION_COOKIE_SECURE,
     LOCAL_OPERATOR_SESSION_ENABLED,
     LOCAL_OPERATOR_SESSION_LIFETIME_SECONDS,
+    OPENAI_API_KEY,
+    OPENAI_FINDING_EXPLANATION_MODEL,
 )
 
 app = FastAPI(
@@ -133,7 +151,7 @@ app.add_middleware(
         configured_local_operator_origins(LOCAL_OPERATOR_ALLOWED_ORIGINS)
     ),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 
@@ -214,6 +232,45 @@ class LocalOperatorResponse(BaseModel):
 class LocalOperatorSessionResponse(LocalOperatorResponse):
     expires_at: datetime
     csrf_token: str
+
+
+class AIModelCapabilityVisibilityResponse(BaseModel):
+    capability: str
+    authorized: bool
+    adapter_available: bool
+    execution_available: bool
+    active: bool
+
+
+class AIModelRegistrationVisibilityResponse(BaseModel):
+    provider: str
+    model_id: str
+    api_protocol_family: str
+    deployment_class: str
+    policy_reference: str
+    execution_binding: str
+    status: str
+    governance_status: str
+    capabilities: list[AIModelCapabilityVisibilityResponse]
+
+
+class AIProviderGovernanceVisibilityResponse(BaseModel):
+    provider: str
+    governance_status: str
+    registrations: list[AIModelRegistrationVisibilityResponse]
+
+
+class AIModelGovernanceVisibilityResponse(BaseModel):
+    contract_version: str
+    capabilities: list[str]
+    providers: list[AIProviderGovernanceVisibilityResponse]
+
+
+class AIModelSelectionUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    model_id: str
 
 
 class FindingExplanationFactResponse(BaseModel):
@@ -726,7 +783,9 @@ def get_finding_explanation_use_case() -> FindingExplanationUseCase:
         RiskReadinessService(),
         FindingExplanationService(
             OpenAIFindingExplanationModel.from_settings(),
-            model_selection_policy=AIModelSelectionPolicy(),
+            model_selection_policy=PersistedAIModelSelectionPolicy(
+                get_ai_model_selection_service()
+            ),
         ),
         authorization_scope_factory=lambda finding_id: (
             build_finding_explanation_authorization(
@@ -734,6 +793,49 @@ def get_finding_explanation_use_case() -> FindingExplanationUseCase:
                 allowed_finding_ids,
             )
         ),
+    )
+
+
+def _ai_model_bindings() -> tuple[
+    frozenset[AIModelAdapterBinding],
+    frozenset[AIModelAdapterBinding],
+]:
+    openai_binding = AIModelAdapterBinding(
+        provider=AIProviderFamily.OPENAI,
+        model_id=SUPPORTED_MODEL_ID,
+        capability=AIModelCapability.FINDING_EXPLANATION,
+    )
+    execution_bindings = (
+        frozenset({openai_binding})
+        if isinstance(OPENAI_API_KEY, str)
+        and bool(OPENAI_API_KEY.strip())
+        and OPENAI_FINDING_EXPLANATION_MODEL == SUPPORTED_MODEL_ID
+        else frozenset()
+    )
+    return frozenset({openai_binding}), execution_bindings
+
+
+def get_ai_model_selection_store() -> FileAIModelSelectionStore:
+    return FileAIModelSelectionStore(AI_MODEL_SELECTION_STATE_PATH)
+
+
+def get_ai_model_selection_service() -> AIModelSelectionService:
+    adapter_bindings, execution_bindings = _ai_model_bindings()
+    return AIModelSelectionService(
+        default_ai_model_registry(),
+        get_ai_model_selection_store(),
+        FileAIModelSelectionAuditSink(AI_MODEL_SELECTION_AUDIT_PATH),
+        adapter_bindings=adapter_bindings,
+        execution_bindings=execution_bindings,
+    )
+
+
+def get_ai_model_governance_query_service() -> AIModelGovernanceQueryService:
+    adapter_bindings, execution_bindings = _ai_model_bindings()
+    return AIModelGovernanceQueryService(
+        adapter_bindings=adapter_bindings,
+        execution_bindings=execution_bindings,
+        selection_store=get_ai_model_selection_store(),
     )
 
 
@@ -1196,6 +1298,68 @@ def root():
 def analyze():
 
     return engine.run()
+
+
+@app.get(
+    "/api/ai-model-governance",
+    response_model=AIModelGovernanceVisibilityResponse,
+)
+def ai_model_governance(
+    service: AIModelGovernanceQueryService = Depends(
+        get_ai_model_governance_query_service
+    ),
+) -> AIModelGovernanceVisibility:
+    try:
+        return service.get_visibility()
+    except AIModelSelectionPersistenceError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Governed model selection state is invalid.",
+        ) from error
+
+
+@app.put(
+    "/api/ai-model-governance/selections/{capability}",
+    response_model=AIModelGovernanceVisibilityResponse,
+)
+def update_ai_model_selection(
+    capability: str,
+    request: AIModelSelectionUpdateRequest,
+    principal: AuthenticatedPrincipal = Depends(get_creation_principal),
+    service: AIModelSelectionService = Depends(get_ai_model_selection_service),
+    query: AIModelGovernanceQueryService = Depends(
+        get_ai_model_governance_query_service
+    ),
+) -> AIModelGovernanceVisibility:
+    try:
+        governed_capability = AIModelCapability(capability)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="Governed capability was not found.") from error
+    try:
+        service.change(
+            governed_capability,
+            request.provider,
+            request.model_id,
+            principal,
+        )
+    except LocalOperatorAuthorizationError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="The authenticated operator is not authorized.",
+        ) from error
+    except AIModelSelectionUnavailableError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except AIModelSelectionError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="The requested model selection is not governed.",
+        ) from error
+    except AIModelSelectionPersistenceError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Governed model selection could not be persisted.",
+        ) from error
+    return query.get_visibility()
 
 
 @app.get("/api/operator/me", response_model=LocalOperatorResponse)

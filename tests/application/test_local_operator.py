@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import pytest
 
 from application.local_operator import (
+    AI_MODEL_SELECTION_UPDATE_PERMISSION,
+    AIModelSelectionWriteAuthority,
     AuthenticatedPrincipal,
     HUNT_HYPOTHESIS_CREATE_PERMISSION,
     HuntHypothesisWriteAuthority,
@@ -16,6 +18,17 @@ from application.local_operator import (
 
 
 TOKEN = "a-secure-local-operator-token-value-123456"
+
+
+def test_ai_model_selection_authority_requires_exact_server_permission() -> None:
+    authorized = _authenticator(
+        permissions=AI_MODEL_SELECTION_UPDATE_PERMISSION
+    ).authenticate(f"Bearer {TOKEN}")
+    unauthorized = _authenticator().authenticate(f"Bearer {TOKEN}")
+
+    assert AIModelSelectionWriteAuthority().require(authorized).outcome == "allowed"
+    with pytest.raises(LocalOperatorAuthorizationError):
+        AIModelSelectionWriteAuthority().require(unauthorized)
 
 
 def _authenticator(*, permissions: str = HUNT_HYPOTHESIS_CREATE_PERMISSION):
