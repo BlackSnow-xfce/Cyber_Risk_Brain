@@ -37,7 +37,11 @@ from core.ai_disclosure import (
     AIOutputDisclosureReason,
 )
 from core.ai_egress import AIModelEgressPurpose
-from core.ai_model_selection import AIModelSelectionError, AIModelSelectionPolicy
+from core.ai_model_selection import (
+    AIModelSelectionError,
+    AIModelSelectionPolicy,
+    GovernedAIProviderAdapter,
+)
 from core.models import UniversalFinding
 from infrastructure import OpenAIFindingExplanationModel
 
@@ -179,6 +183,17 @@ class StubModel:
 def _approved_selection():
     return AIModelSelectionPolicy().resolve(
         AIModelEgressPurpose.FINDING_EXPLANATION,
+    )
+
+
+def _assert_approved_selection(selection) -> None:
+    assert selection is not None
+    assert selection.provider_id == "openai"
+    assert selection.model_id == "gpt-5.6"
+    assert selection.execution_binding_version == "1.0"
+    assert (
+        selection.selection_policy_reference
+        == "policy:ai-model-selection:finding-explanation:1.0"
     )
 
 
@@ -635,6 +650,22 @@ def test_openai_adapter_requires_selection_decision() -> None:
         adapter.generate(FindingExplanationModelRequest("instructions", "{}", {}))
 
 
+def test_openai_adapter_implements_provider_neutral_governed_boundary() -> None:
+    adapter = OpenAIFindingExplanationModel(
+        "configured-test-credential",
+        12.0,
+        session=RecordingSession(_provider_response(_valid_output())),
+    )
+
+    assert isinstance(adapter, GovernedAIProviderAdapter)
+    response = adapter.execute(
+        FindingExplanationModelRequest("instructions", "{}", {}),
+        _approved_selection(),
+    )
+    assert response.provider_id == "openai"
+    assert response.model_id == "gpt-5.6"
+
+
 def test_openai_adapter_runtime_model_mismatch_fails_before_network() -> None:
     session = RecordingSession(_provider_response(_valid_output()))
     adapter = OpenAIFindingExplanationModel(
@@ -728,7 +759,7 @@ def test_unapproved_runtime_identity_fails_closed(
 
     assert result.generation_status is FindingExplanationGenerationStatus.CONFIGURATION_ERROR
     assert result.model_output is None
-    assert result.selection_decision == _approved_selection()
+    _assert_approved_selection(result.selection_decision)
 
 
 def test_model_output_cannot_change_approved_selection() -> None:
@@ -738,6 +769,6 @@ def test_model_output_cannot_change_approved_selection() -> None:
         model_selection_policy=AIModelSelectionPolicy(),
     ).explain(_input()[0])
 
-    assert result.selection_decision == _approved_selection()
+    _assert_approved_selection(result.selection_decision)
     assert result.selection_decision is not None
     assert result.selection_decision.model_id == "gpt-5.6"

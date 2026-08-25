@@ -1,9 +1,9 @@
-# Handoff - Architecture Review TASK-0116
+# Handoff - Architecture Review TASK-0117
 
 Status: CLOSED
 
 Task:
-TASK-0116 - Controlled Manual Hunt Hypothesis Creation Foundation
+TASK-0117 - Multi-Model Governance and Provider Registry Foundation
 
 Task Status:
 DONE / PASS / APPROVED
@@ -11,7 +11,19 @@ DONE / PASS / APPROVED
 Reviewer:
 Architect
 
+Architect Review: PASS / APPROVED
+
 Product Owner Live Acceptance: PASS
+
+TASK-0117 is administratively closed as DONE / PASS / APPROVED after Architect
+Review PASS / APPROVED and Product Owner Live Acceptance PASS. It
+implements an immutable capability-scoped provider registry,
+default-deny exact identity selection, deterministic timestamped decisions,
+safe audit projections and a provider-neutral adapter protocol. The existing
+OpenAI Finding Explanation path retains its exact model, binding, policy and
+output semantics. Validation: 57 focused tests, 657 Python tests and 102
+frontend tests passed; TypeScript, production build and `git diff --check`
+passed. No further action is pending for TASK-0117.
 
 TASK-0116 is administratively closed after Architect Review PASS and Product
 Owner Live Acceptance PASS. Live verification covered backend bootstrap,

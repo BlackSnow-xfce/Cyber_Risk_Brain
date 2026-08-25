@@ -59,6 +59,17 @@ class OpenAIFindingExplanationModel:
             raise AIModelSelectionError(
                 "OpenAI execution requires an approved model selection."
             )
+        return self.execute(request, selection)
+
+    def execute(
+        self,
+        request: FindingExplanationModelRequest,
+        selection: AIModelSelectionDecision,
+    ) -> FindingExplanationModelResponse:
+        if selection is None:
+            raise AIModelSelectionError(
+                "OpenAI execution requires an approved model selection."
+            )
         if (
             selection.provider_id != self.provider_id
             or self.model_id != selection.model_id

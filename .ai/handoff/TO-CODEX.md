@@ -3,24 +3,25 @@
 Status: WAITING
 
 Current AIDP Task: NONE
-Current Phase: IDLE / WAITING
+Current Phase: WAITING
 
 Current Message:
-TASK-0116 is DONE / PASS / APPROVED after Architect Review and Product Owner
-Live Acceptance PASS. No implementation action is pending. Do not create
-TASK-0117 without explicit authority.
+TASK-0117 is complete as DONE / PASS / APPROVED after Architect Review and
+Product Owner Live Acceptance PASS. No implementation action is pending. Do not
+create TASK-0118.
 
 Task:
-TASK-0116 - Controlled Manual Hunt Hypothesis Creation Foundation
+TASK-0117 - Multi-Model Governance and Provider Registry Foundation
 
 Phase:
 WAITING
 
 Message:
 
-TASK-0116 is complete. The accepted Local Operator browser session and manual
-draft-creation path remain intact; temporary diagnostics were removed. TASK-0115
-remains DONE / PASS / APPROVED. TASK-0117 was not created.
+TASK-0117 now provides governance contracts, registry selection, safe audit
+projection, provider-neutral adapter boundary and explicit TASK-0109 OpenAI
+compatibility. It is DONE / PASS / APPROVED. No new live provider execution or
+fallback exists.
 
 TASK-0109 received final Architect acceptance: `DONE / PASS / APPROVED`.
 TASK-0110 is in REVIEW pending Architect/Product Owner acceptance.
