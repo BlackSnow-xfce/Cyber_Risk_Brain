@@ -1,3 +1,69 @@
+# Handoff - Architecture Review TASK-0121
+
+Status: CLOSED
+
+Task:
+TASK-0121 - Explainability Rendering and URL-Authoritative Navigation Repair
+
+Task Status:
+DONE / PASS / APPROVED
+
+Reviewer:
+Architect
+
+Architect Task-Specification Review: PASS / APPROVED
+
+Architect Implementation Review: PASS / APPROVED
+
+Product Owner Live Acceptance: PASS
+
+TASK-0121 implements the bounded repair for safe Explainability rendering,
+URL-authoritative SOC navigation, truthful unavailable/error states, and
+removal of production mock data. The current pathname now selects SOC content;
+Back, Forward and deep links remain synchronized with the sidebar. Explainability
+uses no production mock or provider call and renders a truthful unavailable state
+until authoritative context exists. ID and render failures remain locally
+controlled, including LAN HTTP environments without `crypto.randomUUID`.
+
+Validation: 12 focused and 125 full frontend tests passed; TypeScript,
+production build and `git diff --check` passed. Architect Implementation Review
+is PASS / APPROVED and Product Owner Live Acceptance is PASS. TASK-0121 is
+closed as DONE / PASS / APPROVED; TASK-0122 was not created.
+
+Historical TASK-0120 closure: TASK-0120 implements only the controlled `draft -> active` transition. The
+server derives Local Operator identity, requires exact
+`hunt_hypothesis:activate`, and admits browser mutation only through the
+existing session, exact Origin and CSRF boundary. The client submits only the
+expected `draft` state; `active` is server-fixed.
+
+Bounded review rework #2 adds atomic copy-on-write audit persistence, explicit
+pending/committed/rollback/reconciliation states, canonical route-ID projection
+and full rollback reread/comparison under the repository lock. A write/flush
+failure cannot expose a false terminal success. Concrete concurrency, lock and
+persistence failures remain covered. The UI preserves the canonical active
+response and reports a later collection-refresh failure truthfully.
+
+The existing repository lock and atomic persistence boundary now revalidates
+the complete repository and expected status while locked. Successful and
+rejected attempts are persisted to a secret-free activation audit. The UI
+offers activation only for authorized drafts, refreshes the canonical list and
+states explicitly that active means released for investigation—not truth,
+evidence, successful execution or compromise.
+
+Validation: 74 focused hypothesis/security/session/API tests, 18 focused
+frontend tests, 709 full Python tests and 118 full frontend tests passed;
+TypeScript, production build and `git diff --check` passed. The build retains
+only the existing chunk-size warning.
+
+No AI/provider execution, hunt execution, evidence generation, reference
+resolution change or additional lifecycle transition exists. TASK-0120 is
+closed as DONE / PASS / APPROVED after Architect Review and Product Owner Live
+Acceptance PASS. TASK-0121 was not created.
+
+---
+
+## Preserved historical handoff context
+
 # Handoff - Architecture Review TASK-0119
 
 Status: CLOSED
