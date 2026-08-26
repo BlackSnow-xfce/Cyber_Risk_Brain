@@ -1,0 +1,62 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0122-v3",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0122",
+      "title": "SOC Dashboard Visual Parity",
+      "phase": "POST-MVP SOC Operations",
+      "expected_head": "e7ab4251a58a202215b712cd33b6195bae19c446",
+      "allowed_scope": [
+        "frontend/src/workspaces/soc/pages/DashboardPage.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.test.tsx",
+        "frontend/src/workspaces/soc/dashboard/**"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "frontend/src/workspaces/soc/explainability/**",
+        "frontend/src/workspaces/soc/SOCWorkspace.tsx",
+        "frontend/src/workspaces/incident-response/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        ".ai/tasks/done/TASK-0120.md",
+        ".ai/tasks/done/TASK-0121.md",
+        ".ai/tasks/**/TASK-0123.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Use only the existing productive Findings, Finding-to-Incident and Incident Command Center read paths; do not add or change backend, domain, repository or runtime data.",
+        "An active dashboard context must be selected by an explicit existing URL findingId that exactly matches a loaded canonical finding; never label or use the first returned finding as active merely because it is first.",
+        "Without an explicit valid investigation context, show one compact targeted empty state with a real Findings entry point instead of a grid of repetitive unavailable cards.",
+        "Loading and retrieval failures remain visibly distinct and never fall back to mock, synthetic or hard-coded security data.",
+        "For a valid context, render the compact original PredatorAI SOC mockup hierarchy: operational investigation header, situation-oriented status row, compact directed relationship chain, Evidence, Analysis and Recommended Investigation workspace, chronological timeline and prominent Incident Command Center path.",
+        "Project only canonical finding ID, source, title, vendor severity and observed asset identifier from FindingSummary.",
+        "Project only persisted incident identity, relationship role and lifecycle status from the Finding-to-Incident response, and only canonical incident title, description, timestamps, references and activities from the existing Incident Command Center response.",
+        "Do not invent or infer priority, elapsed runtime, attack confidence, potential spread, business impact, MITRE mapping, AI hypothesis, evidence, observations, security conclusions, recommended remediation or compromise from title text, severity, CVE text, counts or relationship presence.",
+        "Omit non-authoritative values or mark the relevant section unavailable without repeating unavailable placeholders across every card; severity must not be presented as priority and timestamps must not be converted into a claimed runtime.",
+        "The directed relationship view may show only relationships established by supplied canonical responses; decorative edges must not assert an unpersisted relationship.",
+        "Evidence and chronological timeline content must come only from persisted references or canonical timestamped incident activities and preserve their supplied ordering/identity semantics.",
+        "Do not synthesize an AI hypothesis or analyst narrative; when no authoritative analysis projection exists, present a truthful unavailable state.",
+        "Recommended Investigation is limited to navigation into existing authoritative Finding, Threat Intelligence, Incident and Command Center read paths and must not claim remediation or evidence.",
+        "When a linked incident exists, provide a prominent action to /incident-response/incidents/<incident-id>/command-center; without one the action is absent or disabled.",
+        "Preserve existing Finding and Threat Intelligence navigation and the URL-authoritative Dashboard, Explainability, Back, Forward, deep-link, refresh and sidebar synchronization delivered by TASK-0121.",
+        "Preserve the defined Explainability unavailable state and do not modify Explainability, SOCWorkspace, Incident Response or routing implementation.",
+        "Opening the dashboard performs no AI provider or model execution and production code instantiates no mock repository.",
+        "Use the existing PredatorAI dark-first design tokens and responsive/reduced-motion behavior; make only the bounded card-density, spacing and hierarchy changes needed for mockup parity, not a broader dashboard redesign.",
+        "Add focused tests for exact findingId selection, invalid/missing/unresolved context, empty/loading/error states, canonical incident and activity projection, Command Center navigation, absence of invented fields/relationships/provider calls, and TASK-0121 routing regression.",
+        "Run focused dashboard and routing tests, the full frontend regression, TypeScript validation, production build and git diff --check; move TASK-0122 to REVIEW only after all validations pass."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-26T22:56:56.2209490+00:00"
+    },
+    "received_at": "2026-08-26T22:56:56.2209490+00:00"
+  }
+}
