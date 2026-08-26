@@ -6,10 +6,15 @@ from urllib.parse import urlsplit
 
 
 HUNT_HYPOTHESIS_CREATE_PERMISSION = "hunt_hypothesis:create"
+HUNT_HYPOTHESIS_ACTIVATE_PERMISSION = "hunt_hypothesis:activate"
 AI_MODEL_SELECTION_UPDATE_PERMISSION = "ai_model_selection:update"
 LOCAL_OPERATOR_PRINCIPAL_TYPE = "human/operator"
 _KNOWN_PERMISSIONS = frozenset(
-    {HUNT_HYPOTHESIS_CREATE_PERMISSION, AI_MODEL_SELECTION_UPDATE_PERMISSION}
+    {
+        HUNT_HYPOTHESIS_CREATE_PERMISSION,
+        HUNT_HYPOTHESIS_ACTIVATE_PERMISSION,
+        AI_MODEL_SELECTION_UPDATE_PERMISSION,
+    }
 )
 
 
@@ -144,6 +149,36 @@ class HuntHypothesisWriteAuthority:
         return AuthorizationDecision(
             principal_id=principal.principal_id,
             operation=HUNT_HYPOTHESIS_CREATE_PERMISSION,
+            timestamp=timestamp,
+            outcome="allowed" if allowed else "denied",
+        )
+
+    def require(self, principal: AuthenticatedPrincipal) -> AuthorizationDecision:
+        decision = self.evaluate(principal)
+        if decision.outcome != "allowed":
+            raise LocalOperatorAuthorizationError(
+                "The authenticated principal is not authorized."
+            )
+        return decision
+
+
+class HuntHypothesisActivationAuthority:
+    def __init__(
+        self,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
+        self._clock = clock
+
+    def evaluate(self, principal: AuthenticatedPrincipal) -> AuthorizationDecision:
+        timestamp = self._clock()
+        if timestamp.tzinfo is None:
+            raise LocalOperatorConfigurationIntegrityError(
+                "The authorization clock must be timezone-aware."
+            )
+        allowed = HUNT_HYPOTHESIS_ACTIVATE_PERMISSION in principal.permissions
+        return AuthorizationDecision(
+            principal_id=principal.principal_id,
+            operation=HUNT_HYPOTHESIS_ACTIVATE_PERMISSION,
             timestamp=timestamp,
             outcome="allowed" if allowed else "denied",
         )

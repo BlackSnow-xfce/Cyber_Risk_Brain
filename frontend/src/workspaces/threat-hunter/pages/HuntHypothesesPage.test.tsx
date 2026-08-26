@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HuntHypothesis } from "../HuntHypothesis";
 import {
+    activateHuntHypothesis,
     createHuntHypothesis,
     getHuntHypotheses,
     getHuntHypothesisReferenceResolution,
@@ -11,6 +12,7 @@ import {
 import HuntHypothesesPage from "./HuntHypothesesPage";
 
 vi.mock("../HuntHypothesisApiClient", () => ({
+    activateHuntHypothesis: vi.fn(),
     getHuntHypotheses: vi.fn(),
     getHuntHypothesisReferenceResolution: vi.fn(),
     getLocalOperatorSession: vi.fn(),
@@ -42,12 +44,14 @@ describe("HuntHypothesesPage", () => {
     afterEach(() => cleanup());
 
     beforeEach(() => {
+        vi.clearAllMocks();
         vi.mocked(getHuntHypotheses).mockResolvedValue([]);
         vi.mocked(getLocalOperatorSession).mockResolvedValue(null);
         vi.mocked(createHuntHypothesis).mockResolvedValue({
             ...hypothesis,
             status: "draft",
         });
+        vi.mocked(activateHuntHypothesis).mockResolvedValue(hypothesis);
         vi.mocked(getHuntHypothesisReferenceResolution).mockResolvedValue({
             hypothesis_id: hypothesis.hypothesis_id,
             references: [],
@@ -120,6 +124,91 @@ describe("HuntHypothesesPage", () => {
     it("keeps the unconfirmed-assumption warning visible", async () => {
         render(<HuntHypothesesPage />);
         expect(await screen.findByText(/does not constitute evidence or confirmed compromise/i)).toBeInTheDocument();
+    });
+
+    it("activates only an authorized draft and refreshes persisted state", async () => {
+        const draft = { ...hypothesis, status: "draft" };
+        const active = { ...hypothesis, status: "active" };
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:activate"],
+            expires_at: "2026-08-26T09:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        vi.mocked(getHuntHypotheses)
+            .mockResolvedValueOnce([draft])
+            .mockResolvedValueOnce([active]);
+        vi.mocked(activateHuntHypothesis).mockResolvedValueOnce(active);
+        render(<HuntHypothesesPage />);
+
+        fireEvent.click(await screen.findByRole("button", {
+            name: "Activate for investigation",
+        }));
+
+        await waitFor(() => expect(activateHuntHypothesis).toHaveBeenCalledWith(
+            hypothesis.hypothesis_id,
+            "csrf-token",
+        ));
+        expect(await screen.findByText("active")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {
+            name: "Activate for investigation",
+        })).not.toBeInTheDocument();
+        expect(screen.getByText(/released for investigation only/i)).toBeInTheDocument();
+        expect(screen.getByText(/not evidence or confirmation/i)).toBeInTheDocument();
+    });
+
+    it("does not expose activation to creation-only or non-draft sessions", async () => {
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:create"],
+            expires_at: "2026-08-26T09:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        vi.mocked(getHuntHypotheses).mockResolvedValueOnce([hypothesis]);
+        render(<HuntHypothesesPage />);
+
+        await screen.findByText(hypothesis.title);
+        expect(screen.queryByRole("button", {
+            name: "Activate for investigation",
+        })).not.toBeInTheDocument();
+        expect(activateHuntHypothesis).not.toHaveBeenCalled();
+    });
+
+    it("preserves canonical activation when collection refresh fails", async () => {
+        const draft = { ...hypothesis, status: "draft" };
+        const active = { ...hypothesis, status: "active" };
+        vi.mocked(getLocalOperatorSession).mockResolvedValueOnce({
+            principal_id: "product-owner",
+            display_name: "Product Owner",
+            principal_type: "human/operator",
+            granted_permissions: ["hunt_hypothesis:activate"],
+            expires_at: "2026-08-26T09:30:00Z",
+            csrf_token: "csrf-token",
+        });
+        vi.mocked(getHuntHypotheses)
+            .mockResolvedValueOnce([draft])
+            .mockRejectedValueOnce(new Error("refresh unavailable"));
+        vi.mocked(activateHuntHypothesis).mockResolvedValueOnce(active);
+        render(<HuntHypothesesPage />);
+
+        fireEvent.click(await screen.findByRole("button", {
+            name: "Activate for investigation",
+        }));
+
+        expect(await screen.findByText("active")).toBeInTheDocument();
+        expect(screen.getByText(
+            "The hypothesis was activated, but the collection could not be refreshed.",
+        )).toBeInTheDocument();
+        expect(screen.queryByText(
+            "The hypothesis could not be activated.",
+        )).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {
+            name: "Activate for investigation",
+        })).not.toBeInTheDocument();
     });
 
     it("rejects duplicate pointers before submission", async () => {

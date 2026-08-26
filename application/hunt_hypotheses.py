@@ -5,9 +5,10 @@ import os
 import tempfile
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from core.threat_hunting import (
     HUNT_HYPOTHESIS_CONTRACT_VERSION,
@@ -50,11 +51,44 @@ class HuntHypothesisPersistenceError(RuntimeError):
     """Raised when safe repository persistence cannot complete."""
 
 
+class HuntHypothesisActivationRolledBackError(HuntHypothesisPersistenceError):
+    """Raised when a terminal activation failure was canonically rolled back."""
+
+
+class HuntHypothesisActivationRecoveryRequiredError(HuntHypothesisPersistenceError):
+    """Raised when activation rollback cannot be canonically verified."""
+
+
+class HuntHypothesisRepositoryNotFoundError(LookupError):
+    """Raised when an exact canonical hypothesis is absent."""
+
+
+class HuntHypothesisStateConflictError(RuntimeError):
+    """Raised when optimistic state admission fails."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        actual_status: HuntHypothesisStatus | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.actual_status = actual_status
+
+
 class HuntHypothesisRepository(Protocol):
     def list(self) -> tuple[HuntHypothesis, ...]:
         ...
 
     def create(self, hypothesis: HuntHypothesis) -> HuntHypothesis:
+        ...
+
+    def activate(
+        self,
+        hypothesis_id: str,
+        expected_status: HuntHypothesisStatus,
+        terminal_callback: Callable[[HuntHypothesis], None] | None = None,
+    ) -> HuntHypothesis:
         ...
 
 
@@ -133,6 +167,96 @@ class FileHuntHypothesisRepository:
                     "Persisted Hunt Hypothesis verification failed."
                 )
             return persisted[-1]
+
+    def activate(
+        self,
+        hypothesis_id: str,
+        expected_status: HuntHypothesisStatus,
+        terminal_callback: Callable[[HuntHypothesis], None] | None = None,
+    ) -> HuntHypothesis:
+        if not isinstance(hypothesis_id, str) or not hypothesis_id.strip():
+            raise HuntHypothesisRepositoryNotFoundError(
+                "Hunt Hypothesis was not found."
+            )
+        if expected_status is not HuntHypothesisStatus.DRAFT:
+            raise HuntHypothesisStateConflictError(
+                "Expected Hunt Hypothesis status is not activatable."
+            )
+        path = self._configured_path()
+        if not path.is_file():
+            raise HuntHypothesisConfigurationError(
+                "HUNT_HYPOTHESIS_REPOSITORY_PATH cannot be read."
+            )
+        lock = _RepositoryLock(
+            path.with_name(f"{path.name}.lock"), self._lock_timeout_seconds
+        )
+        with lock:
+            current = self.list()
+            matches = tuple(
+                item for item in current if item.hypothesis_id == hypothesis_id.strip()
+            )
+            if not matches:
+                raise HuntHypothesisRepositoryNotFoundError(
+                    "Hunt Hypothesis was not found."
+                )
+            if len(matches) != 1:
+                raise HuntHypothesisDataError(
+                    "Hunt Hypothesis identity is ambiguous."
+                )
+            hypothesis = matches[0]
+            if hypothesis.status is not expected_status:
+                raise HuntHypothesisStateConflictError(
+                    "Hunt Hypothesis status no longer matches the expected state.",
+                    actual_status=hypothesis.status,
+                )
+            activated = replace(hypothesis, status=HuntHypothesisStatus.ACTIVE)
+            updated = tuple(
+                activated if item.hypothesis_id == hypothesis.hypothesis_id else item
+                for item in current
+            )
+            original_document = {
+                "contract_version": HUNT_HYPOTHESIS_CONTRACT_VERSION,
+                "hypotheses": [item.to_dict() for item in current],
+            }
+            self._atomic_write(
+                path,
+                {
+                    "contract_version": HUNT_HYPOTHESIS_CONTRACT_VERSION,
+                    "hypotheses": [item.to_dict() for item in updated],
+                },
+            )
+            terminal_callback_started = False
+            try:
+                persisted = tuple(
+                    item
+                    for item in self.list()
+                    if item.hypothesis_id == hypothesis.hypothesis_id
+                )
+                if persisted != (activated,):
+                    raise HuntHypothesisPersistenceError(
+                        "Persisted Hunt Hypothesis activation verification failed."
+                    )
+                if terminal_callback is not None:
+                    terminal_callback_started = True
+                    terminal_callback(persisted[0])
+                return persisted[0]
+            except Exception as activation_error:
+                try:
+                    self._atomic_write(path, original_document)
+                    restored = self.list()
+                    if restored != current:
+                        raise HuntHypothesisPersistenceError(
+                            "Hunt Hypothesis activation recovery verification failed."
+                        )
+                except Exception as rollback_error:
+                    raise HuntHypothesisActivationRecoveryRequiredError(
+                        "Hunt Hypothesis activation recovery requires reconciliation."
+                    ) from rollback_error
+                if terminal_callback_started:
+                    raise HuntHypothesisActivationRolledBackError(
+                        "Hunt Hypothesis activation failed and rollback was verified."
+                    ) from activation_error
+                raise activation_error
 
     @staticmethod
     def _atomic_write(path: Path, document: dict[str, object]) -> None:

@@ -7,6 +7,8 @@ from application.local_operator import (
     AIModelSelectionWriteAuthority,
     AuthenticatedPrincipal,
     HUNT_HYPOTHESIS_CREATE_PERMISSION,
+    HUNT_HYPOTHESIS_ACTIVATE_PERMISSION,
+    HuntHypothesisActivationAuthority,
     HuntHypothesisWriteAuthority,
     LocalOperatorAuthenticationError,
     LocalOperatorAuthenticator,
@@ -112,6 +114,18 @@ def test_authentication_and_creation_authorization_are_distinct() -> None:
     assert denied.outcome == "denied"
     with pytest.raises(LocalOperatorAuthorizationError):
         authority.require(unauthorized)
+
+
+def test_activation_authority_requires_exact_server_permission() -> None:
+    authorized = _authenticator(
+        permissions=HUNT_HYPOTHESIS_ACTIVATE_PERMISSION
+    ).authenticate(f"Bearer {TOKEN}")
+    creation_only = _authenticator().authenticate(f"Bearer {TOKEN}")
+    authority = HuntHypothesisActivationAuthority()
+
+    assert authority.require(authorized).operation == HUNT_HYPOTHESIS_ACTIVATE_PERMISSION
+    with pytest.raises(LocalOperatorAuthorizationError):
+        authority.require(creation_only)
 
 
 def test_only_explicit_local_origins_are_accepted() -> None:

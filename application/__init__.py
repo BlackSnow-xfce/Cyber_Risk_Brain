@@ -91,8 +91,20 @@ from application.hunt_hypotheses import (
     HuntHypothesisConflictError,
     HuntHypothesisDataError,
     HuntHypothesisPersistenceError,
+    HuntHypothesisRepositoryNotFoundError,
+    HuntHypothesisStateConflictError,
     HuntHypothesisQueryService,
     HuntHypothesisRepository,
+)
+from application.hunt_hypothesis_activation import (
+    FileHuntHypothesisActivationAuditSink,
+    HuntHypothesisActivationAuditError,
+    HuntHypothesisActivationInput,
+    HuntHypothesisActivationResult,
+    HuntHypothesisActivationService,
+    HuntHypothesisActivationAttemptAuditor,
+    HuntHypothesisActivationValidationError,
+    safe_hypothesis_audit_id,
 )
 from application.hunt_hypothesis_creation import (
     HuntHypothesisCreationInput,
@@ -114,6 +126,8 @@ from application.local_operator import (
     AuthenticatedPrincipal,
     AuthorizationDecision,
     HUNT_HYPOTHESIS_CREATE_PERMISSION,
+    HUNT_HYPOTHESIS_ACTIVATE_PERMISSION,
+    HuntHypothesisActivationAuthority,
     HuntHypothesisWriteAuthority,
     LocalOperatorAuthenticationError,
     LocalOperatorAuthenticator,

@@ -5,8 +5,10 @@ from typing import Literal
 from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from application import (
@@ -39,6 +41,7 @@ from application import (
     FindingsConfigurationError,
     FindingsQueryService,
     FileHuntHypothesisRepository,
+    FileHuntHypothesisActivationAuditSink,
     HuntHypothesisConfigurationError,
     HuntHypothesisConflictError,
     HuntHypothesisCreationInput,
@@ -46,6 +49,14 @@ from application import (
     HuntHypothesisCreationValidationError,
     HuntHypothesisDataError,
     HuntHypothesisPersistenceError,
+    HuntHypothesisRepositoryNotFoundError,
+    HuntHypothesisStateConflictError,
+    HuntHypothesisActivationAuditError,
+    HuntHypothesisActivationInput,
+    HuntHypothesisActivationService,
+    HuntHypothesisActivationAttemptAuditor,
+    HuntHypothesisActivationValidationError,
+    safe_hypothesis_audit_id,
     HuntHypothesisQueryService,
     HuntHypothesisNotFoundError,
     HuntHypothesisReferenceIntegrityError,
@@ -100,6 +111,7 @@ from core.threat_hunting import (
     HuntHypothesis,
     HuntHypothesisReference,
     HuntHypothesisReferenceType,
+    HuntHypothesisStatus,
 )
 from core.threat_intelligence import (
     CisaKevInformation,
@@ -126,6 +138,7 @@ from settings import (
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
     HUNT_HYPOTHESIS_REPOSITORY_PATH,
+    HUNT_HYPOTHESIS_ACTIVATION_AUDIT_PATH,
     LOCAL_OPERATOR_ALLOWED_ORIGINS,
     LOCAL_OPERATOR_DISPLAY_NAME,
     LOCAL_OPERATOR_MODE_ENABLED,
@@ -206,6 +219,12 @@ class HuntHypothesisCreationRequest(BaseModel):
     rationale: str
     target_references: list[HuntHypothesisTargetReferenceRequest]
     threat_references: list[HuntHypothesisThreatReferenceRequest]
+
+
+class HuntHypothesisActivationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_status: Literal["draft"]
 
 
 class HuntHypothesisResolvedReferenceResponse(BaseModel):
@@ -528,6 +547,24 @@ def get_hunt_hypothesis_creation_service() -> HuntHypothesisCreationService:
     )
 
 
+def get_hunt_hypothesis_activation_service() -> HuntHypothesisActivationService:
+    return HuntHypothesisActivationService(
+        FileHuntHypothesisRepository(HUNT_HYPOTHESIS_REPOSITORY_PATH),
+        FileHuntHypothesisActivationAuditSink(
+            HUNT_HYPOTHESIS_ACTIVATION_AUDIT_PATH
+        ),
+    )
+
+
+def get_hunt_hypothesis_activation_attempt_auditor(
+) -> HuntHypothesisActivationAttemptAuditor:
+    return HuntHypothesisActivationAttemptAuditor(
+        FileHuntHypothesisActivationAuditSink(
+            HUNT_HYPOTHESIS_ACTIVATION_AUDIT_PATH
+        )
+    )
+
+
 def get_local_operator_authenticator() -> LocalOperatorAuthenticator:
     try:
         return LocalOperatorAuthenticator.from_values(
@@ -679,6 +716,123 @@ def get_creation_principal(
             detail="Local Operator request verification failed.",
         ) from error
     return principal
+
+
+def get_activation_principal(
+    request: Request,
+    origin: str | None = Header(default=None),
+    csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    authenticator: LocalOperatorAuthenticator = Depends(
+        get_local_operator_authenticator
+    ),
+    auditor: HuntHypothesisActivationAttemptAuditor = Depends(
+        get_hunt_hypothesis_activation_attempt_auditor
+    ),
+) -> AuthenticatedPrincipal:
+    request.state.activation_auditor = auditor
+    if not request.headers.get("cookie"):
+        _audit_activation_http_rejection(
+            auditor,
+            hypothesis_id=request.path_params.get("hypothesis_id"),
+            principal_id=None,
+            reason="authentication_required",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator browser session authentication failed.",
+        )
+    store = get_local_operator_session_store()
+    principal = _configured_session_principal(authenticator)
+    try:
+        session_id, _ = store.resolve_candidates(
+            _session_cookie_candidates(request, store), principal
+        )
+        store.require_mutation(
+            session_id,
+            principal,
+            origin=origin,
+            csrf_token=csrf_token,
+        )
+    except LocalOperatorSessionAuthenticationError as error:
+        _audit_activation_http_rejection(
+            auditor,
+            hypothesis_id=request.path_params.get("hypothesis_id"),
+            principal_id=None,
+            reason="session_authentication_failed",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Local Operator browser session authentication failed.",
+        ) from error
+    except LocalOperatorSessionCsrfError as error:
+        _audit_activation_http_rejection(
+            auditor,
+            hypothesis_id=request.path_params.get("hypothesis_id"),
+            principal_id=principal.principal_id,
+            reason="request_verification_failed",
+            authorization_outcome="not_evaluated",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Local Operator request verification failed.",
+        ) from error
+    request.state.activation_principal_id = principal.principal_id
+    return principal
+
+
+def _audit_activation_http_rejection(
+    auditor: HuntHypothesisActivationAttemptAuditor,
+    *,
+    hypothesis_id: str | None,
+    principal_id: str | None,
+    reason: str,
+    authorization_outcome: str = "not_evaluated",
+) -> None:
+    try:
+        auditor.reject(
+            hypothesis_id=safe_hypothesis_audit_id(hypothesis_id),
+            principal_id=principal_id,
+            reason=reason,
+            expected_status=None,
+            authorization_outcome=authorization_outcome,
+        )
+    except HuntHypothesisActivationAuditError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Hunt Hypothesis activation is unavailable.",
+        ) from error
+
+
+@app.exception_handler(RequestValidationError)
+async def audit_activation_request_validation_failure(
+    request: Request,
+    error: RequestValidationError,
+):
+    if (
+        request.method == "POST"
+        and request.url.path.startswith("/api/hunt-hypotheses/")
+        and request.url.path.endswith("/activation")
+    ):
+        try:
+            auditor = getattr(request.state, "activation_auditor", None)
+            if auditor is None:
+                auditor = get_hunt_hypothesis_activation_attempt_auditor()
+            auditor.reject(
+                hypothesis_id=safe_hypothesis_audit_id(
+                    request.path_params.get("hypothesis_id")
+                ),
+                principal_id=getattr(
+                    request.state, "activation_principal_id", None
+                ),
+                reason="invalid_request_schema",
+                authorization_outcome="not_evaluated",
+            )
+        except HuntHypothesisActivationAuditError:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Hunt Hypothesis activation is unavailable."},
+            )
+    return await request_validation_exception_handler(request, error)
 
 
 def get_authenticated_local_operator(
@@ -1629,6 +1783,63 @@ def create_hunt_hypothesis(
         raise HTTPException(
             status_code=422,
             detail="Hunt Hypothesis creation input is invalid.",
+        ) from error
+
+
+@app.post(
+    "/api/hunt-hypotheses/{hypothesis_id}/activation",
+    response_model=HuntHypothesisResponse,
+)
+def activate_hunt_hypothesis(
+    hypothesis_id: str,
+    request: HuntHypothesisActivationRequest,
+    principal: AuthenticatedPrincipal = Depends(get_activation_principal),
+    service: HuntHypothesisActivationService = Depends(
+        get_hunt_hypothesis_activation_service
+    ),
+) -> HuntHypothesisResponse:
+    try:
+        result = service.activate(
+            HuntHypothesisActivationInput(
+                hypothesis_id=hypothesis_id,
+                expected_status=HuntHypothesisStatus(request.expected_status),
+            ),
+            principal,
+        )
+        return _hunt_hypothesis_response(result.hypothesis)
+    except LocalOperatorAuthorizationError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="The authenticated operator is not authorized.",
+        ) from error
+    except HuntHypothesisRepositoryNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Hunt Hypothesis was not found.",
+        ) from error
+    except HuntHypothesisStateConflictError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="Hunt Hypothesis state no longer permits activation.",
+        ) from error
+    except HuntHypothesisActivationValidationError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="Hunt Hypothesis activation input is invalid.",
+        ) from error
+    except (
+        HuntHypothesisConfigurationError,
+        HuntHypothesisPersistenceError,
+        HuntHypothesisActivationAuditError,
+    ) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Hunt Hypothesis activation is unavailable.",
+        ) from error
+    except HuntHypothesisDataError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Hunt Hypothesis repository contains invalid data.",
         ) from error
 
 

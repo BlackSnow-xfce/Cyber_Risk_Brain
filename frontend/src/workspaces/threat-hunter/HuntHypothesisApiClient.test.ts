@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+    activateHuntHypothesis,
     createHuntHypothesis,
     getLocalOperatorSession,
     getHuntHypothesisReferenceResolution,
@@ -119,5 +120,42 @@ describe("Local Operator session creation transport", () => {
             },
         );
         expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(input);
+    });
+});
+
+describe("Hunt Hypothesis activation transport", () => {
+    it("posts only expected draft state with session credentials and CSRF", async () => {
+        const activated = {
+            hypothesis_id: "hypothesis/001",
+            title: "Fictional hypothesis",
+            statement: "A fictional signal may warrant investigation.",
+            status: "active",
+            created_at: "2026-08-26T09:00:00Z",
+            created_by: "product-owner",
+            target_references: [],
+            threat_references: [],
+            rationale: "Human investigation is required.",
+            contract_version: "1.0",
+        };
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(activated), { status: 200 }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        await expect(
+            activateHuntHypothesis("hypothesis/001", "csrf-token"),
+        ).resolves.toEqual(activated);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "http://127.0.0.1:8000/api/hunt-hypotheses/hypothesis%2F001/activation",
+            {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": "csrf-token",
+                },
+                body: JSON.stringify({ expected_status: "draft" }),
+            },
+        );
     });
 });

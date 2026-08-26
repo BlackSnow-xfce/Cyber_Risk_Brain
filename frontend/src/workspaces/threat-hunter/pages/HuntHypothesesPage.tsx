@@ -22,6 +22,7 @@ import type {
     LocalOperatorSession,
 } from "../HuntHypothesis";
 import {
+    activateHuntHypothesis,
     createHuntHypothesis,
     getHuntHypotheses,
     getHuntHypothesisReferenceResolution,
@@ -44,6 +45,12 @@ export default function HuntHypothesesPage() {
     const [sessionLoading, setSessionLoading] = useState(true);
     const [creationOpen, setCreationOpen] = useState(false);
     const [creationError, setCreationError] = useState<string | null>(null);
+    const [activationLoading, setActivationLoading] = useState<string | null>(null);
+    const [activationErrors, setActivationErrors] = useState<Record<string, string>>({});
+    const [activationRefreshWarnings, setActivationRefreshWarnings] = useState<
+        Record<string, string>
+    >({});
+    const [activationSuccess, setActivationSuccess] = useState<string | null>(null);
 
     useEffect(() => {
         let current = true;
@@ -119,6 +126,54 @@ export default function HuntHypothesesPage() {
             .finally(() => setResolutionLoading(null));
     }
 
+    async function activateHypothesis(hypothesisId: string) {
+        if (!operatorSession) return;
+        setActivationLoading(hypothesisId);
+        setActivationSuccess(null);
+        setActivationErrors((current) => {
+            const next = { ...current };
+            delete next[hypothesisId];
+            return next;
+        });
+        try {
+            const activated = await activateHuntHypothesis(
+                hypothesisId,
+                operatorSession.csrf_token,
+            );
+            setHypotheses((current) => current.map((hypothesis) =>
+                hypothesis.hypothesis_id === activated.hypothesis_id
+                    ? activated
+                    : hypothesis
+            ));
+            setActivationSuccess(hypothesisId);
+            setActivationRefreshWarnings((current) => {
+                const next = { ...current };
+                delete next[hypothesisId];
+                return next;
+            });
+            try {
+                setHypotheses(await getHuntHypotheses());
+            } catch {
+                setActivationRefreshWarnings((current) => ({
+                    ...current,
+                    [hypothesisId]:
+                        "The hypothesis was activated, but the collection could not be refreshed.",
+                }));
+            }
+        } catch {
+            setActivationErrors((current) => ({
+                ...current,
+                [hypothesisId]: "The hypothesis could not be activated.",
+            }));
+        } finally {
+            setActivationLoading(null);
+        }
+    }
+
+    const canActivate = operatorSession?.granted_permissions.includes(
+        "hunt_hypothesis:activate",
+    ) ?? false;
+
     return (
         <Stack spacing={3}>
             <Box component="header">
@@ -192,6 +247,12 @@ export default function HuntHypothesesPage() {
                                 <Typography variant="caption" color="text.secondary">
                                     Created {formatTimestamp(hypothesis.created_at)} by {hypothesis.created_by}
                                 </Typography>
+                                {hypothesis.status === "active" && (
+                                    <Alert severity="info">
+                                        Active means released for investigation only. It does not
+                                        establish truth, evidence, successful execution or compromise.
+                                    </Alert>
+                                )}
                                 <ReferenceList
                                     label="Unresolved target references"
                                     references={hypothesis.target_references}
@@ -200,7 +261,7 @@ export default function HuntHypothesesPage() {
                                     label="Unresolved threat references"
                                     references={hypothesis.threat_references}
                                 />
-                                <Box>
+                                <Stack direction="row" spacing={1}>
                                     <Button
                                         size="small"
                                         variant="outlined"
@@ -211,7 +272,35 @@ export default function HuntHypothesesPage() {
                                             ? "Resolving references…"
                                             : "Resolve references"}
                                     </Button>
-                                </Box>
+                                    {hypothesis.status === "draft" && canActivate && (
+                                        <Button
+                                            size="small"
+                                            variant="contained"
+                                            disabled={activationLoading === hypothesis.hypothesis_id}
+                                            onClick={() => void activateHypothesis(hypothesis.hypothesis_id)}
+                                        >
+                                            {activationLoading === hypothesis.hypothesis_id
+                                                ? "Activating..."
+                                                : "Activate for investigation"}
+                                        </Button>
+                                    )}
+                                </Stack>
+                                {activationErrors[hypothesis.hypothesis_id] && (
+                                    <Alert severity="error">
+                                        {activationErrors[hypothesis.hypothesis_id]}
+                                    </Alert>
+                                )}
+                                {activationSuccess === hypothesis.hypothesis_id && (
+                                    <Alert severity="success">
+                                        The hypothesis is active for investigation. This is not
+                                        evidence or confirmation of compromise.
+                                    </Alert>
+                                )}
+                                {activationRefreshWarnings[hypothesis.hypothesis_id] && (
+                                    <Alert severity="warning">
+                                        {activationRefreshWarnings[hypothesis.hypothesis_id]}
+                                    </Alert>
+                                )}
                                 {resolutionErrors[hypothesis.hypothesis_id] && (
                                     <Alert severity="error">
                                         {resolutionErrors[hypothesis.hypothesis_id]}

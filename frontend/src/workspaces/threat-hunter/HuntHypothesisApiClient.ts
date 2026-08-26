@@ -76,6 +76,35 @@ export async function createHuntHypothesis(
     return payload;
 }
 
+export async function activateHuntHypothesis(
+    hypothesisId: string,
+    csrfToken: string,
+): Promise<HuntHypothesis> {
+    let response: Response;
+    try {
+        response = await fetch(
+            `${API_BASE_URL}/api/hunt-hypotheses/${encodeURIComponent(hypothesisId)}/activation`,
+            {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfToken,
+                },
+                body: JSON.stringify({ expected_status: "draft" }),
+            },
+        );
+    } catch {
+        throw new HuntHypothesisRequestError(null);
+    }
+    if (!response.ok) throw new HuntHypothesisRequestError(response.status);
+    const payload: unknown = await response.json();
+    if (!isHuntHypothesis(payload) || payload.hypothesis_id !== hypothesisId) {
+        throw new HuntHypothesisRequestError(response.status);
+    }
+    return payload;
+}
+
 export async function getHuntHypothesisReferenceResolution(
     hypothesisId: string,
 ): Promise<HuntHypothesisReferenceResolution> {
