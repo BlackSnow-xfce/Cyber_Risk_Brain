@@ -21,9 +21,11 @@ from aidp_orchestration.executor import (
     ProcessOutcome,
     SubprocessRunner,
     WindowsVisibleCodexRunner,
+    _VISIBLE_ERROR_CODES,
     serialize_execution_result,
 )
 from aidp_orchestration.launcher import CodexLauncher
+from aidp_orchestration.visible_codex import READINESS_ERROR_CODES
 
 
 class FakeGit:
@@ -117,7 +119,7 @@ class FakeVisibleProcess:
         self.returncode = 0
         self.killed = False
         self.waited = False
-        self.stderr = BytesIO(b"AIDP_VISIBLE_CONSOLE_READY_V1\n")
+        self.stderr = BytesIO(b"AIDP_VISIBLE_CONSOLE_READY_V2\n")
 
     def communicate(self, timeout=None):
         if self.error is not None and not self.killed:
@@ -155,11 +157,36 @@ def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: P
 
 def test_visible_windows_runner_requires_relay_readiness(tmp_path: Path) -> None:
     process = FakeVisibleProcess()
-    process.stderr = BytesIO(b"visible Codex relay failed: RuntimeError\n")
+    process.stderr = BytesIO(b"AIDP_VISIBLE_CONSOLE_ERROR_V2:WINDOW_OFFSCREEN\n")
     outcome = WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
         ("codex.exe",), cwd=tmp_path, timeout_seconds=1,
     )
-    assert outcome.error == "visible Codex console readiness failed"
+    assert outcome.error == "visible Codex console readiness failed: WINDOW_OFFSCREEN"
+    assert process.killed
+
+
+def test_parent_and_relay_readiness_allowlists_match() -> None:
+    assert _VISIBLE_ERROR_CODES == READINESS_ERROR_CODES
+
+
+@pytest.mark.parametrize(
+    "readiness",
+    (
+        b"AIDP_VISIBLE_CONSOLE_ERROR_V2:UNKNOWN\n",
+        b"AIDP_VISIBLE_CONSOLE_ERROR_V2:WINDOW_OFFSCREEN:prompt\n",
+        b"visible Codex relay failed: RuntimeError\n",
+        b"AIDP_VISIBLE_CONSOLE_ERROR_V2:\xff\n",
+        b"",
+    ),
+)
+def test_visible_windows_runner_normalizes_untrusted_readiness(readiness: bytes, tmp_path: Path) -> None:
+    process = FakeVisibleProcess()
+    process.stderr = BytesIO(readiness)
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=lambda *a, **k: process).run(
+        ("codex.exe", "secret prompt"), cwd=tmp_path, timeout_seconds=1,
+    )
+    assert outcome.error == "visible Codex console readiness failed: READINESS_PROTOCOL_INVALID"
+    assert "secret prompt" not in outcome.error
     assert process.killed
 
 
@@ -172,7 +199,7 @@ def test_visible_windows_runner_waits_for_readiness_before_communicating(tmp_pat
             return super().readline(*args, **kwargs)
 
     process = FakeVisibleProcess()
-    process.stderr = ReadyStream(b"AIDP_VISIBLE_CONSOLE_READY_V1\n")
+    process.stderr = ReadyStream(b"AIDP_VISIBLE_CONSOLE_READY_V2\n")
     original_communicate = process.communicate
 
     def communicate(timeout=None):
@@ -341,6 +368,14 @@ def test_process_failures_are_not_success(tmp_path: Path, outcome: ProcessOutcom
     result = service(tmp_path, FakeRunner([outcome])).execute(request(tmp_path))
     assert result.status is expected
     assert not result.is_review_ready
+
+
+def test_readiness_predicate_code_is_preserved_in_execution_result(tmp_path: Path) -> None:
+    reason = "visible Codex console readiness failed: WINDOW_OFFSCREEN"
+    result = service(tmp_path, FakeRunner([ProcessOutcome(125, "", "", error=reason)])).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.ERROR
+    assert result.failure_reason == reason
+    assert json.loads(serialize_execution_result(result))["codex_execution_result"]["failure_reason"] == reason
 
 
 def test_scope_violation_is_fail_closed(tmp_path: Path) -> None:

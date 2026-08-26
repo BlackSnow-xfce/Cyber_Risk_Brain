@@ -5,10 +5,12 @@ from __future__ import annotations
 import codecs
 import ctypes
 import os
+import queue
 import subprocess
 import sys
 import threading
 from ctypes import wintypes
+from enum import Enum
 from typing import BinaryIO, Sequence, TextIO
 
 
@@ -20,9 +22,40 @@ _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_SHOWWINDOW = 0x0040
 _MONITOR_DEFAULTTONULL = 0
-_GENERIC_READ = 0x00020000
+_DESKTOP_READOBJECTS = 0x0001
 _UOI_NAME = 2
-_READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V1\n"
+_GA_ROOT = 2
+_HWND_MESSAGE = ctypes.c_void_p(-3).value
+_READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V2\n"
+_ERROR_PREFIX = b"AIDP_VISIBLE_CONSOLE_ERROR_V2:"
+
+
+class ConsoleReadinessCode(str, Enum):
+    NO_CONSOLE_HWND = "NO_CONSOLE_HWND"
+    WINDOW_NOT_TOP_LEVEL = "WINDOW_NOT_TOP_LEVEL"
+    MESSAGE_ONLY_OR_PSEUDOCONSOLE_WINDOW = "MESSAGE_ONLY_OR_PSEUDOCONSOLE_WINDOW"
+    WINDOW_THREAD_UNAVAILABLE = "WINDOW_THREAD_UNAVAILABLE"
+    WINDOW_DESKTOP_UNAVAILABLE = "WINDOW_DESKTOP_UNAVAILABLE"
+    INPUT_DESKTOP_UNAVAILABLE = "INPUT_DESKTOP_UNAVAILABLE"
+    DESKTOP_NAME_UNAVAILABLE = "DESKTOP_NAME_UNAVAILABLE"
+    DESKTOP_MISMATCH = "DESKTOP_MISMATCH"
+    WINDOW_PRESENTATION_FAILED = "WINDOW_PRESENTATION_FAILED"
+    WINDOW_NOT_VISIBLE = "WINDOW_NOT_VISIBLE"
+    WINDOW_MINIMIZED = "WINDOW_MINIMIZED"
+    VISIBLE_MONITOR_UNAVAILABLE = "VISIBLE_MONITOR_UNAVAILABLE"
+    WINDOW_BOUNDS_UNAVAILABLE = "WINDOW_BOUNDS_UNAVAILABLE"
+    MONITOR_WORK_AREA_UNAVAILABLE = "MONITOR_WORK_AREA_UNAVAILABLE"
+    WINDOW_OFFSCREEN = "WINDOW_OFFSCREEN"
+    CONOUT_UNAVAILABLE = "CONOUT_UNAVAILABLE"
+
+
+READINESS_ERROR_CODES = frozenset(code.value for code in ConsoleReadinessCode)
+
+
+class ConsoleReadinessError(RuntimeError):
+    def __init__(self, code: ConsoleReadinessCode):
+        super().__init__(code.value)
+        self.code = code
 
 
 class _Rect(ctypes.Structure):
@@ -163,13 +196,17 @@ def _rectangles_intersect(first: _Rect, second: _Rect) -> bool:
     return first.left < second.right and first.right > second.left and first.top < second.bottom and first.bottom > second.top
 
 
-def _present_console(*, kernel32=None, user32=None, desktop_name=_desktop_name) -> None:
+def _configure_presentation_apis(kernel32, user32) -> None:
     kernel32 = kernel32 or ctypes.WinDLL("kernel32", use_last_error=True)
     user32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
-    kernel32.GetConsoleWindow.argtypes = ()
-    kernel32.GetConsoleWindow.restype = wintypes.HWND
+    kernel32.GetCurrentThreadId.argtypes = ()
+    kernel32.GetCurrentThreadId.restype = wintypes.DWORD
     user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.c_void_p)
     user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.GetParent.argtypes = (wintypes.HWND,)
+    user32.GetParent.restype = wintypes.HWND
     user32.GetThreadDesktop.argtypes = (wintypes.DWORD,)
     user32.GetThreadDesktop.restype = wintypes.HANDLE
     user32.OpenInputDesktop.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
@@ -200,58 +237,162 @@ def _present_console(*, kernel32=None, user32=None, desktop_name=_desktop_name) 
     user32.GetWindowRect.restype = wintypes.BOOL
     user32.GetMonitorInfoW.argtypes = (wintypes.HANDLE, ctypes.POINTER(_MonitorInfo))
     user32.GetMonitorInfoW.restype = wintypes.BOOL
-    window = kernel32.GetConsoleWindow()
-    if not window:
-        raise RuntimeError("visible console window is unavailable")
+
+
+def _present_window(window, *, kernel32, user32, desktop_name=_desktop_name) -> None:
+    _configure_presentation_apis(kernel32, user32)
+    if user32.GetParent(window) in (-3, _HWND_MESSAGE):
+        raise ConsoleReadinessError(ConsoleReadinessCode.MESSAGE_ONLY_OR_PSEUDOCONSOLE_WINDOW)
+    if user32.GetAncestor(window, _GA_ROOT) != window:
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_NOT_TOP_LEVEL)
 
     window_thread = user32.GetWindowThreadProcessId(window, None)
-    window_desktop = user32.GetThreadDesktop(window_thread) if window_thread else None
-    input_desktop = user32.OpenInputDesktop(0, False, _GENERIC_READ)
-    if not window_desktop or not input_desktop:
-        if input_desktop:
-            user32.CloseDesktop(input_desktop)
-        raise RuntimeError("interactive desktop cannot be verified")
+    if not window_thread:
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_THREAD_UNAVAILABLE)
+    window_desktop = user32.GetThreadDesktop(kernel32.GetCurrentThreadId())
+    if not window_desktop:
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_DESKTOP_UNAVAILABLE)
+    input_desktop = user32.OpenInputDesktop(0, False, _DESKTOP_READOBJECTS)
+    if not input_desktop:
+        raise ConsoleReadinessError(ConsoleReadinessCode.INPUT_DESKTOP_UNAVAILABLE)
     try:
-        if desktop_name(user32, window_desktop) != desktop_name(user32, input_desktop):
-            raise RuntimeError("console window is not on the interactive input desktop")
+        try:
+            window_desktop_name = desktop_name(user32, window_desktop)
+            input_desktop_name = desktop_name(user32, input_desktop)
+        except (OSError, RuntimeError):
+            raise ConsoleReadinessError(ConsoleReadinessCode.DESKTOP_NAME_UNAVAILABLE) from None
+        if window_desktop_name != input_desktop_name:
+            raise ConsoleReadinessError(ConsoleReadinessCode.DESKTOP_MISMATCH)
     finally:
         user32.CloseDesktop(input_desktop)
 
     user32.ShowWindow(window, _SW_RESTORE)
     if not user32.SetWindowPos(window, 0, 0, 0, 0, 0, _SWP_NOMOVE | _SWP_NOSIZE | _SWP_SHOWWINDOW):
-        raise OSError(ctypes.get_last_error(), "console window Z-order update failed")
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_PRESENTATION_FAILED)
     user32.SetForegroundWindow(window)
     if not user32.IsWindowVisible(window):
-        raise RuntimeError("console window is not visible")
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_NOT_VISIBLE)
     if user32.IsIconic(window):
-        raise RuntimeError("console window remains minimized")
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_MINIMIZED)
     monitor = user32.MonitorFromWindow(window, _MONITOR_DEFAULTTONULL)
     if not monitor:
-        raise RuntimeError("console window does not intersect a visible monitor")
+        raise ConsoleReadinessError(ConsoleReadinessCode.VISIBLE_MONITOR_UNAVAILABLE)
     window_rect = _Rect()
     monitor_info = _MonitorInfo()
     monitor_info.cbSize = ctypes.sizeof(monitor_info)
     if not user32.GetWindowRect(window, ctypes.byref(window_rect)):
-        raise OSError(ctypes.get_last_error(), "console window bounds query failed")
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_BOUNDS_UNAVAILABLE)
     if not user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
-        raise OSError(ctypes.get_last_error(), "monitor work area query failed")
+        raise ConsoleReadinessError(ConsoleReadinessCode.MONITOR_WORK_AREA_UNAVAILABLE)
     if not _rectangles_intersect(window_rect, monitor_info.rcWork):
-        raise RuntimeError("console window is outside the visible monitor work area")
+        raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_OFFSCREEN)
+
+
+def _present_console(*, kernel32=None, user32=None, desktop_name=_desktop_name) -> None:
+    kernel32 = kernel32 or ctypes.WinDLL("kernel32", use_last_error=True)
+    user32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    kernel32.GetConsoleWindow.argtypes = ()
+    kernel32.GetConsoleWindow.restype = wintypes.HWND
+    window = kernel32.GetConsoleWindow()
+    if not window:
+        raise ConsoleReadinessError(ConsoleReadinessCode.NO_CONSOLE_HWND)
+    _present_window(window, kernel32=kernel32, user32=user32, desktop_name=desktop_name)
+
+
+class WindowsPresentationWindow:
+    """Small relay-owned top-level window used when the delegated console is off-screen."""
+
+    def __init__(self) -> None:
+        import tkinter
+
+        self._messages: queue.Queue[str | None] = queue.Queue()
+        self._closed = False
+        try:
+            tkinter.NoDefaultRoot()
+            self._root = tkinter.Tk()
+            self._root.title("AIDP Codex Execution")
+            self._root.geometry("1000x700+40+40")
+            self._root.protocol("WM_DELETE_WINDOW", lambda: None)
+            self._output = tkinter.Text(
+                self._root, background="#0b1020", foreground="#e5e7eb",
+                insertbackground="#e5e7eb", borderwidth=0, wrap="word",
+            )
+            self._output.pack(fill="both", expand=True)
+            self._output.configure(state="disabled")
+            self._root.update_idletasks()
+            self._root.deiconify()
+            self._root.lift()
+            hwnd = self._root.winfo_id()
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            _configure_presentation_apis(kernel32, user32)
+            hwnd = user32.GetAncestor(hwnd, _GA_ROOT)
+            if not hwnd:
+                raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_NOT_TOP_LEVEL)
+            _present_window(hwnd, kernel32=kernel32, user32=user32)
+            self._root.update()
+        except ConsoleReadinessError:
+            if hasattr(self, "_root"):
+                self._root.destroy()
+            raise
+        except Exception:
+            if hasattr(self, "_root"):
+                self._root.destroy()
+            raise ConsoleReadinessError(ConsoleReadinessCode.WINDOW_PRESENTATION_FAILED) from None
+
+    def write(self, value: str) -> int:
+        self._messages.put(value)
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+    def update(self) -> None:
+        while True:
+            try:
+                message = self._messages.get_nowait()
+            except queue.Empty:
+                break
+            self._output.configure(state="normal")
+            self._output.insert("end", message)
+            self._output.see("end")
+            self._output.configure(state="disabled")
+        self._root.update()
+
+    def close(self) -> None:
+        if not self._closed:
+            self._root.destroy()
+            self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        self.close()
 
 
 def relay(
     argv: Sequence[str], *, console_presenter=_present_console,
     popen=subprocess.Popen, job_factory=WindowsJob,
+    presentation_factory=WindowsPresentationWindow,
 ) -> int:
     if os.name != "nt" or not argv:
         return 125
     job = job_factory()
     child: subprocess.Popen[bytes] | None = None
     try:
-        console_presenter()
-        with (
-            open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1) as console,
-        ):
+        try:
+            console_presenter()
+        except ConsoleReadinessError as exc:
+            if exc.code is not ConsoleReadinessCode.WINDOW_OFFSCREEN:
+                raise
+            console = presentation_factory()
+        else:
+            try:
+                console = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+            except OSError:
+                raise ConsoleReadinessError(ConsoleReadinessCode.CONOUT_UNAVAILABLE) from None
+        with console:
             sys.stderr.buffer.write(_READY_TOKEN)
             sys.stderr.buffer.flush()
             child = popen(
@@ -276,16 +417,31 @@ def relay(
             )
             stdout_thread.start()
             stderr_thread.start()
-            return_code = child.wait()
+            while True:
+                update = getattr(console, "update", None)
+                if update is not None:
+                    update()
+                try:
+                    return_code = child.wait(timeout=0.04)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
             stdout_thread.join()
             stderr_thread.join()
+            update = getattr(console, "update", None)
+            if update is not None:
+                update()
             return return_code
     except KeyboardInterrupt:
         job.terminate(130)
         return 130
-    except Exception as exc:
-        message = f"visible Codex relay failed: {exc.__class__.__name__}\n"
-        sys.stderr.write(message)
+    except ConsoleReadinessError as exc:
+        sys.stderr.buffer.write(_ERROR_PREFIX + exc.code.value.encode("ascii") + b"\n")
+        sys.stderr.buffer.flush()
+        return 125
+    except Exception:
+        sys.stderr.buffer.write(_ERROR_PREFIX + b"WINDOW_PRESENTATION_FAILED\n")
+        sys.stderr.buffer.flush()
         return 125
     finally:
         job.close()

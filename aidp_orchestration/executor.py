@@ -24,6 +24,27 @@ from .validators import ValidatorRegistry
 from .executor_types import ProcessOutcome, ProcessRunner
 from .launcher import CodexLauncher, resolve_codex_launcher
 from .worktree import worktree_admission_reason
+_VISIBLE_READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V2\n"
+_VISIBLE_ERROR_PREFIX = b"AIDP_VISIBLE_CONSOLE_ERROR_V2:"
+_VISIBLE_PROTOCOL_ERROR = "READINESS_PROTOCOL_INVALID"
+_VISIBLE_ERROR_CODES = frozenset({
+    "NO_CONSOLE_HWND",
+    "WINDOW_NOT_TOP_LEVEL",
+    "MESSAGE_ONLY_OR_PSEUDOCONSOLE_WINDOW",
+    "WINDOW_THREAD_UNAVAILABLE",
+    "WINDOW_DESKTOP_UNAVAILABLE",
+    "INPUT_DESKTOP_UNAVAILABLE",
+    "DESKTOP_NAME_UNAVAILABLE",
+    "DESKTOP_MISMATCH",
+    "WINDOW_PRESENTATION_FAILED",
+    "WINDOW_NOT_VISIBLE",
+    "WINDOW_MINIMIZED",
+    "VISIBLE_MONITOR_UNAVAILABLE",
+    "WINDOW_BOUNDS_UNAVAILABLE",
+    "MONITOR_WORK_AREA_UNAVAILABLE",
+    "WINDOW_OFFSCREEN",
+    "CONOUT_UNAVAILABLE",
+})
 
 
 class SubprocessRunner:
@@ -103,15 +124,16 @@ class WindowsVisibleCodexRunner:
                 process.wait()
                 return ProcessOutcome(None, "", "", timed_out=True, error="visible Codex console readiness timed out")
             ready_line = readiness[0] if readiness else b""
-            if ready_line != b"AIDP_VISIBLE_CONSOLE_READY_V1\n":
+            if ready_line != _VISIBLE_READY_TOKEN:
                 process.kill()
                 stdout_value, stderr_value = process.communicate()
                 stderr_value = ready_line + (stderr_value or b"")
                 stdout, stdout_error = _decode_process_output(stdout_value, "stdout")
                 stderr, stderr_error = _decode_process_output(stderr_value, "stderr")
+                readiness_code = _readiness_error_code(ready_line)
                 return ProcessOutcome(
                     process.returncode, stdout, stderr,
-                    error=stdout_error or stderr_error or "visible Codex console readiness failed",
+                    error=f"visible Codex console readiness failed: {readiness_code}",
                 )
             remaining_timeout = max(0.0, timeout_seconds - (time.monotonic() - started_at))
             try:
@@ -420,3 +442,14 @@ def _decode_process_output(value: object, stream: str) -> tuple[str, str | None]
     except UnicodeDecodeError as exc:
         diagnostic = value.decode("utf-8", errors="replace")
         return diagnostic, f"process output decode error: {stream} is not valid UTF-8 at byte {exc.start}"
+
+
+def _readiness_error_code(line: bytes) -> str:
+    if not line.endswith(b"\n") or not line.startswith(_VISIBLE_ERROR_PREFIX):
+        return _VISIBLE_PROTOCOL_ERROR
+    encoded = line[len(_VISIBLE_ERROR_PREFIX):-1]
+    try:
+        code = encoded.decode("ascii", errors="strict")
+    except UnicodeDecodeError:
+        return _VISIBLE_PROTOCOL_ERROR
+    return code if code in _VISIBLE_ERROR_CODES else _VISIBLE_PROTOCOL_ERROR
