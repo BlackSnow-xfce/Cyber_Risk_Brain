@@ -10,7 +10,7 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from .contracts import (
     CodexExecutionRequest,
@@ -84,13 +84,24 @@ class SubprocessRunner:
 class WindowsVisibleCodexRunner:
     """Runs the trusted relay in a visible console while retaining captured output."""
 
-    def __init__(self, *, platform: str | None = None, popen=subprocess.Popen):
+    def __init__(
+        self,
+        *,
+        platform: str | None = None,
+        popen=subprocess.Popen,
+        relay_root_resolver: Callable[[], Path] | None = None,
+    ):
         self.platform = platform or os.name
         self.popen = popen
+        self.relay_root_resolver = relay_root_resolver or _authoritative_relay_root
 
     def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
         if self.platform != "nt":
             return ProcessOutcome(None, "", "", error="visible Codex console is only supported on Windows")
+        try:
+            relay_root = _validated_relay_root(self.relay_root_resolver())
+        except (OSError, RuntimeError, ValueError):
+            return ProcessOutcome(None, "", "", error="visible Codex relay start failed: RELAY_ROOT_INVALID")
         relay = (sys.executable, "-m", "aidp_orchestration.visible_codex", "--", *tuple(args))
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -98,7 +109,7 @@ class WindowsVisibleCodexRunner:
         try:
             process = self.popen(
                 relay,
-                cwd=cwd,
+                cwd=relay_root,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
@@ -158,6 +169,30 @@ class WindowsVisibleCodexRunner:
         return ProcessOutcome(
             process.returncode, stdout, stderr, error=stdout_error or stderr_error,
         )
+
+
+def _authoritative_relay_root() -> Path:
+    """Return the checkout/install root containing the loaded relay package."""
+
+    package_directory = Path(__file__).resolve().parent
+    relay_module = package_directory / "visible_codex.py"
+    package_marker = package_directory / "__init__.py"
+    if (
+        package_directory.name != "aidp_orchestration"
+        or not package_marker.is_file()
+        or not relay_module.is_file()
+    ):
+        raise RuntimeError("authoritative visible relay package is unavailable")
+    return package_directory.parent
+
+
+def _validated_relay_root(candidate: Path) -> Path:
+    relay_root = Path(candidate).resolve()
+    loaded_relay = (Path(__file__).resolve().parent / "visible_codex.py").resolve()
+    candidate_relay = relay_root / "aidp_orchestration" / "visible_codex.py"
+    if not relay_root.is_dir() or not candidate_relay.is_file() or candidate_relay.resolve() != loaded_relay:
+        raise RuntimeError("authoritative visible relay root is invalid")
+    return relay_root
 
 
 class GitInspector:

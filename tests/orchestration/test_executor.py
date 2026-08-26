@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import aidp_orchestration.executor as executor_module
 from aidp_orchestration.contracts import (
     CodexExecutionRequest,
     ExecutionStatus,
@@ -146,6 +149,8 @@ def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: P
     )
     assert observed["args"][-len(original):] == original
     assert observed["args"][-len(original) - 1] == "--"
+    assert observed["cwd"] == Path(executor_module.__file__).resolve().parent.parent
+    assert observed["cwd"] != tmp_path
     assert observed["shell"] is False
     assert observed["creationflags"] == getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
     assert observed["startupinfo"].dwFlags & subprocess.STARTF_USESHOWWINDOW
@@ -153,6 +158,76 @@ def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: P
     assert outcome.returncode == 0
     assert outcome.stdout == '{"type":"completed"}\n'
     assert outcome.stderr == "diagnostic"
+
+
+def test_visible_windows_runner_product_package_cannot_shadow_relay(tmp_path: Path) -> None:
+    product_root = tmp_path / "product"
+    incomplete_package = product_root / "aidp_orchestration"
+    incomplete_package.mkdir(parents=True)
+    (incomplete_package / "__init__.py").write_text("", encoding="utf-8")
+    observed: dict[str, object] = {}
+
+    def popen(args, **kwargs):
+        observed["args"] = tuple(args)
+        observed.update(kwargs)
+        return FakeVisibleProcess()
+
+    codex_args = ("codex.exe", "exec", "--cd", str(product_root), "prompt")
+    outcome = WindowsVisibleCodexRunner(platform="nt", popen=popen).run(
+        codex_args, cwd=product_root, timeout_seconds=10,
+    )
+
+    assert outcome.returncode == 0
+    assert observed["cwd"] == Path(executor_module.__file__).resolve().parent.parent
+    assert observed["cwd"] != product_root
+    relayed_codex_args = observed["args"][-len(codex_args):]
+    assert relayed_codex_args == codex_args
+    assert relayed_codex_args[2:4] == ("--cd", str(product_root))
+
+
+def test_visible_windows_runner_fails_closed_for_invalid_relay_root(tmp_path: Path) -> None:
+    launched = False
+
+    def popen(*args, **kwargs):
+        nonlocal launched
+        launched = True
+        return FakeVisibleProcess()
+
+    outcome = WindowsVisibleCodexRunner(
+        platform="nt",
+        popen=popen,
+        relay_root_resolver=lambda: tmp_path / "missing-relay-root",
+    ).run(("codex.exe", "secret prompt"), cwd=tmp_path, timeout_seconds=1)
+
+    assert outcome.error == "visible Codex relay start failed: RELAY_ROOT_INVALID"
+    assert "secret prompt" not in outcome.error
+    assert not launched
+
+
+@pytest.mark.skipif(
+    os.name != "nt" or os.environ.get("AIDP_RUN_VISIBLE_CONSOLE_INTEGRATION") != "1",
+    reason="requires an explicitly authorized interactive Windows desktop",
+)
+def test_visible_windows_runner_real_relay_keeps_product_root_for_child() -> None:
+    product_root = Path(r"D:\CyberRiskBrain")
+    child_program = (
+        "import os,sys,time; "
+        "root=sys.argv[sys.argv.index('--cd')+1]; "
+        "os.chdir(root); "
+        "print('INTEGRATION_CHILD_OK'); "
+        "time.sleep(3)"
+    )
+
+    outcome = WindowsVisibleCodexRunner().run(
+        (sys.executable, "-c", child_program, "--cd", str(product_root)),
+        cwd=product_root,
+        timeout_seconds=30,
+    )
+
+    assert outcome.returncode == 0
+    assert outcome.error is None
+    assert "INTEGRATION_CHILD_OK" in outcome.stdout
+    assert outcome.stderr == ""
 
 
 def test_visible_windows_runner_requires_relay_readiness(tmp_path: Path) -> None:
