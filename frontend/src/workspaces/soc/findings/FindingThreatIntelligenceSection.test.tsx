@@ -10,7 +10,10 @@ import { ThreatIntelligenceRequestError } from "@/workspaces/threat-intelligence
 import FindingsWorkspace from "./FindingsWorkspace";
 import type { FindingSummary } from "./FindingSummary";
 
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    window.history.replaceState({}, "", "/");
+});
 
 const finding: FindingSummary = {
     id: "finding-1",
@@ -205,6 +208,7 @@ function renderWorkspace(
     lookup: (findingId: string) => Promise<FindingThreatIntelligenceEnrichment>,
     findings: readonly FindingSummary[] = [finding],
 ) {
+    window.history.replaceState({}, "", `/findings?findingId=${finding.id}`);
     render(
         <FindingsWorkspace
             loadFindings={() => Promise.resolve(findings)}

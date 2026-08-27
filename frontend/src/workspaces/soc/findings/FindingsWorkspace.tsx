@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -67,17 +67,35 @@ export default function FindingsWorkspace({
     const [findingIncidents, setFindingIncidents] = useState<readonly FindingIncidentReference[]>([]);
     const [findingIncidentsError, setFindingIncidentsError] = useState<string | null>(null);
     const [findingIncidentsLoading, setFindingIncidentsLoading] = useState(false);
+    const findingIncidentsRequestVersion = useRef(0);
     const [detailFeedbackActive, setDetailFeedbackActive] = useState(false);
     const detailFeedbackTimer = useRef<number | null>(null);
     const loadThreatIntelligenceRef = useRef(loadThreatIntelligence);
     loadThreatIntelligenceRef.current = loadThreatIntelligence;
     const autoFocusRequest = useRef<string | null>(null);
 
-    const selectLoadedFinding = (findingId: string | null) => {
+    const resetFindingDetails = useCallback(() => {
+        explanationRequestVersion.current += 1;
+        setExplanation(null);
+        setExplanationError(null);
+        setExplanationLoading(false);
+        threatIntelligenceRequestVersion.current += 1;
+        setThreatIntelligence(null);
+        setThreatIntelligenceError(null);
+        setThreatIntelligenceLoading(false);
+        findingIncidentsRequestVersion.current += 1;
+        setFindingIncidents([]);
+        setFindingIncidentsError(null);
+        setFindingIncidentsLoading(false);
+        autoFocusRequest.current = null;
+    }, []);
+
+    const selectLoadedFinding = useCallback((findingId: string | null) => {
+        resetFindingDetails();
         setSelectedFinding(
             findings.find((finding) => finding.id === findingId) ?? null,
         );
-    };
+    }, [findings, resetFindingDetails]);
 
     const triggerDetailFeedback = () => {
         setDetailFeedbackActive(false);
@@ -110,7 +128,8 @@ export default function FindingsWorkspace({
                 const requestedFinding = loadedFindings.find(
                     (finding) => finding.id === requestedFindingId,
                 ) ?? null;
-                setSelectedFinding(requestedFinding ?? loadedFindings[0] ?? null);
+                resetFindingDetails();
+                setSelectedFinding(requestedFinding);
                 if (requestedFinding !== null) {
                     triggerDetailFeedback();
                 }
@@ -140,7 +159,7 @@ export default function FindingsWorkspace({
         };
         window.addEventListener("popstate", restoreUrlSelection);
         return () => window.removeEventListener("popstate", restoreUrlSelection);
-    }, [findings]);
+    }, [selectLoadedFinding]);
 
     const filteredFindings = useMemo(() => {
         const query = searchQuery.trim().toLocaleLowerCase();
@@ -168,18 +187,6 @@ export default function FindingsWorkspace({
         window.history.pushState({}, "", `/findings?${query.toString()}`);
         window.dispatchEvent(new PopStateEvent("popstate"));
         triggerDetailFeedback();
-        explanationRequestVersion.current += 1;
-        setSelectedFinding(finding);
-        setExplanation(null);
-        setExplanationError(null);
-        setExplanationLoading(false);
-        threatIntelligenceRequestVersion.current += 1;
-        setThreatIntelligence(null);
-        setThreatIntelligenceError(null);
-        setThreatIntelligenceLoading(false);
-        setFindingIncidents([]);
-        setFindingIncidentsError(null);
-        setFindingIncidentsLoading(false);
     };
 
     const requestFindingIncidents = async () => {
@@ -187,18 +194,28 @@ export default function FindingsWorkspace({
             return;
         }
 
+        const requestVersion = findingIncidentsRequestVersion.current + 1;
+        findingIncidentsRequestVersion.current = requestVersion;
         setFindingIncidentsLoading(true);
         setFindingIncidentsError(null);
         try {
-            setFindingIncidents(await loadFindingIncidents(selectedFinding.id));
+            const result = await loadFindingIncidents(selectedFinding.id);
+            if (findingIncidentsRequestVersion.current === requestVersion) {
+                setFindingIncidents(result);
+            }
         } catch (requestError) {
+            if (findingIncidentsRequestVersion.current !== requestVersion) {
+                return;
+            }
             if (requestError instanceof FindingIncidentRequestError && requestError.status === null) {
                 setFindingIncidentsError("Finding incidents could not reach the service.");
             } else {
                 setFindingIncidentsError("Finding incidents could not be loaded.");
             }
         } finally {
-            setFindingIncidentsLoading(false);
+            if (findingIncidentsRequestVersion.current === requestVersion) {
+                setFindingIncidentsLoading(false);
+            }
         }
     };
 

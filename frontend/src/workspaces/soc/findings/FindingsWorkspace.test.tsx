@@ -94,6 +94,10 @@ function deferred<Value>() {
     return { promise, resolve };
 }
 
+async function selectFinding(name: RegExp = /Controlled scanner finding/) {
+    fireEvent.click(await screen.findByRole("button", { name }));
+}
+
 describe("FindingsWorkspace", () => {
     it("shows the loading state", () => {
         render(
@@ -165,6 +169,28 @@ describe("FindingsWorkspace", () => {
         });
     });
 
+    it.each([null, "unknown-finding"])(
+        "does not implicitly select a finding for URL context %s",
+        async (findingId) => {
+            window.history.replaceState(
+                {},
+                "",
+                findingId ? `/findings?findingId=${findingId}` : "/findings",
+            );
+            render(
+                <FindingsWorkspace
+                    loadFindings={() => Promise.resolve([finding, secondFinding])}
+                />,
+            );
+
+            await screen.findByText("Select a finding to review its details.");
+            expect(screen.getByRole("button", { name: /Controlled scanner finding/ }))
+                .toHaveAttribute("aria-pressed", "false");
+            expect(screen.getByRole("button", { name: /Second controlled finding/ }))
+                .toHaveAttribute("aria-pressed", "false");
+        },
+    );
+
     it("restores the canonical selection with browser Back and Forward", async () => {
         window.history.replaceState({}, "", "/findings?findingId=result-001");
         try {
@@ -190,6 +216,40 @@ describe("FindingsWorkspace", () => {
         } finally {
             window.history.replaceState({}, "", "/");
         }
+    });
+
+    it("clears dependent detail state and ignores stale responses on URL changes", async () => {
+        window.history.replaceState({}, "", "/findings?findingId=result-001");
+        const pendingIncidents = deferred<readonly [{
+            incident_id: string;
+            relationship_id: string;
+            relationship_role: string;
+            lifecycle_status: string;
+        }]>();
+        render(
+            <FindingsWorkspace
+                loadFindings={() => Promise.resolve([finding, secondFinding])}
+                loadFindingIncidents={() => pendingIncidents.promise}
+            />,
+        );
+
+        fireEvent.click(await screen.findByRole("button", { name: "Load incidents" }));
+        window.history.pushState({}, "", "/findings?findingId=manipulated");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        await screen.findByText("Select a finding to review its details.");
+
+        await act(async () => {
+            pendingIncidents.resolve([{
+                incident_id: "stale-incident",
+                relationship_id: "stale-relationship",
+                relationship_role: "investigation_candidate",
+                lifecycle_status: "investigating",
+            }]);
+            await pendingIncidents.promise;
+        });
+
+        expect(screen.queryByText("stale-incident")).not.toBeInTheDocument();
+        expect(screen.queryByText("Loading linked incidents…")).not.toBeInTheDocument();
     });
 
     it("shows an empty state when search has no matching finding", async () => {
@@ -251,6 +311,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         fireEvent.click(await screen.findByRole("button", { name: "Load incidents" }));
 
         expect(
@@ -286,6 +347,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         expect(
             await screen.findAllByText("Controlled scanner finding"),
         ).toHaveLength(2);
@@ -324,6 +386,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         fireEvent.click(
             await screen.findByRole("button", {
                 name: "Generate AI Explanation",
@@ -366,6 +429,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         const button = await screen.findByRole("button", {
             name: "Generate AI Explanation",
         });
@@ -386,6 +450,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         fireEvent.click(
             await screen.findByRole("button", {
                 name: "Generate AI Explanation",
@@ -419,6 +484,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         fireEvent.click(
             await screen.findByRole("button", {
                 name: "Generate AI Explanation",
@@ -444,6 +510,7 @@ describe("FindingsWorkspace", () => {
             />,
         );
 
+        await selectFinding();
         fireEvent.click(
             await screen.findByRole("button", {
                 name: "Generate AI Explanation",
