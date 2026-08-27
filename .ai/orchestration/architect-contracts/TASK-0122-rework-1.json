@@ -1,0 +1,56 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0122-rework-1",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0122",
+      "title": "SOC Dashboard Visual Parity - Rework 1",
+      "phase": "POST-MVP SOC Operations",
+      "expected_head": "99d1cb004d2b9fe7772463e223cfb06f043b5d80",
+      "allowed_scope": [
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.tsx",
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.test.tsx",
+        "frontend/src/platform/navigation/Sidebar.tsx",
+        "frontend/src/platform/navigation/Sidebar.test.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.test.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspaceToolbar.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspace.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "frontend/src/workspaces/soc/explainability/**",
+        "frontend/src/workspaces/incident-response/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        ".ai/tasks/done/TASK-0120.md",
+        ".ai/tasks/done/TASK-0121.md",
+        ".ai/tasks/**/TASK-0123.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Preserve the accepted TASK-0122 V7 dashboard implementation and its successful evidence; independently validate this rework.",
+        "Selecting a canonical Finding updates the URL authoritatively to /findings?findingId=<encoded validated finding ID> without inventing or changing Finding identity.",
+        "Selecting Dashboard through the visible Sidebar while a validated Finding context is active navigates to /?findingId=<encoded validated finding ID> and renders that active investigation.",
+        "Browser Back and Forward restore matching Findings or Dashboard URL, selected Finding context, Sidebar selection and rendered content.",
+        "Direct Dashboard and Findings deep links with a valid findingId remain URL-authoritative and refresh safely.",
+        "Dashboard without findingId continues to show the truthful compact No active investigation state.",
+        "Remove or hide the non-functional Dashboard Search findings control; do not present a search or selector unless it performs a real canonical Finding selection.",
+        "Do not introduce synthetic findings, evidence, analysis, provider execution, backend changes, a second routing architecture or broader lifecycle changes.",
+        "Add focused regression coverage for Finding selection URL synchronization, Findings to Dashboard Sidebar navigation, active investigation after navigation, Back/Forward, direct deep links, Dashboard without findingId and absence of the non-functional search field.",
+        "Run the complete frontend regression, TypeScript validation, production build and git diff --check; publish REVIEW only after every validator passes."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-27T14:30:00+02:00"
+    },
+    "received_at": "2026-08-27T14:30:00+02:00"
+  }
+}
