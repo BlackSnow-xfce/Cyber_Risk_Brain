@@ -1,8 +1,9 @@
 # Handoff - Architecture Review TASK-0122
 
-Status: CLOSED
+Status: WAITING
 Task: TASK-0122
-Task Status: REVIEW / REWORK 6
+Task Status: READY / REWORK 7
 Reviewer: Architect
-Architect Implementation Review: PASS / APPROVED (REWORK 6)
-Product Owner Live Acceptance: PENDING
+Architect Task-Specification Review: PASS / APPROVED (REWORK 7)
+Architect Implementation Review: PENDING (REWORK 7)
+Product Owner Live Acceptance: FAIL / REWORK REQUIRED
