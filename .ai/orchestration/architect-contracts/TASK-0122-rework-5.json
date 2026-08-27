@@ -1,0 +1,58 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0122-rework-5",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0122",
+      "title": "SOC Dashboard Visual Parity - Rework 4 Infrastructure Retry",
+      "phase": "POST-MVP SOC Operations",
+      "expected_head": "2c4e136c2d23cc383360acc0cc1319876b78e22b",
+      "allowed_scope": [
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.tsx",
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.test.tsx",
+        "frontend/src/workspaces/soc/findings/FindingThreatIntelligenceSection.test.tsx",
+        "frontend/src/platform/navigation/Sidebar.tsx",
+        "frontend/src/platform/navigation/Sidebar.test.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.test.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspaceToolbar.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspace.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "frontend/src/workspaces/soc/explainability/**",
+        "frontend/src/workspaces/soc/SOCWorkspace.tsx",
+        "frontend/src/workspaces/incident-response/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        ".ai/tasks/done/TASK-0120.md",
+        ".ai/tasks/done/TASK-0121.md",
+        ".ai/tasks/**/TASK-0123.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Preserve the complete authorized Rework 3 intermediate state and continue it without reset, stash, checkout, revert or loss.",
+        "Preserve the accepted TASK-0122 visual Dashboard implementation; do not change its layout or broaden product behavior.",
+        "Fix the routed Finding-to-Dashboard integration test through deterministic router and asynchronous synchronization with correct cleanup; do not merely raise the timeout.",
+        "Use React Router state coherently so Finding selection, Sidebar Dashboard navigation, Back and Forward are deterministic and URL-authoritative without global-history test races.",
+        "Update the seven existing Finding Threat Intelligence tests to establish an explicit canonical URL findingId before rendering and to clean up URL state.",
+        "Do not restore implicit first-Finding selection or change production behavior to satisfy obsolete tests.",
+        "On every URL findingId change, reset all Finding-dependent Explanation, Threat Intelligence, linked-Incident, loading, error and derived detail state before data for the new Finding may be used.",
+        "Dashboard remains the fail-closed canonical validation boundary and manipulated findingId values must not display data belonging to another Finding.",
+        "Run the complete frontend regression, TypeScript validation, production build and git diff --check; all validators must pass before REVIEW publication.",
+        "Do not introduce synthetic data, backend changes, provider execution, another routing architecture, broader lifecycle transitions or TASK-0123."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-27T16:38:04.9095362+02:00"
+    },
+    "received_at": "2026-08-27T16:38:04.9095362+02:00"
+  }
+}
