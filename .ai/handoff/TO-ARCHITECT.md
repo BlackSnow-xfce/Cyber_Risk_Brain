@@ -1,6 +1,6 @@
 # Handoff - Architecture Review TASK-0122
 
-Status: OPEN
+Status: WAITING
 Task: TASK-0122
 Task Status: READY / REWORK 6
 Reviewer: Architect
