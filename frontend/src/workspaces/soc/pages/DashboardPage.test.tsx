@@ -1,276 +1,152 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { IncidentCommandCenterResponse } from "@/workspaces/incident-response/IncidentCommandCenter";
 import DashboardPage from "./DashboardPage";
 
 const findings = [
-    {
-        id: "finding-1",
-        source: "greenbone",
-        title: "DistCC RCE Vulnerability",
-        vendorSeverity: "High",
-        asset: "asset-lab-metasploitable2-001",
-    },
-];
+    { id: "finding-first", source: "sensor-a", title: "First finding", vendorSeverity: "Critical", asset: "asset-a" },
+    { id: "finding-selected", source: "sensor-b", title: "Selected canonical finding", vendorSeverity: "High", asset: "asset-b" },
+] as const;
 
-const noIncidentContext = () => Promise.resolve([] as const);
+const relationship = {
+    incident_id: "incident-real-001",
+    relationship_id: "relationship-001",
+    relationship_role: "investigation_candidate",
+    lifecycle_status: "investigating",
+} as const;
+
+const commandCenter: IncidentCommandCenterResponse = {
+    contract_version: "1.0",
+    incident: {
+        incident_id: relationship.incident_id,
+        lifecycle_status: "investigating",
+        source: "incident-store",
+        source_reference: "incident:001",
+        title: "Canonical incident title",
+        description: "Persisted incident description",
+        created_at: "2026-08-20T10:00:00Z",
+        updated_at: "2026-08-20T11:00:00Z",
+        owner: null,
+        participants: [],
+    },
+    findings: [{ reference_id: "finding-selected", source: "finding-store", contract_version: null, version_id: null, evidence_snapshot_id: null }],
+    assets: [],
+    threat_intelligence: [],
+    evidence: [{ reference_id: "evidence-002", source: "evidence-store", contract_version: null, version_id: null, evidence_snapshot_id: "snapshot-2" }],
+    decisions: [],
+    notes: [],
+    activities: [
+        { activity_id: "activity-2", incident_id: relationship.incident_id, activity_type: "updated", actor: { principal_type: "user", principal_id: "analyst" }, occurred_at: "2026-08-20T11:00:00Z", sequence: 2, description: "Second persisted activity", details: [], contract_version: "1.0" },
+        { activity_id: "activity-1", incident_id: relationship.incident_id, activity_type: "created", actor: { principal_type: "system", principal_id: "api" }, occurred_at: "2026-08-20T10:00:00Z", sequence: 1, description: "First persisted activity", details: [], contract_version: "1.0" },
+    ],
+    sections: [],
+    completeness: { status: "available", source_type: "incident_command_center_read_model", source_reference: "incident-command-center:1.0:incident-real-001" },
+    missing_context: [],
+};
 
 function LocationProbe() {
-    const { pathname, search } = useLocation();
-    return <output data-testid="location">{pathname}{search}</output>;
+    const location = useLocation();
+    return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-describe("SOC Analyst dashboard foundation", () => {
-    afterEach(() => {
-        cleanup();
+function renderDashboard(path = "/?findingId=finding-selected", overrides: Partial<ComponentProps<typeof DashboardPage>> = {}) {
+    const props = {
+        loadFindings: vi.fn().mockResolvedValue(findings),
+        loadFindingIncidents: vi.fn().mockResolvedValue([relationship]),
+        loadIncident: vi.fn().mockResolvedValue(commandCenter),
+        ...overrides,
+    };
+    render(<MemoryRouter initialEntries={[path]}><DashboardPage {...props} /><LocationProbe /></MemoryRouter>);
+    return props;
+}
+
+describe("SOC dashboard canonical investigation context", () => {
+    afterEach(cleanup);
+
+    it("selects only the exact URL findingId and loads only its incident context", async () => {
+        const props = renderDashboard();
+        expect(await screen.findByRole("heading", { name: "Selected canonical finding" })).toBeInTheDocument();
+        expect(screen.queryByText("First finding")).not.toBeInTheDocument();
+        await waitFor(() => expect(props.loadFindingIncidents).toHaveBeenCalledTimes(1));
+        expect(props.loadFindingIncidents).toHaveBeenCalledWith("finding-selected");
     });
 
-    it("renders the operational SOC structure without mock decision data", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage loadFindings={() => Promise.resolve(findings)} loadFindingIncidents={noIncidentContext} />
-            </MemoryRouter>,
-        );
-
-        expect(screen.getByText("SOC Analyst")).toBeInTheDocument();
-        expect(screen.getByText("SOC Analyst Dashboard")).toBeInTheDocument();
-        expect(screen.getByLabelText("Operational status")).toBeInTheDocument();
-        expect(screen.getByText("Situation overview")).toBeInTheDocument();
-        expect(screen.getByLabelText("Analyst workspace")).toBeInTheDocument();
-        expect(screen.getByText("PredatorAI Analyst Brief")).toBeInTheDocument();
-        expect(screen.queryByText("Decision Workspace")).not.toBeInTheDocument();
-        expect((await screen.findAllByText("DistCC RCE Vulnerability")).length).toBeGreaterThan(0);
-        expect(screen.getAllByText("1", { selector: "h4" }).length).toBeGreaterThan(0);
-    });
-
-    it("keeps the real findings navigation entry point", () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage loadFindings={() => Promise.resolve(findings)} loadFindingIncidents={noIncidentContext} />
-                <LocationProbe />
-            </MemoryRouter>,
-        );
-
+    it.each([
+        ["missing", "/", "Select a finding to open an investigation dashboard."],
+        ["invalid", "/?findingId=unknown", "The requested findingId does not match a loaded canonical finding."],
+    ])("shows one targeted %s-context state with the Findings entry point", async (_name, path, detail) => {
+        const props = renderDashboard(path);
+        expect(await screen.findByText(detail)).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: "Open Findings" })).toHaveLength(1);
+        expect(props.loadFindingIncidents).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole("button", { name: "Open Findings" }));
-
         expect(screen.getByTestId("location")).toHaveTextContent("/findings");
     });
 
-    it("shows a neutral empty state", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage loadFindings={() => Promise.resolve([])} loadFindingIncidents={noIncidentContext} />
-            </MemoryRouter>,
-        );
-
+    it("distinguishes loading, empty and retrieval failure states", async () => {
+        const pending = new Promise<readonly never[]>(() => undefined);
+        renderDashboard("/", { loadFindings: () => pending });
+        expect(screen.getByText("Loading SOC dashboard")).toBeInTheDocument();
+        cleanup();
+        renderDashboard("/", { loadFindings: vi.fn().mockResolvedValue([]) });
         expect(await screen.findByText("No live findings available.")).toBeInTheDocument();
-        expect(screen.getAllByText("Not available").length).toBeGreaterThan(0);
-    });
-
-    it("shows a controlled error state", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage loadFindings={() => Promise.reject(new Error("offline"))} loadFindingIncidents={noIncidentContext} />
-            </MemoryRouter>,
-        );
-
+        cleanup();
+        renderDashboard("/", { loadFindings: vi.fn().mockRejectedValue(new Error("offline")) });
         expect(await screen.findByText("Live findings could not be loaded.")).toBeInTheDocument();
-        expect(screen.getByText("Unavailable")).toBeInTheDocument();
     });
 
-    it("filters live dashboard findings and supports selecting one", async () => {
-        const secondFinding = {
-            ...findings[0],
-            id: "finding-2",
-            title: "Unrelated finding",
-        };
-
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([findings[0], secondFinding])}
-                    loadFindingIncidents={noIncidentContext}
-                />
-                <LocationProbe />
-            </MemoryRouter>,
-        );
-
-        const search = await screen.findByLabelText("Search findings");
-        fireEvent.change(search, { target: { value: "DistCC" } });
-
-        expect(screen.getAllByText("DistCC RCE Vulnerability").length).toBeGreaterThan(0);
-        expect(screen.queryByText("Unrelated finding")).toBeNull();
-
-        fireEvent.click(screen.getAllByRole("button", { name: /DistCC RCE Vulnerability/ })[0]);
-        expect(screen.getByTestId("location")).toHaveTextContent(
-            "/findings?findingId=finding-1",
-        );
+    it("projects persisted incident identity, evidence and activities in supplied order", async () => {
+        renderDashboard();
+        expect(await screen.findByText("Canonical incident title")).toBeInTheDocument();
+        expect(screen.getByText("investigation_candidate")).toBeInTheDocument();
+        expect(screen.getByText(/evidence-002/)).toBeInTheDocument();
+        const activities = within(screen.getByLabelText("Chronological timeline")).getByRole("list").textContent;
+        expect(activities?.indexOf("Second persisted activity")).toBeLessThan(activities?.indexOf("First persisted activity") ?? 0);
+        expect(screen.getByText("Authoritative analysis is unavailable.")).toBeInTheDocument();
+        expect(screen.queryByText(/priority|confidence|business impact|compromised|remediation/i)).not.toBeInTheDocument();
     });
 
-    it("reloads live findings through the refresh control", async () => {
-        const loadFindings = vi
-            .fn()
-            .mockResolvedValueOnce(findings)
-            .mockResolvedValueOnce(findings);
-
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={loadFindings}
-                    loadFindingIncidents={noIncidentContext}
-                />
-            </MemoryRouter>,
-        );
-
-        await screen.findAllByText("DistCC RCE Vulnerability");
-        fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-
-        await screen.findByRole("button", { name: "Refreshing" }).catch(() => undefined);
-        expect(loadFindings).toHaveBeenCalledTimes(2);
+    it("opens Finding, Threat Intelligence and the prominent Command Center route", async () => {
+        renderDashboard();
+        await screen.findByText("Canonical incident title");
+        fireEvent.click(screen.getByRole("button", { name: "Open Threat Intelligence" }));
+        expect(screen.getByTestId("location")).toHaveTextContent("/findings?findingId=finding-selected&focus=threat-intelligence");
+        fireEvent.click(screen.getByRole("button", { name: "Open Command Center" }));
+        expect(screen.getByTestId("location")).toHaveTextContent("/incident-response/incidents/incident-real-001/command-center");
     });
 
-    it("shows a persisted incident relationship and opens its command center", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([{
-                        ...findings[0],
-                        title: "DistCC RCE Vulnerability (CVE-2004-2687)",
-                    }])}
-                    loadFindingIncidents={() =>
-                        Promise.resolve([
-                            {
-                                incident_id: "incident-real-001",
-                                relationship_id: "relationship-001",
-                                relationship_role: "investigation_candidate",
-                                lifecycle_status: "investigating",
-                            },
-                        ])
-                    }
-                />
-                <LocationProbe />
-            </MemoryRouter>,
-        );
-
-        expect((await screen.findAllByText("incident-real-001")).length).toBeGreaterThan(0);
-        expect(screen.getByText(/investigation_candidate/)).toBeInTheDocument();
-        fireEvent.click(screen.getAllByRole("button", { name: "Open Incident" })[0]);
-        expect(screen.getByTestId("location")).toHaveTextContent("/incident-response");
-        fireEvent.click(screen.getAllByRole("button", { name: "Open Command Center" })[0]);
-        expect(screen.getByTestId("location")).toHaveTextContent(
-            "/incident-response/incidents/incident-real-001/command-center",
-        );
-    });
-
-    it("presents a grounded investigation path and explicit not-verified boundary", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve(findings)}
-                    loadFindingIncidents={() => Promise.resolve([])}
-                />
-            </MemoryRouter>,
-        );
-
-        expect(await screen.findByLabelText("Investigation path")).toBeInTheDocument();
-        expect(screen.getByText("What happened?")).toBeInTheDocument();
-        expect(screen.getByText("Why this matters")).toBeInTheDocument();
-        expect(screen.getByText("What we know")).toBeInTheDocument();
-        expect(screen.getByText("What is not verified")).toBeInTheDocument();
-        expect(screen.getByText("Investigate next")).toBeInTheDocument();
-        expect(screen.getByText("No exploit, RCE or compromise conclusion")).toBeInTheDocument();
-        expect(screen.queryByText(/RCE confirmed|compromised|exploited/i)).toBeNull();
-    });
-
-    it("keeps the canonical asset node static while relationship actions remain interactive", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([{
-                        ...findings[0],
-                        title: "DistCC RCE Vulnerability (CVE-2004-2687)",
-                    }])}
-                    loadFindingIncidents={noIncidentContext}
-                />
-            </MemoryRouter>,
-        );
-
-        const assetLabel = await screen.findByText("CANONICAL ASSET");
-        const assetNode = assetLabel.closest(".soc-cockpit__node");
-        expect(assetNode).toHaveClass("soc-cockpit__node--static");
-        expect(assetNode?.tagName).toBe("DIV");
-        expect(assetNode).not.toHaveClass("soc-cockpit__node--interactive");
-        expect(screen.getAllByRole("button", { name: /DistCC RCE Vulnerability/ }).length).toBeGreaterThan(0);
-        expect(screen.getAllByRole("button", { name: /CVE|Threat intelligence/i }).length).toBeGreaterThan(0);
-    });
-
-    it("marks the selected Finding and CVE/TI relationship nodes", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([{
-                        ...findings[0],
-                        title: "DistCC RCE Vulnerability (CVE-2004-2687)",
-                    }])}
-                    loadFindingIncidents={noIncidentContext}
-                />
-            </MemoryRouter>,
-        );
-
-        const findingNode = (await screen.findAllByRole("button", { name: /DistCC RCE Vulnerability/ }))[0];
-        fireEvent.click(findingNode);
-        expect(findingNode).toHaveAttribute("aria-pressed", "true");
-
-        const cveNode = (await screen.findAllByRole("button", { name: /CVE-2004-2687/ }))
-            .find((button) => button.textContent?.includes("Threat intelligence"));
-        expect(cveNode).toBeDefined();
-        fireEvent.click(cveNode!);
-        expect(cveNode).toHaveAttribute("aria-pressed", "true");
-        expect(findingNode).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it("gives the visible recommended-investigation panel update feedback", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([{
-                        ...findings[0],
-                        title: "DistCC RCE Vulnerability (CVE-2004-2687)",
-                    }])}
-                    loadFindingIncidents={noIncidentContext}
-                />
-            </MemoryRouter>,
-        );
-
-        const findingNode = (await screen.findAllByRole("button", { name: /DistCC RCE Vulnerability/ }))[0];
-        fireEvent.click(findingNode);
-        await waitFor(() => {
-            expect(screen.getByText("Next analyst actions").closest(".soc-cockpit__panel")).toHaveClass("soc-cockpit__panel--updated");
+    it("keeps incident retrieval failure visible and makes no Command Center call", async () => {
+        const loadIncident = vi.fn();
+        renderDashboard("/?findingId=finding-selected", {
+            loadFindingIncidents: vi.fn().mockRejectedValue(new Error("offline")),
+            loadIncident,
         });
+        expect(await screen.findByText("Finding-to-Incident context could not be loaded.")).toBeInTheDocument();
+        expect(loadIncident).not.toHaveBeenCalled();
+        expect(screen.queryByRole("button", { name: "Open Command Center" })).not.toBeInTheDocument();
     });
 
-    it("preserves the CVE context and focuses threat intelligence in Finding Details", async () => {
-        render(
-            <MemoryRouter initialEntries={["/"]}>
-                <DashboardPage
-                    loadFindings={() => Promise.resolve([{
-                        ...findings[0],
-                        title: "DistCC RCE Vulnerability (CVE-2004-2687)",
-                    }])}
-                    loadFindingIncidents={noIncidentContext}
-                />
-                <LocationProbe />
-            </MemoryRouter>,
-        );
+    it("keeps the persisted Command Center path when incident detail retrieval fails", async () => {
+        renderDashboard("/?findingId=finding-selected", {
+            loadIncident: vi.fn().mockRejectedValue(new Error("offline")),
+        });
 
-        const cveNode = (await screen.findAllByRole("button", { name: /CVE-2004-2687/ }))
-            .find((button) => button.textContent?.includes("Threat intelligence"));
-        expect(cveNode).toBeDefined();
-        fireEvent.click(cveNode!);
+        expect(await screen.findByText("Incident Command Center context could not be loaded.")).toBeInTheDocument();
+        expect(screen.getByText("Canonical incident details are not available in this dashboard.")).toBeInTheDocument();
+        expect(screen.queryByText("Canonical incident title")).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Open Command Center" }));
+        expect(screen.getByTestId("location")).toHaveTextContent("/incident-response/incidents/incident-real-001/command-center");
+    });
 
-        expect(screen.getByTestId("location")).toHaveTextContent(
-            "/findings?findingId=finding-1&focus=threat-intelligence",
-        );
+    it("refreshes the same URL-authoritative context", async () => {
+        const loadFindings = vi.fn().mockResolvedValue(findings);
+        renderDashboard("/?findingId=finding-selected", { loadFindings });
+        await screen.findByText("Canonical incident title");
+        fireEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+        await waitFor(() => expect(loadFindings).toHaveBeenCalledTimes(2));
+        expect(screen.getByTestId("location")).toHaveTextContent("/?findingId=finding-selected");
     });
 });
