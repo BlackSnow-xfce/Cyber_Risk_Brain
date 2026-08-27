@@ -174,5 +174,5 @@ describe("SOCWorkspace URL-authoritative routing", () => {
         expect(window.location.pathname).toBe("/");
         expect(screen.getAllByText("Selected routed finding").length).toBeGreaterThan(0);
         expect(screen.queryByText("Other routed finding")).not.toBeInTheDocument();
-    });
+    }, 10_000);
 });

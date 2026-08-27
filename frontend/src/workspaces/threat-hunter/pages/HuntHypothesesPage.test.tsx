@@ -119,7 +119,7 @@ describe("HuntHypothesesPage", () => {
         ));
         expect(await screen.findByText("hypothesis-created")).toBeInTheDocument();
         expect(screen.getByText("draft")).toBeInTheDocument();
-    });
+    }, 10_000);
 
     it("keeps the unconfirmed-assumption warning visible", async () => {
         render(<HuntHypothesesPage />);

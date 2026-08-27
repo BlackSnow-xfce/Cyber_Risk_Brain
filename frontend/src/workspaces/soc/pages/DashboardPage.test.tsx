@@ -115,6 +115,34 @@ describe("SOC dashboard canonical investigation context", () => {
         expect(screen.queryByText(/priority|confidence|business impact|compromised|remediation/i)).not.toBeInTheDocument();
     });
 
+    it("renders exactly five canonical operational instruments and only persisted graph relationships", async () => {
+        renderDashboard();
+        await screen.findByText("Canonical incident title");
+        const metrics = within(screen.getByRole("region", { name: "Operational metrics" })).getAllByRole("article");
+        expect(metrics).toHaveLength(5);
+        expect(metrics.map((metric) => metric.textContent)).toEqual(expect.arrayContaining([
+            expect.stringContaining("finding-selected"),
+            expect.stringContaining("High"),
+            expect.stringContaining("asset-b"),
+            expect.stringContaining("incident-real-001"),
+            expect.stringContaining("Loaded"),
+        ]));
+        const graph = screen.getByRole("img", { name: "Canonical investigation relationships" });
+        expect(graph.querySelector('[data-relationship="finding-asset"]')).not.toBeNull();
+        expect(graph.querySelector('[data-relationship="finding-incident"]')).not.toBeNull();
+        expect(graph).toHaveTextContent("investigation_candidate");
+        expect(graph).not.toHaveTextContent("RELATED");
+    });
+
+    it("keeps analysis unavailable and exposes four distinct authoritative drill-downs", async () => {
+        renderDashboard();
+        await screen.findByText("Canonical incident title");
+        expect(screen.getByText("Authoritative analysis is unavailable.")).toBeInTheDocument();
+        for (const name of ["Open Finding", "Open Threat Intelligence", "Open Incident", "Open Command Center"]) {
+            expect(screen.getAllByRole("button", { name })).not.toHaveLength(0);
+        }
+    });
+
     it("opens Finding, Threat Intelligence and the prominent Command Center route", async () => {
         renderDashboard();
         await screen.findByText("Canonical incident title");
