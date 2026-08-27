@@ -1,0 +1,57 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0122-rework-3",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0122",
+      "title": "SOC Dashboard Visual Parity - Rework 3",
+      "phase": "POST-MVP SOC Operations",
+      "expected_head": "2a2cabe3d46fe805e4eff687a26d94fd76c44b6b",
+      "allowed_scope": [
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.tsx",
+        "frontend/src/workspaces/soc/findings/FindingsWorkspace.test.tsx",
+        "frontend/src/platform/navigation/Sidebar.tsx",
+        "frontend/src/platform/navigation/Sidebar.test.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.test.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspaceToolbar.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspace.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "frontend/src/workspaces/soc/explainability/**",
+        "frontend/src/workspaces/soc/SOCWorkspace.tsx",
+        "frontend/src/workspaces/incident-response/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        ".ai/tasks/done/TASK-0120.md",
+        ".ai/tasks/done/TASK-0121.md",
+        ".ai/tasks/**/TASK-0123.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Preserve the accepted TASK-0122 visual dashboard implementation and all prior successful execution evidence; independently validate Rework 3.",
+        "On every URL findingId change, including popstate, Back and Forward, atomically reset all Finding-dependent AI Explanation, Threat Intelligence, linked-Incident, loading, error and derived detail state before data for the new Finding may be used.",
+        "Remove implicit first-Finding selection completely: do not use loadedFindings[0]; without an exact valid URL findingId selectedFinding remains null and no Finding details are shown.",
+        "FindingsWorkspace writes only IDs belonging to its canonically loaded Findings into /findings?findingId=<encoded ID>.",
+        "Sidebar transports a present URL findingId to /?findingId=<encoded ID> without claiming or implementing canonical Finding validation.",
+        "Dashboard remains the fail-closed canonical validation boundary; an unknown or manipulated findingId displays no data belonging to another Finding.",
+        "Add a real routed integration test covering Finding selection, visible Sidebar Dashboard navigation, exact active Dashboard Finding, browser Back with reset and URL-matching dependent detail state, and Forward restoring the exact Dashboard Finding.",
+        "Keep direct deep links and Dashboard without findingId truthful and URL-authoritative, and keep the non-functional Dashboard search control absent.",
+        "Do not alter the accepted visual TASK-0122 implementation, introduce synthetic data, provider execution, backend changes, another routing architecture or broader product lifecycle behavior.",
+        "Run the complete frontend regression, TypeScript validation, production build and git diff --check; publish REVIEW only after every validator passes."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-27T15:20:09.1549394+02:00"
+    },
+    "received_at": "2026-08-27T15:20:09.1549394+02:00"
+  }
+}
