@@ -2,5 +2,5 @@
 
 Status: WAITING
 Current AIDP Task: TASK-0122
-Current Phase: PRODUCT OWNER LIVE ACCEPTANCE
-Task Status: REVIEW
+Current Phase: READY / REWORK 6
+Task Status: READY
