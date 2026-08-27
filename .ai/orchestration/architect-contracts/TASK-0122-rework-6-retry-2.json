@@ -1,0 +1,73 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0122-rework-6-retry-2",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0122",
+      "title": "SOC Dashboard Visual Parity - Rework 6 Retry 2",
+      "phase": "POST-MVP SOC Operations",
+      "expected_head": "59287bfdabdc8f5684c869f464483c4e588167ba",
+      "allowed_scope": [
+        "frontend/src/workspaces/soc/pages/DashboardPage.tsx",
+        "frontend/src/workspaces/soc/pages/DashboardPage.test.tsx",
+        "frontend/src/workspaces/soc/dashboard/SOCAnalystCockpit.tsx",
+        "frontend/src/workspaces/soc/dashboard/SOCAnalystCockpit.css",
+        "frontend/src/workspaces/soc/dashboard/InvestigationRelationshipGraph.tsx",
+        "frontend/src/workspaces/soc/dashboard/InvestigationStateTimeline.tsx",
+        "frontend/src/workspaces/soc/dashboard/PredatorAIAnalysisPanel.tsx",
+        "frontend/src/workspaces/soc/dashboard/RecommendedInvestigationPanel.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspace.test.tsx",
+        "frontend/src/workspaces/threat-hunter/pages/HuntHypothesesPage.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "frontend/src/workspaces/soc/findings/**",
+        "frontend/src/platform/navigation/Sidebar.tsx",
+        "frontend/src/platform/navigation/Sidebar.test.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspace.tsx",
+        "frontend/src/workspaces/soc/SOCWorkspaceToolbar.tsx",
+        "frontend/src/workspaces/soc/explainability/**",
+        "frontend/src/workspaces/incident-response/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        ".ai/tasks/done/TASK-0120.md",
+        ".ai/tasks/done/TASK-0121.md",
+        ".ai/tasks/**/TASK-0123.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Use the existing SOC cockpit presentation components to replace the current vertical equal-weight active-dashboard panel sequence without redesigning other PredatorAI pages.",
+        "Render exactly five compact operational KPI instruments using only canonical Finding identity, vendor severity explicitly not labeled as priority, observed asset identity, persisted Finding-to-Incident relationship and loaded Incident or Command Center state.",
+        "Represent missing KPI values truthfully as unavailable or not linked; do not invent counts, priority, confidence, elapsed runtime, business impact, MITRE mapping, compromise or other security claims.",
+        "Render a spatial Investigation Graph with separately positioned 2D nodes plus an independent SVG edge and label layer whose free edges do not overlap node content.",
+        "Render graph edges and relationship labels only for relationships established by canonical responses; do not infer CVE or Threat Intelligence identity from Finding title, severity or asset.",
+        "Keep unresolved or unloaded Threat Intelligence context explicitly unavailable and do not present it as a resolved relationship.",
+        "Present compact Investigation State plus Evidence, PredatorAI Analysis and Recommended Investigation prominently in the dense first viewport at 1920x1080 and 100 percent browser zoom.",
+        "When no authoritative analysis projection exists, show a prominent truthful Analysis unavailable state and do not synthesize an analyst narrative from Finding or Incident fields.",
+        "Preserve four semantically distinct Finding, Threat Intelligence, Incident and Command Center actions with their accepted existing routes and browser-history behavior.",
+        "Preserve the compact No active investigation state for a missing or invalid findingId and preserve truthful loading, retrieval-error and unavailable states.",
+        "Preserve existing Refresh, direct deep-link, Back, Forward, Sidebar and drill-down behavior without changing FindingsWorkspace, Sidebar, SOCWorkspace, Explainability or Incident Response implementation.",
+        "Opening or rendering the dashboard must not execute any AI provider or model and production components must not instantiate mock, synthetic or hard-coded security data.",
+        "Preserve responsive behavior and prefers-reduced-motion support while matching the fixed Product Owner cockpit hierarchy, proportions, spacing and information density.",
+        "Add focused tests proving exactly five truthful KPI instruments, spatial graph geometry and labels, absence of inferred TI relationships or analysis, first-viewport composition and all four distinct drill-down actions.",
+        "In SOCWorkspace.test.tsx, only raise the local timeout of the test named keeps the exact canonical Finding through Sidebar Dashboard navigation and history to the smallest reliably sufficient value; do not alter assertions, test logic, mock data, expected values, test selection or execution mode.",
+        "In HuntHypothesesPage.test.tsx, only raise the local timeout of the test named creates only human-authored fields with the session CSRF token and refreshes to the smallest reliably sufficient value; do not alter assertions, test logic, mock data, expected values, test selection or execution mode.",
+        "Do not change global Vitest configuration, skip, quarantine, use only, serialize tests or weaken any assertion.",
+        "Run both affected tests in isolation, focused Dashboard and cockpit tests, the complete frontend regression in regular parallel mode, the complete frontend regression with maxWorkers equal to 1, TypeScript validation, production build, git diff --check and the Scope Guard; the regular parallel frontend regression must pass before review publication.",
+        "Manual Product Owner acceptance at 1920x1080 and 100 percent zoom remains mandatory.",
+        "Do not create TASK-0123, transition TASK-0122 to DONE or claim Product Owner acceptance."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-27T23:25:51.1272896+02:00"
+    },
+    "received_at": "2026-08-27T23:25:51.1272896+02:00"
+  }
+}
