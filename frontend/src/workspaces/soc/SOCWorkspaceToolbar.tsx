@@ -12,7 +12,7 @@ import TextField from "@mui/material/TextField";
 import Panel from "@/ui/panel/Panel";
 
 interface SOCWorkspaceToolbarProps {
-    searchLabel: string;
+    searchLabel?: string;
     searchValue?: string;
     onSearchChange?: (value: string) => void;
     onRefresh?: () => void;
@@ -41,22 +41,24 @@ export default function SOCWorkspaceToolbar({
                 spacing={compact ? 0.75 : 2}
                 sx={{ alignItems: { xs: "stretch", md: "center" } }}
             >
-                <TextField
-                    fullWidth
-                    size="small"
-                    label={searchLabel}
-                    value={searchValue}
-                    onChange={(event) => onSearchChange?.(event.target.value)}
-                    slotProps={{
-                        input: {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon fontSize="small" />
-                                </InputAdornment>
-                            ),
-                        },
-                    }}
-                />
+                {searchLabel && (
+                    <TextField
+                        fullWidth
+                        size="small"
+                        label={searchLabel}
+                        value={searchValue}
+                        onChange={(event) => onSearchChange?.(event.target.value)}
+                        slotProps={{
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                    />
+                )}
 
                 {additionalControls}
 

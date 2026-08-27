@@ -137,9 +137,6 @@ export default function DashboardPage({
     };
 
     const toolbar = <SOCWorkspaceToolbar
-        searchLabel="Search findings"
-        searchValue=""
-        onSearchChange={() => undefined}
         onRefresh={() => setRefreshToken((value) => value + 1)}
         refreshing={[findingsState, incidentState, commandCenterState].includes("loading")}
         compact

@@ -7,8 +7,8 @@ import { WorkspaceProvider } from "@/context/WorkspaceContext";
 import Sidebar from "./Sidebar";
 
 function LocationProbe() {
-    const { pathname } = useLocation();
-    return <output data-testid="location">{pathname}</output>;
+    const { pathname, search } = useLocation();
+    return <output data-testid="location">{pathname}{search}</output>;
 }
 
 function BackProbe() {
@@ -61,6 +61,16 @@ describe("Sidebar routing", () => {
         expect(screen.getByTestId("location")).toHaveTextContent("/");
         expect(screen.getByRole("button", { name: "Dashboard" })).toHaveClass(
             "sidebar-item-active",
+        );
+    });
+
+    it("preserves the validated Finding context when navigating to Dashboard", () => {
+        renderSidebar(["/findings?findingId=finding-real-001"]);
+
+        fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+
+        expect(screen.getByTestId("location")).toHaveTextContent(
+            "/?findingId=finding-real-001",
         );
     });
 

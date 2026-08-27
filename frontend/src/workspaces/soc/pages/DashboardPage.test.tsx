@@ -74,6 +74,12 @@ describe("SOC dashboard canonical investigation context", () => {
         expect(props.loadFindingIncidents).toHaveBeenCalledWith("finding-selected");
     });
 
+    it("does not present the non-functional findings search control", async () => {
+        renderDashboard();
+        await screen.findByRole("heading", { name: "Selected canonical finding" });
+        expect(screen.queryByLabelText("Search findings")).not.toBeInTheDocument();
+    });
+
     it.each([
         ["missing", "/", "Select a finding to open an investigation dashboard."],
         ["invalid", "/?findingId=unknown", "The requested findingId does not match a loaded canonical finding."],

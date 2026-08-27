@@ -7,7 +7,10 @@ import { FindingExplanationRequestError } from "./FindingsApiClient";
 import type { FindingSummary } from "./FindingSummary";
 import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    window.history.replaceState({}, "", "/");
+});
 
 const finding: FindingSummary = {
     id: "result-001",
@@ -154,9 +157,39 @@ describe("FindingsWorkspace", () => {
         await screen.findAllByText("Controlled scanner finding");
         fireEvent.click(screen.getByRole("button", { name: /Second controlled finding/ }));
 
+        expect(window.location.pathname).toBe("/findings");
+        expect(window.location.search).toBe("?findingId=result-002");
+
         await waitFor(() => {
             expect(screen.getByRole("complementary")).toHaveClass("finding-details-panel--updated");
         });
+    });
+
+    it("restores the canonical selection with browser Back and Forward", async () => {
+        window.history.replaceState({}, "", "/findings?findingId=result-001");
+        try {
+            render(
+                <FindingsWorkspace
+                    loadFindings={() => Promise.resolve([finding, secondFinding])}
+                />,
+            );
+            await screen.findAllByText("Controlled scanner finding");
+            fireEvent.click(screen.getByRole("button", { name: /Second controlled finding/ }));
+
+            window.history.back();
+            await waitFor(() => {
+                expect(screen.getByRole("button", { name: /Controlled scanner finding/ }))
+                    .toHaveAttribute("aria-pressed", "true");
+            });
+
+            window.history.forward();
+            await waitFor(() => {
+                expect(screen.getByRole("button", { name: /Second controlled finding/ }))
+                    .toHaveAttribute("aria-pressed", "true");
+            });
+        } finally {
+            window.history.replaceState({}, "", "/");
+        }
     });
 
     it("shows an empty state when search has no matching finding", async () => {

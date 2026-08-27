@@ -73,6 +73,12 @@ export default function FindingsWorkspace({
     loadThreatIntelligenceRef.current = loadThreatIntelligence;
     const autoFocusRequest = useRef<string | null>(null);
 
+    const selectLoadedFinding = (findingId: string | null) => {
+        setSelectedFinding(
+            findings.find((finding) => finding.id === findingId) ?? null,
+        );
+    };
+
     const triggerDetailFeedback = () => {
         setDetailFeedbackActive(false);
         window.requestAnimationFrame(() => setDetailFeedbackActive(true));
@@ -126,6 +132,16 @@ export default function FindingsWorkspace({
         };
     }, [loadFindings]);
 
+    useEffect(() => {
+        const restoreUrlSelection = () => {
+            selectLoadedFinding(
+                new URLSearchParams(window.location.search).get("findingId"),
+            );
+        };
+        window.addEventListener("popstate", restoreUrlSelection);
+        return () => window.removeEventListener("popstate", restoreUrlSelection);
+    }, [findings]);
+
     const filteredFindings = useMemo(() => {
         const query = searchQuery.trim().toLocaleLowerCase();
         if (!query) {
@@ -147,6 +163,10 @@ export default function FindingsWorkspace({
     };
 
     const selectFinding = (finding: FindingSummary) => {
+        const query = new URLSearchParams();
+        query.set("findingId", finding.id);
+        window.history.pushState({}, "", `/findings?${query.toString()}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
         triggerDetailFeedback();
         explanationRequestVersion.current += 1;
         setSelectedFinding(finding);

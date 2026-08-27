@@ -16,7 +16,7 @@ export default function Sidebar() {
         activeNavigationItemId,
         setActiveNavigationItemId,
     } = useWorkspace();
-    const { pathname } = useLocation();
+    const { pathname, search } = useLocation();
     const navigate = useNavigate();
 
     const navigation =
@@ -54,7 +54,13 @@ export default function Sidebar() {
             return;
         }
 
-        navigate(item.route);
+        const findingId = pathname === "/findings"
+            ? new URLSearchParams(search).get("findingId")
+            : null;
+        const route = item.route === "/" && findingId
+            ? `/?findingId=${encodeURIComponent(findingId)}`
+            : item.route;
+        navigate(route);
     };
 
     const sections = [
