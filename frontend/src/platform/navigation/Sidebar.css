@@ -1,28 +1,28 @@
 .sidebar {
-    width: 270px;
-    min-width: 270px;
+    position: relative;
+    width: 164px;
+    min-width: 164px;
     height: 100vh;
 
     display: flex;
     flex-direction: column;
 
-    background: #0f172a;
-    border-right: 1px solid #1f2937;
+    overflow: hidden;
+    background: #010717;
+    border-right: 1px solid #1c212f;
 }
 
 .sidebar-logo {
     display: flex;
     align-items: center;
-    gap: 14px;
-
-    padding: 22px 20px;
-
-    border-bottom: 1px solid #1f2937;
+    gap: 7px;
+    height: 52px;
+    padding: 7px 10px;
 }
 
 .sidebar-logo-image {
-    width: 46px;
-    height: 46px;
+    width: 28px;
+    height: 28px;
 
     object-fit: contain;
 
@@ -35,7 +35,7 @@
 }
 
 .sidebar-logo-text div {
-    font-size: 22px;
+    font-size: 11px;
     font-weight: 700;
     color: #f8fafc;
 
@@ -43,44 +43,44 @@
 }
 
 .sidebar-logo-text small {
-    color: #8b97ad;
-    font-size: 12px;
+    color: #989fa5;
+    font-size: 7px;
+    text-align: right;
 }
 
 .sidebar-section {
-    padding: 22px 14px 0;
+    padding: 6px 6px 0;
 }
 
 .sidebar-title {
     display: block;
 
-    margin: 0 10px 12px;
+    margin: 0 5px 3px;
 
     color: #64748b;
 
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 7px;
+    font-weight: 500;
 
     letter-spacing: .08em;
 }
 
 .sidebar-item {
     width: 100%;
-    height: 44px;
+    height: 24px;
 
     display: flex;
     align-items: center;
 
-    gap: 12px;
-
-    padding: 0 14px;
+    gap: 7px;
+    padding: 0 8px;
 
     border: none;
-    border-radius: 10px;
+    border-radius: 4px;
 
     background: transparent;
 
-    color: #cbd5e1;
+    color: #b7bdc6;
 
     cursor: pointer;
 
@@ -93,7 +93,7 @@
     flex: 1;
     text-align: left;
 
-    font-size: 14px;
+    font-size: 8px;
 }
 
 .sidebar-item svg:last-child {
@@ -101,20 +101,20 @@
 }
 
 .sidebar-item:hover {
-    background: #182235;
+    background: #101a30;
     color: white;
 }
 
 .sidebar-item-active {
     background: linear-gradient(
         90deg,
-        #7c3aed,
-        #8b5cf6
+        #27145f,
+        #321577
     );
 
     color: white;
 
-    box-shadow: 0 0 18px rgba(124, 58, 237, .35);
+    box-shadow: none;
 }
 
 .sidebar-item-active svg:last-child {
@@ -128,17 +128,16 @@
 .sidebar-collapse {
     display: flex;
     align-items: center;
-    gap: 12px;
-
-    margin: 18px;
-    padding: 12px 14px;
+    gap: 7px;
+    margin: 6px;
+    padding: 6px 8px;
 
     border: none;
-    border-radius: 10px;
-
-    background: #182235;
+    border-radius: 4px;
+    background: transparent;
 
     color: #cbd5e1;
+    font-size: 8px;
 
     cursor: pointer;
 
@@ -148,3 +147,23 @@
 .sidebar-collapse:hover {
     background: #212d44;
 }
+
+.sidebar-workspace {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px 34px;
+    padding: 7px;
+    color: #cbd5e1;
+    background: #081224;
+    border: 1px solid #1c2a40;
+    border-radius: 4px;
+    text-align: left;
+}
+
+.sidebar-workspace:disabled { opacity: 1; }
+.sidebar-workspace-mark { color: #22d3c5; font-size: 8px; }
+.sidebar-workspace > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.sidebar-workspace strong { font-size: 7px; font-weight: 500; }
+.sidebar-workspace small { color: #64748b; font-size: 6px; }
+.sidebar-version { position: absolute; bottom: 10px; left: 15px; color: #475569; font-size: 6px; }

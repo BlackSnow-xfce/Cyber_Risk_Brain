@@ -1,54 +1,13 @@
-import Box from "@mui/material/Box";
-import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
+import { Menu } from "lucide-react";
 
-import {
-    WorkspaceSwitcher,
-    TimeRangeSelector,
-    TopbarActions,
-    UserMenu,
-} from "@/components/topbar";
+import { TimeRangeSelector, TopbarActions, UserMenu, WorkspaceSwitcher } from "@/components/topbar";
+
+import "./Topbar.css";
 
 export default function Topbar() {
-    return (
-        <Stack
-            direction="row"
-            sx={{
-                justifyContent: "space-between",
-                alignItems: "center",
-                height: 72,
-                px: 3,
-                borderBottom: 1,
-                borderColor: "divider",
-                bgcolor: "background.paper",
-            }}
-        >
-            <Box>
-                <Typography
-                    variant="h5"
-                    sx={{
-                        fontWeight: 700,
-                    }}
-                >
-                    Dashboard
-                </Typography>
-
-                <WorkspaceSwitcher />
-            </Box>
-
-            <Stack
-                direction="row"
-                spacing={2}
-                sx={{
-                    alignItems: "center",
-                }}
-            >
-                <TimeRangeSelector />
-
-                <TopbarActions />
-
-                <UserMenu />
-            </Stack>
-        </Stack>
-    );
+    return <header className="enterprise-topbar">
+        <button className="topbar-menu" type="button" disabled aria-label="Menu unavailable"><Menu size={15} /></button>
+        <div className="topbar-heading"><div><h1>Dashboard</h1><WorkspaceSwitcher /></div><span>Welcome back. Live operator identity unavailable.</span></div>
+        <div className="topbar-controls"><TimeRangeSelector /><TopbarActions /><UserMenu /></div>
+    </header>;
 }

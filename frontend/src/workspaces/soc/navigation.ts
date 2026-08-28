@@ -1,19 +1,31 @@
 import {
     BarChart3,
     Building2,
+    Bot,
+    ClipboardList,
+    FileBarChart,
     Gauge,
     GitBranch,
     LayoutDashboard,
     Search,
+    Settings,
     Shield,
     ShieldAlert,
     Target,
     Workflow,
+    Wrench,
 } from "lucide-react";
 
 import type { NavigationItem } from "@/workspaces/navigation";
 
 export const socNavigation: NavigationItem[] = [
+    {
+        section: "Overview",
+        id: "executive-summary",
+        label: "Executive Summary",
+        route: "/executive",
+        icon: FileBarChart,
+    },
     {
         section: "Overview",
         id: "dashboard",
@@ -83,5 +95,33 @@ export const socNavigation: NavigationItem[] = [
         label: "Decision Center",
         route: "/decision-center",
         icon: Workflow,
+    },
+    {
+        section: "Decision & Response",
+        id: "ai-agents",
+        label: "AI Agents",
+        route: "/administration",
+        icon: Bot,
+    },
+    {
+        section: "Reporting",
+        id: "reports",
+        label: "Reports",
+        route: "/executive",
+        icon: ClipboardList,
+    },
+    {
+        section: "Integrations",
+        id: "integrations",
+        label: "Integrations",
+        route: "/administration",
+        icon: Wrench,
+    },
+    {
+        section: "Administration",
+        id: "administration",
+        label: "Administration",
+        route: "/administration",
+        icon: Settings,
     },
 ];

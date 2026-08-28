@@ -17,19 +17,21 @@ export default function SidebarItem({
 
     return (
         <button
+            type="button"
             onClick={() => onSelect?.(item.id)}
+            disabled={item.enabled === false}
             className={
                 active
                     ? "sidebar-item sidebar-item-active"
                     : "sidebar-item"
             }
         >
-            <Icon size={18} />
+            <Icon size={12} />
 
             <span>{item.label}</span>
 
             {item.children && (
-                <ChevronRight size={16} />
+                <ChevronRight size={11} />
             )}
         </button>
     );

@@ -1,0 +1,39 @@
+.soc-enterprise-dashboard { min-width:1100px; min-height:960px; padding:0 10px 53px 12px; color:#f0f0f0; background:#010817; box-sizing:border-box; font-family:Inter,system-ui,sans-serif; }
+.dashboard-primary,.dashboard-secondary { display:grid; gap:10px; }
+.dashboard-primary { grid-template-columns:249px 201px 185px 303px 372px; height:218px; }
+.dashboard-secondary { grid-template-columns:249px 252px 241px 246px 277px; height:213px; margin-top:10px; }
+.dashboard-panel { min-width:0; padding:12px; background:#0c1423; border:1px solid #1c212f; border-radius:6px; box-sizing:border-box; overflow:hidden; }
+.dashboard-panel>header { display:flex; align-items:center; justify-content:space-between; }
+.dashboard-panel h2 { margin:0; font-size:11px; line-height:16px; font-weight:500; }
+.metric-panel { display:flex; flex-direction:column; }
+.metric-value { margin-top:18px; font-size:28px; line-height:34px; font-weight:600; overflow-wrap:anywhere; }
+.metric-panel p { margin:4px 0; color:#989fa5; font-size:8px; line-height:12px; }
+.metric-space { flex:1; }
+.metric-panel button,.agents-list button,.agent-detail button { min-height:28px; padding:0 10px; color:#b26cff; background:#091123; border:1px solid #202b3e; border-radius:4px; font-size:8px; }
+.severity-list { display:flex; flex-direction:column; gap:10px; margin-top:24px; }
+.severity-list>span { display:flex; align-items:center; gap:8px; color:#989fa5; font-size:8px; }
+.severity-list strong { margin-left:auto; color:#f0f0f0; }
+.severity-dot { width:7px; height:7px; border-radius:50%; background:#0174e1; }
+.severity-critical { background:#ef4444; }.severity-high { background:#f59d19; }.severity-medium { background:#eab308; }
+.dashboard-empty { min-height:100px; display:grid; place-items:center; color:#64748b; font-size:9px; text-align:center; }
+.agents-split { display:grid; grid-template-columns:632px minmax(0,722px); height:454px; margin-top:12px; border:1px solid #5728d2; border-radius:6px; overflow:hidden; }
+.agents-list,.agent-detail { padding:12px; background:#02091a; box-sizing:border-box; min-width:0; }
+.agents-list { border-right:1px solid #5728d2; }
+.agents-list>header,.agent-detail>header { display:flex; align-items:center; gap:8px; min-height:38px; }
+.agents-list>header>div,.agent-detail>header>div { flex:1; }
+.agents-list h2,.agent-detail h2 { margin:0; font-size:16px; line-height:22px; font-weight:500; }
+.agents-list p,.agent-detail p { margin:0; color:#989fa5; font-size:8px; line-height:12px; }
+.agent-summary { display:grid; grid-template-columns:repeat(5,1fr); gap:7px; margin:7px 0; }
+.agent-summary>span { display:flex; flex-direction:column; padding:8px 10px; background:#0c1423; border:1px solid #1c212f; border-radius:4px; }
+.agent-summary strong { font-size:15px; }.agent-summary small { color:#989fa5; font-size:7px; }
+.agent-filters { display:flex; gap:7px; margin-bottom:7px; }.agent-filters button { display:flex; flex:1; align-items:center; justify-content:space-between; color:#989fa5; }
+.agents-list table { width:100%; border-collapse:collapse; background:#081122; border:1px solid #1c212f; font-size:8px; }
+.agents-list th { padding:8px 10px; color:#989fa5; text-align:left; font-weight:500; border-bottom:1px solid #1c212f; }
+.agents-list td { height:142px; padding:8px 10px; }.agents-list td .dashboard-empty { min-height:100px; }
+.agents-list footer { display:flex; justify-content:space-between; padding:12px 2px; color:#989fa5; font-size:8px; }
+.agent-icon { width:42px; height:42px; display:grid; place-items:center; color:white; background:#5728d2; border-radius:6px; }
+.agent-detail nav { display:flex; gap:24px; height:36px; align-items:end; border-bottom:1px solid #1c212f; }
+.agent-detail nav span { padding-bottom:8px; color:#989fa5; font-size:8px; }.agent-detail nav span:first-child { color:#f0f0f0; border-bottom:1px solid #5728d2; }
+.agent-detail-grid { display:grid; grid-template-columns:160px 1fr 142px; gap:8px; padding-top:8px; height:318px; }
+.agent-detail-grid>div { display:grid; gap:8px; }.agent-detail-grid .dashboard-panel { padding:10px; }.agent-detail-grid .dashboard-empty { min-height:65px; }
+@media(max-width:1250px){.soc-enterprise-dashboard{overflow-x:auto;}}

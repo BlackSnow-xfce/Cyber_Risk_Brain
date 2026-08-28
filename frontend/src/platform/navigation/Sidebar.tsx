@@ -1,4 +1,4 @@
-import { ChevronsLeft } from "lucide-react";
+import { ChevronsLeft, ChevronsUpDown } from "lucide-react";
 
 import "./Sidebar.css";
 
@@ -107,10 +107,18 @@ export default function Sidebar() {
             <div className="sidebar-spacer" />
 
             <button className="sidebar-collapse">
-                <ChevronsLeft size={18} />
+                <ChevronsLeft size={12} />
 
                 Collapse
             </button>
+
+            <button className="sidebar-workspace" type="button" disabled>
+                <span className="sidebar-workspace-mark">EA</span>
+                <span><strong>Enterprise Workspace</strong><small>Unavailable</small></span>
+                <ChevronsUpDown size={11} />
+            </button>
+
+            <small className="sidebar-version">PREDATORAI v3.0.0</small>
         </aside>
     );
 }

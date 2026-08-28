@@ -160,7 +160,7 @@ describe("SOCWorkspace URL-authoritative routing", () => {
         fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
         await waitFor(() => expect(loadFindingIncidents).toHaveBeenCalledWith("finding-selected"));
         expect(window.location.pathname).toBe("/");
-        expect(screen.getAllByText("Selected routed finding").length).toBeGreaterThan(0);
+        expect(screen.getByText(/Selected routed finding/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "Back" }));
         await waitFor(() => expect(window.location.pathname).toBe("/findings"));
@@ -172,7 +172,7 @@ describe("SOCWorkspace URL-authoritative routing", () => {
         fireEvent.click(screen.getByRole("button", { name: "Forward" }));
         await waitFor(() => expect(loadFindingIncidents).toHaveBeenCalledTimes(2));
         expect(window.location.pathname).toBe("/");
-        expect(screen.getAllByText("Selected routed finding").length).toBeGreaterThan(0);
+        expect(screen.getByText(/Selected routed finding/)).toBeInTheDocument();
         expect(screen.queryByText("Other routed finding")).not.toBeInTheDocument();
     }, 10_000);
 });

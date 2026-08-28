@@ -12,7 +12,7 @@ export default function PlatformLayout({
         <Box
             sx={{
                 display: "grid",
-                gridTemplateColumns: "280px 1fr",
+                gridTemplateColumns: "164px minmax(0, 1fr)",
                 minHeight: "100vh",
                 bgcolor: "background.default",
             }}
@@ -22,7 +22,7 @@ export default function PlatformLayout({
             <Box
                 sx={{
                     display: "grid",
-                    gridTemplateRows: "72px 1fr",
+                    gridTemplateRows: "64px minmax(0, 1fr)",
                     minHeight: "100vh",
                 }}
             >
@@ -31,8 +31,9 @@ export default function PlatformLayout({
                 <Box
                     component="main"
                     sx={{
-                        p: 3,
+                        p: 0,
                         overflow: "auto",
+                        bgcolor: "#010817",
                     }}
                 >
                     {children}
