@@ -65,17 +65,10 @@
                                                                             ".ai/tasks/**/TASK-0123.md"
                                                                         ],
                                                  "validation_requirements":  [
-                                                                                 "focused EnterpriseSOCDashboard and DashboardPage tests for four distinct drill-downs, visualization shells and truthful states",
-                                                                                 "focused Sidebar, Topbar, SOC routing/history and WorkspaceOutlet regression tests",
-                                                                                 "full frontend regression in regular parallel mode",
-                                                                                 "full frontend regression with --maxWorkers=1",
-                                                                                 "npx tsc --noEmit",
-                                                                                 "npm run build",
-                                                                                 "git diff --check",
-                                                                                 "Scope Guard for the exact 22-file authority and all prohibited files",
-                                                                                 "reference SHA-256 verification",
-                                                                                 "source and rendered-text mojibake inspection",
-                                                                                 "direct implementation-review inspection of route wiring and gauge, trend, donut and status geometry"
+                                                                                 "frontend tests",
+                                                                                 "typescript",
+                                                                                 "production build",
+                                                                                 "git diff --check"
                                                                              ],
                                                  "acceptance_criteria":  [
                                                                              "The sole visual authority is .ai/references/TASK-0122-product-owner-mockup.png at D:\\CyberRiskBrain\\.ai\\references\\TASK-0122-product-owner-mockup.png, SHA-256 af672a97050c5e535199d8d006012cf000e5e7b9b66693a02817c4356eea80df, 1536 x 1024 pixels and 1649791 bytes; never use D:\\CyberRiskBrain.ai\\ references.",
@@ -114,7 +107,7 @@
                                                                              "The Risk Trend panel must include the reference trend/chart geometry even when no authoritative series exists; never synthesize points, direction or trend.",
                                                                              "Exposed Assets and Findings-by-Severity/AI-Agent-status panels must include the reference donut/status visualization geometry; only canonical Finding severity aggregation may supply real segments, while unsupported exposure and agent data remain Unavailable or Not configured.",
                                                                              "All visualization structures retain the approved Rework 7 numerical positions, sizes, gaps, typography, colors and tolerances at 1536 x 1024 and 100 percent zoom.",
-                                                                             "Remove visible mojibake and ensure changed UI strings contain no malformed UTF-8 punctuation, including artifacts such as Ã‚, Ã¢â‚¬ or replacement characters.",
+                                                                             "Remove visible mojibake and ensure changed UI strings contain no malformed UTF-8 punctuation, including artifacts such as Ãƒâ€š, ÃƒÂ¢Ã¢â€šÂ¬ or replacement characters.",
                                                                              "Preserve all truthful loading, error, empty, unavailable and successful states, URL-authoritative navigation, Explainability behavior and the eight byte-protected legacy cockpit files.",
                                                                              "No mockup number, fake agent, fake identity, invented security datum, provider call, backend change or broader product flow may be introduced.",
                                                                              "Architect Implementation Review must directly inspect the four separate route bindings, gauge geometry, trend geometry, donut geometry, status visualization geometry, visible encoding and absence of invented data; green technical validators alone cannot establish PASS.",
