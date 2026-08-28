@@ -13,6 +13,8 @@ export default function ExecutiveLayout({
                 gap: 3,
                 width: "100%",
                 minWidth: 0,
+                p: 3,
+                boxSizing: "border-box",
             }}
         >
             {children}

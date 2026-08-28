@@ -20,8 +20,9 @@ export default function WorkspaceSwitcher() {
     const { workspace, setWorkspace } = useWorkspace();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
+    const currentWorkspace = workspaceRegistry.find((item) => item.id === workspace);
     return <span className="workspace-switcher">
-        <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>Enterprise Workspace <ChevronDown size={9} /></button>
+        <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Change workspace, current workspace ${currentWorkspace?.name ?? "Unavailable"}`} onClick={() => setOpen((value) => !value)}>{currentWorkspace?.name ?? "Workspace unavailable"} <ChevronDown size={9} /></button>
         {open && <span className="workspace-menu" role="menu">{workspaceRegistry.filter(({ enabled }) => enabled).map((item) => <button key={item.id} type="button" role="menuitem" aria-current={workspace === item.id ? "true" : undefined} onClick={() => { setWorkspace(item.id); navigate(workspaceRoutes[item.id]); setOpen(false); }}>{item.name}</button>)}</span>}
     </span>;
 }

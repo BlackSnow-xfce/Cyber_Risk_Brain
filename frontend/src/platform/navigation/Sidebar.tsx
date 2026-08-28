@@ -6,7 +6,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspaceId } from "@/types/workspace";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { getWorkspaceNavigation } from "@/workspaces";
+import { getWorkspaceNavigation, workspaceRegistry } from "@/workspaces";
 
 import SidebarSection from "./SidebarSection";
 
@@ -21,6 +21,8 @@ export default function Sidebar() {
 
     const navigation =
         getWorkspaceNavigation(workspace);
+    const workspaceName = workspaceRegistry.find((item) => item.id === workspace)?.name
+        ?? "Unavailable";
     const supportsWorkspaceFocus =
         workspace === WorkspaceId.DECISION_CENTER
         || workspace === WorkspaceId.THREAT_HUNTING
@@ -112,11 +114,11 @@ export default function Sidebar() {
                 Collapse
             </button>
 
-            <button className="sidebar-workspace" type="button" disabled>
+            <div className="sidebar-workspace" aria-label={`Current workspace: ${workspaceName}`}>
                 <span className="sidebar-workspace-mark">EA</span>
-                <span><strong>Enterprise Workspace</strong><small>Unavailable</small></span>
-                <ChevronsUpDown size={11} />
-            </button>
+                <span><strong>{workspaceName}</strong><small>Current workspace</small></span>
+                <ChevronsUpDown size={11} aria-hidden="true" />
+            </div>
 
             <small className="sidebar-version">PREDATORAI v3.0.0</small>
         </aside>

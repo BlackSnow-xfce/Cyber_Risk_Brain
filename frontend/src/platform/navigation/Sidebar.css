@@ -161,7 +161,6 @@
     text-align: left;
 }
 
-.sidebar-workspace:disabled { opacity: 1; }
 .sidebar-workspace-mark { color: #22d3c5; font-size: 8px; }
 .sidebar-workspace > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .sidebar-workspace strong { font-size: 7px; font-weight: 500; }
