@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import EnterpriseSOCDashboard from "./EnterpriseSOCDashboard";
+
+const dashboardStyles = readFileSync("src/workspaces/soc/dashboard/EnterpriseSOCDashboard.css", "utf8");
 
 const findings = [
     { id: "f-1", source: "live", title: "Canonical one", vendorSeverity: "Critical", asset: "a-1" },
@@ -12,9 +16,18 @@ describe("EnterpriseSOCDashboard", () => {
     afterEach(cleanup);
     it("renders the five plus five reference regions and lower split", () => {
         render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" onOpenFindings={vi.fn()} />);
-        expect(within(screen.getByRole("region", { name: "Primary dashboard metrics" })).getAllByRole("article")).toHaveLength(5);
-        expect(within(screen.getByRole("region", { name: "Secondary dashboard panels" })).getAllByRole("article")).toHaveLength(5);
-        expect(screen.getByRole("region", { name: "AI agents workspace" })).toBeInTheDocument();
+        const primary = screen.getByRole("region", { name: "Primary dashboard metrics" });
+        const secondary = screen.getByRole("region", { name: "Secondary dashboard panels" });
+        const agents = screen.getByRole("region", { name: "AI agents workspace" });
+        expect(within(primary).getAllByRole("article")).toHaveLength(5);
+        const exposedAssets = primary.querySelector(".exposed-assets-panel");
+        expect(exposedAssets).not.toBeNull();
+        expect(within(secondary).getAllByRole("article")).toHaveLength(5);
+        expect(agents).toBeInTheDocument();
+        expect(dashboardStyles).toMatch(/\.dashboard-primary\s*\{[^}]*grid-template-columns:249px 201px 185px 303px 372px;[^}]*height:218px;/);
+        expect(dashboardStyles).toMatch(/\.dashboard-primary \.exposed-assets-panel\s*\{\s*height:230px;\s*\}/);
+        expect(dashboardStyles).toMatch(/\.dashboard-secondary\s*\{[^}]*grid-template-columns:249px 252px 241px 246px 277px;[^}]*height:213px;/);
+        expect(dashboardStyles).toMatch(/\.agents-split\s*\{[^}]*grid-template-columns:minmax\(0,632fr\) minmax\(0,722fr\);[^}]*width:100%;[^}]*overflow:hidden;[^}]*box-sizing:border-box;/);
     });
     it("projects only canonical count and severities while unsupported values stay unavailable", () => {
         render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" onOpenFindings={vi.fn()} />);
@@ -37,7 +50,20 @@ describe("EnterpriseSOCDashboard", () => {
         expect(screen.getByRole("img", { name: "exposure visualization" })).toBeInTheDocument();
         expect(screen.getByRole("img", { name: "severity visualization" })).toBeInTheDocument();
         expect(screen.getByRole("img", { name: "status visualization" })).toBeInTheDocument();
+        const trend = screen.getByRole("img", { name: "Risk trend chart unavailable" });
+        expect(trend.querySelector(".trend-plot-area")).toBeInTheDocument();
+        expect(trend.querySelectorAll(".trend-axis")).toHaveLength(2);
+        expect(trend.querySelector(".trend-path path")).toHaveAttribute("d");
+        expect(trend.querySelectorAll(":scope > i")).toHaveLength(0);
         expect(screen.queryByText(/72|312|12 agents/i)).not.toBeInTheDocument();
+    });
+    it("renders no visible mojibake or replacement markers", () => {
+        render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" selectedFinding={findings[0]} incidentStatus="triage" onOpenFindings={vi.fn()} />);
+        const visibleText = screen.getByRole("main", { name: "Enterprise SOC dashboard" }).textContent ?? "";
+        expect(visibleText).not.toMatch(/Ã‚|Ã¢â‚¬|ï¿½|�/u);
+        expect(visibleText).toContain("Canonical one · triage");
+        expect(visibleText).toContain("Search agents…");
+        expect(visibleText).toContain("—");
     });
     it("keeps all four drill-down actions distinct", () => {
         const actions = [vi.fn(), vi.fn(), vi.fn(), vi.fn()] as const;

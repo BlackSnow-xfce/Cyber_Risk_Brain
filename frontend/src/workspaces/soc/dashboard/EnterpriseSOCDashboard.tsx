@@ -29,7 +29,7 @@ export default function EnterpriseSOCDashboard({ findings, findingsState, select
             <Metric title="Total Findings" value={total} detail="Canonical findings collection" action="View All Findings" onAction={onOpenFindings} />
             <Metric title="Active Investigations" value="Unavailable" detail={selectedFinding ? `${selectedFinding.title}${incidentStatus ? ` · ${incidentStatus}` : ""}` : undefined} action="View Incident" onAction={onOpenIncident} actionDisabled={!hasLinkedIncident} />
             <Metric title="Risk Trend" value="Unavailable" visual={<TrendShell />} />
-            <Metric title="Exposed Assets" value="Unavailable" visual={<DonutShell variant="exposure" />} />
+            <Metric title="Exposed Assets" value="Unavailable" visual={<DonutShell variant="exposure" />} className="exposed-assets-panel" />
         </section>
         <section className="dashboard-secondary" aria-label="Secondary dashboard panels">
             <Panel title="Findings by Severity" action="View Finding" onAction={onOpenFinding} actionDisabled={!selectedFinding}><div className="severity-visual"><DonutShell variant="severity" /><div className="severity-list">{Object.entries(severityCounts).length ? Object.entries(severityCounts).map(([severity, count]) => <span key={severity}><i className={`severity-dot severity-${severity.toLowerCase()}`} />{severity}<strong>{count}</strong></span>) : <Empty label={findingsState === "error" ? "Unavailable" : "No findings"} />}</div></div></Panel>
@@ -55,11 +55,11 @@ export default function EnterpriseSOCDashboard({ findings, findingsState, select
     </main>;
 }
 
-function Metric({ title, value, detail, action, onAction, actionDisabled, visual }: { title: string; value: string; detail?: string; action?: string; onAction?: () => void; actionDisabled?: boolean; visual?: ReactNode }) {
-    return <article className="dashboard-panel metric-panel"><header><h2>{title}</h2><ChevronDown size={10} /></header>{visual}<strong className="metric-value">{value}</strong>{detail && <p>{detail}</p>}<div className="metric-space" />{action && <button disabled={actionDisabled} onClick={onAction}>{action}</button>}</article>;
+function Metric({ title, value, detail, action, onAction, actionDisabled, visual, className }: { title: string; value: string; detail?: string; action?: string; onAction?: () => void; actionDisabled?: boolean; visual?: ReactNode; className?: string }) {
+    return <article className={`dashboard-panel metric-panel${className ? ` ${className}` : ""}`}><header><h2>{title}</h2><ChevronDown size={10} /></header>{visual}<strong className="metric-value">{value}</strong>{detail && <p>{detail}</p>}<div className="metric-space" />{action && <button disabled={actionDisabled} onClick={onAction}>{action}</button>}</article>;
 }
 function Panel({ title, children, action, onAction, actionDisabled }: { title: string; children: ReactNode; action?: string; onAction?: () => void; actionDisabled?: boolean }) { return <article className="dashboard-panel"><header><h2>{title}</h2><ChevronDown size={10} /></header>{children}{action && <button className="panel-action" disabled={actionDisabled} onClick={onAction}>{action}</button>}</article>; }
 function Empty({ label }: { label: string }) { return <div className="dashboard-empty">{label}</div>; }
 function GaugeShell() { return <div className="gauge-shell" role="img" aria-label="Overall risk score gauge unavailable"><span /></div>; }
-function TrendShell() { return <div className="trend-shell" role="img" aria-label="Risk trend chart unavailable"><i /><i /><i /><i /></div>; }
+function TrendShell() { return <div className="trend-shell" role="img" aria-label="Risk trend chart unavailable"><span className="trend-plot-area"><i className="trend-axis trend-axis-y" /><i className="trend-axis trend-axis-x" /><svg className="trend-path" viewBox="0 0 240 70" preserveAspectRatio="none" aria-hidden="true"><path d="M 8 50 C 48 50, 58 22, 96 35 S 155 55, 184 31 S 218 22, 232 30" /></svg></span></div>; }
 function DonutShell({ variant }: { variant: "exposure" | "severity" | "status" }) { return <div className={`donut-shell donut-shell-${variant}`} role="img" aria-label={`${variant} visualization`}><span /></div>; }
