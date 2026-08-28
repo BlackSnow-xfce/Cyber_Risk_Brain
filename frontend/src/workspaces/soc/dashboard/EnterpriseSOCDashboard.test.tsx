@@ -24,10 +24,31 @@ describe("EnterpriseSOCDashboard", () => {
         expect(exposedAssets).not.toBeNull();
         expect(within(secondary).getAllByRole("article")).toHaveLength(5);
         expect(agents).toBeInTheDocument();
-        expect(dashboardStyles).toMatch(/\.dashboard-primary\s*\{[^}]*grid-template-columns:249px 201px 185px 303px 372px;[^}]*height:218px;/);
+        expect(dashboardStyles).toMatch(/\.dashboard-primary\s*\{[^}]*grid-template-columns:249px 201px 185px 303px 372px;[^}]*grid-template-rows:230px;[^}]*height:230px;/);
+        expect(dashboardStyles).toMatch(/\.dashboard-primary \.dashboard-panel:not\(\.exposed-assets-panel\)\s*\{\s*height:218px;\s*\}/);
         expect(dashboardStyles).toMatch(/\.dashboard-primary \.exposed-assets-panel\s*\{\s*height:230px;\s*\}/);
         expect(dashboardStyles).toMatch(/\.dashboard-secondary\s*\{[^}]*grid-template-columns:249px 252px 241px 246px 277px;[^}]*height:213px;/);
         expect(dashboardStyles).toMatch(/\.agents-split\s*\{[^}]*grid-template-columns:minmax\(0,632fr\) minmax\(0,722fr\);[^}]*width:100%;[^}]*overflow:hidden;[^}]*box-sizing:border-box;/);
+    });
+    it("reserves the tallest primary panel before applying the secondary row gap", () => {
+        const primaryHeight = Number(dashboardStyles.match(/\.dashboard-primary\s*\{[^}]*height:(\d+)px;/)?.[1]);
+        const exposedAssetsHeight = Number(dashboardStyles.match(/\.dashboard-primary \.exposed-assets-panel\s*\{[^}]*height:(\d+)px;/)?.[1]);
+        const secondaryHeight = Number(dashboardStyles.match(/\.dashboard-secondary\s*\{[^}]*height:(\d+)px;/)?.[1]);
+        const requiredGap = Number(dashboardStyles.match(/\.dashboard-secondary\s*\{[^}]*margin-top:(\d+)px;/)?.[1]);
+        const lowerGap = Number(dashboardStyles.match(/\.agents-split\s*\{[^}]*margin-top:(\d+)px;/)?.[1]);
+        const lowerHeight = Number(dashboardStyles.match(/\.agents-split\s*\{[^}]*height:(\d+)px;/)?.[1]);
+        const canvasHeight = Number(dashboardStyles.match(/\.soc-enterprise-dashboard\s*\{[^}]*min-height:(\d+)px;/)?.[1]);
+        const bottomPadding = Number(dashboardStyles.match(/\.soc-enterprise-dashboard\s*\{[^}]*padding:0 10px (\d+)px 12px;/)?.[1]);
+        const secondaryRowTop = primaryHeight + requiredGap;
+        const completeDashboardHeight = secondaryRowTop + secondaryHeight + lowerGap + lowerHeight + bottomPadding;
+
+        expect(primaryHeight).toBeGreaterThanOrEqual(exposedAssetsHeight);
+        expect(exposedAssetsHeight).toBe(230);
+        expect(secondaryHeight).toBe(213);
+        expect(requiredGap).toBe(10);
+        expect(secondaryRowTop).toBeGreaterThanOrEqual(exposedAssetsHeight + requiredGap);
+        expect(218 + requiredGap).toBeLessThan(exposedAssetsHeight + requiredGap);
+        expect(completeDashboardHeight).toBe(canvasHeight);
     });
     it("projects only canonical count and severities while unsupported values stay unavailable", () => {
         render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" onOpenFindings={vi.fn()} />);
@@ -53,7 +74,9 @@ describe("EnterpriseSOCDashboard", () => {
         const trend = screen.getByRole("img", { name: "Risk trend chart unavailable" });
         expect(trend.querySelector(".trend-plot-area")).toBeInTheDocument();
         expect(trend.querySelectorAll(".trend-axis")).toHaveLength(2);
-        expect(trend.querySelector(".trend-path path")).toHaveAttribute("d");
+        expect(within(trend).getByText("Unavailable")).toBeInTheDocument();
+        expect(trend.querySelector("svg, path, polyline, polygon, circle")).not.toBeInTheDocument();
+        expect(dashboardStyles).not.toMatch(/\.trend-path|stroke-dasharray/);
         expect(trend.querySelectorAll(":scope > i")).toHaveLength(0);
         expect(screen.queryByText(/72|312|12 agents/i)).not.toBeInTheDocument();
     });
