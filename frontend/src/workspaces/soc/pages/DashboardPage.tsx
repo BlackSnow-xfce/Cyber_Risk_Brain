@@ -23,7 +23,7 @@ export default function DashboardPage({ loadFindings = getFindings, loadFindingI
     const workspaceContext = useContext(WorkspaceContext);
     const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
     const [findingsState, setFindingsState] = useState<LoadState>("loading");
-    const [incidentStatus, setIncidentStatus] = useState<string>();
+    const [linkedIncident, setLinkedIncident] = useState<FindingIncidentReference | null>(null);
     const loaders = useRef({ loadFindings, loadFindingIncidents, loadIncident });
     loaders.current = { loadFindings, loadFindingIncidents, loadIncident };
     const requestedFindingId = useMemo(() => new URLSearchParams(search).get("findingId"), [search]);
@@ -40,15 +40,15 @@ export default function DashboardPage({ loadFindings = getFindings, loadFindingI
 
     useEffect(() => {
         let current = true;
-        setIncidentStatus(undefined);
+        setLinkedIncident(null);
         if (findingsState !== "ready" || !selectedFinding) return () => { current = false; };
         void loaders.current.loadFindingIncidents(selectedFinding.id).then(async (relationships) => {
             if (!current) return;
             const relationship = relationships[0];
-            if (!relationship) { setIncidentStatus("No linked incident"); return; }
-            setIncidentStatus(relationship.lifecycle_status);
+            if (!relationship) return;
+            setLinkedIncident(relationship);
             try { await loaders.current.loadIncident(relationship.incident_id); } catch { /* Status remains canonical relationship state. */ }
-        }).catch(() => { if (current) setIncidentStatus("Unavailable"); });
+        }).catch(() => { if (current) setLinkedIncident(null); });
         return () => { current = false; };
     }, [findingsState, selectedFinding]);
 
@@ -57,5 +57,26 @@ export default function DashboardPage({ loadFindings = getFindings, loadFindingI
         navigate(selectedFinding ? `/findings?findingId=${encodeURIComponent(selectedFinding.id)}` : "/findings");
     };
 
-    return <EnterpriseSOCDashboard findings={findings} findingsState={findingsState} selectedFinding={selectedFinding} incidentStatus={incidentStatus} onOpenFindings={openFindings} />;
+    const openFinding = () => {
+        if (!selectedFinding) return;
+        workspaceContext?.setWorkspace(WorkspaceId.DECISION_CENTER);
+        navigate(`/findings?findingId=${encodeURIComponent(selectedFinding.id)}`);
+    };
+    const openThreatIntelligence = () => {
+        if (!selectedFinding) return;
+        workspaceContext?.setWorkspace(WorkspaceId.DECISION_CENTER);
+        navigate(`/findings?findingId=${encodeURIComponent(selectedFinding.id)}&focus=threat-intelligence`);
+    };
+    const openIncident = () => {
+        if (!linkedIncident) return;
+        workspaceContext?.setWorkspace(WorkspaceId.INCIDENT_RESPONSE);
+        navigate("/incident-response");
+    };
+    const openCommandCenter = () => {
+        if (!linkedIncident) return;
+        workspaceContext?.setWorkspace(WorkspaceId.INCIDENT_RESPONSE);
+        navigate(`/incident-response/incidents/${encodeURIComponent(linkedIncident.incident_id)}/command-center`);
+    };
+
+    return <EnterpriseSOCDashboard findings={findings} findingsState={findingsState} selectedFinding={selectedFinding} incidentStatus={linkedIncident?.lifecycle_status} hasLinkedIncident={Boolean(linkedIncident)} onOpenFindings={openFindings} onOpenFinding={openFinding} onOpenThreatIntelligence={openThreatIntelligence} onOpenIncident={openIncident} onOpenCommandCenter={openCommandCenter} />;
 }

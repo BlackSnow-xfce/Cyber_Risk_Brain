@@ -11,6 +11,7 @@ const findings = [
     { id: "finding-first", source: "sensor", title: "First", vendorSeverity: "Critical", asset: "asset-a" },
     { id: "finding-selected", source: "sensor", title: "Selected canonical finding", vendorSeverity: "High", asset: "asset-b" },
 ] as const;
+const linkedIncident = [{ incident_id: "incident-real-001", relationship_id: "relationship-1", relationship_role: "source", lifecycle_status: "triage" }] as const;
 function Probe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output>; }
 function renderPage(
     path = "/",
@@ -58,7 +59,25 @@ describe("DashboardPage Rework 7 projection", () => {
     });
     it("routes the real Findings action", async () => {
         renderPage("/?findingId=finding-selected");
-        fireEvent.click(await screen.findByRole("button", { name: "View All Findings" }));
+        fireEvent.click((await screen.findAllByRole("button", { name: "View All Findings" }))[0]);
         expect(screen.getByTestId("location")).toHaveTextContent("/findings?findingId=finding-selected");
+    });
+    it.each([
+        ["View Finding", "/findings?findingId=finding-selected"],
+        ["View Threat Intelligence", "/findings?findingId=finding-selected&focus=threat-intelligence"],
+    ])("routes %s to its exact real destination", async (action, destination) => {
+        renderPage("/?findingId=finding-selected");
+        fireEvent.click(await screen.findByRole("button", { name: action }));
+        expect(screen.getByTestId("location")).toHaveTextContent(destination);
+    });
+    it.each([
+        ["View Incident", "/incident-response"],
+        ["Open Command Center", "/incident-response/incidents/incident-real-001/command-center"],
+    ])("routes %s to its exact real destination", async (action, destination) => {
+        renderPage("/?findingId=finding-selected", undefined, vi.fn().mockResolvedValue(linkedIncident));
+        const button = await screen.findByRole("button", { name: action });
+        await waitFor(() => expect(button).toBeEnabled());
+        fireEvent.click(button);
+        expect(screen.getByTestId("location")).toHaveTextContent(destination);
     });
 });

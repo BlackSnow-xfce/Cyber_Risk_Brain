@@ -27,7 +27,22 @@ describe("EnterpriseSOCDashboard", () => {
     it("keeps the real Findings action operational", () => {
         const onOpenFindings = vi.fn();
         render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" onOpenFindings={onOpenFindings} />);
-        fireEvent.click(screen.getByRole("button", { name: "View All Findings" }));
+        fireEvent.click(screen.getAllByRole("button", { name: "View All Findings" })[0]);
         expect(onOpenFindings).toHaveBeenCalledOnce();
+    });
+    it("renders truthful gauge, trend, exposure, severity and agent status shells", () => {
+        render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" onOpenFindings={vi.fn()} />);
+        expect(screen.getByRole("img", { name: "Overall risk score gauge unavailable" })).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "Risk trend chart unavailable" })).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "exposure visualization" })).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "severity visualization" })).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "status visualization" })).toBeInTheDocument();
+        expect(screen.queryByText(/72|312|12 agents/i)).not.toBeInTheDocument();
+    });
+    it("keeps all four drill-down actions distinct", () => {
+        const actions = [vi.fn(), vi.fn(), vi.fn(), vi.fn()] as const;
+        render(<EnterpriseSOCDashboard findings={findings} findingsState="ready" selectedFinding={findings[0]} hasLinkedIncident onOpenFindings={vi.fn()} onOpenFinding={actions[0]} onOpenThreatIntelligence={actions[1]} onOpenIncident={actions[2]} onOpenCommandCenter={actions[3]} />);
+        ["View Finding", "View Threat Intelligence", "View Incident", "Open Command Center"].forEach((name) => fireEvent.click(screen.getByRole("button", { name })));
+        actions.forEach((action) => expect(action).toHaveBeenCalledOnce());
     });
 });
