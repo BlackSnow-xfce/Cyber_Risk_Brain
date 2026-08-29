@@ -1,224 +1,84 @@
-import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
-import Stack from "@mui/material/Stack";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { Link } from "react-router-dom";
 
-import Panel from "@/ui/panel/Panel";
+import type { IncidentQueueItem } from "../IncidentQueue";
+import { getIncidents } from "../IncidentQueueApiClient";
+import "./IncidentResponseOverviewPage.css";
 
-interface MissionConsoleSection {
-    title: string;
-    description: string;
-    emptyState: string;
+type IncidentLoader = () => Promise<IncidentQueueItem[]>;
+interface Props { loadIncidents?: IncidentLoader; }
+const activeStatuses = new Set(["open", "investigating"]);
+const unavailable = [
+    ["Critical Incidents", "Unavailable"],
+    ["MTTR", "Unavailable"],
+    ["Contained Incidents", "Unavailable"],
+    ["Open Tasks", "Not connected"],
+] as const;
+
+export default function IncidentResponseOverviewPage({ loadIncidents = getIncidents }: Props) {
+    const [incidents, setIncidents] = useState<IncidentQueueItem[]>([]);
+    const [query, setQuery] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+        let current = true;
+        setLoading(true);
+        setError(false);
+        void loadIncidents().then((items) => { if (current) setIncidents(items); })
+            .catch(() => { if (current) setError(true); })
+            .finally(() => { if (current) setLoading(false); });
+        return () => { current = false; };
+    }, [loadIncidents]);
+
+    const active = useMemo(() => incidents.filter(({ lifecycle_status }) => activeStatuses.has(lifecycle_status)), [incidents]);
+    const normalizedQuery = query.trim().toLowerCase();
+    const visible = useMemo(() => active.filter((incident) => !normalizedQuery || [
+        incident.incident_id, incident.title, incident.lifecycle_status,
+        incident.created_at, incident.updated_at,
+    ].some((value) => value.toLowerCase().includes(normalizedQuery))), [active, normalizedQuery]);
+
+    return <main className="incident-overview">
+        <header className="incident-overview__header"><Typography component="h1">Incident Response</Typography><Typography component="p">Overview</Typography></header>
+        <section className="incident-panel incident-snapshot" aria-labelledby="snapshot-title">
+            <Typography component="h2" id="snapshot-title">Incident Response Snapshot</Typography>
+            <div className="incident-snapshot__grid">
+                <article className="snapshot-instrument"><Typography component="h3">Active Incidents</Typography><div className="snapshot-instrument__value" aria-live="polite">{loading ? <CircularProgress size={22} aria-label="Loading active incidents" /> : error ? "Unavailable" : active.length}</div><Typography component="p">Open and investigating</Typography></article>
+                {unavailable.map(([label, state]) => <article className="snapshot-instrument" key={label}><Typography component="h3">{label}</Typography><div className="snapshot-instrument__value snapshot-instrument__value--state">{state}</div><Typography component="p">No authoritative source</Typography></article>)}
+            </div>
+        </section>
+        <div className="incident-overview__grid incident-overview__grid--middle">
+            <section className="incident-panel active-incidents" aria-labelledby="active-title">
+                <div className="active-incidents__toolbar"><Typography component="h2" id="active-title">Active Incidents</Typography><Button component={Link} to="/incident-response/queue" variant="outlined" size="small">Open queue</Button></div>
+                <TextField className="active-incidents__search" size="small" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search active incidents" slotProps={{ htmlInput: { "aria-label": "Search active incidents" } }} />
+                <div className="active-incidents__stage">
+                    {loading && <State><CircularProgress size={22} />Loading incidents...</State>}
+                    {!loading && error && <State alert>Incident queue could not be loaded.</State>}
+                    {!loading && !error && incidents.length === 0 && <State>No persisted incidents are available.</State>}
+                    {!loading && !error && incidents.length > 0 && active.length === 0 && <State>No active incidents are available.</State>}
+                    {!loading && !error && active.length > 0 && visible.length === 0 && <State>No active incidents match the search.</State>}
+                    {!loading && !error && visible.length > 0 && <div className="incident-table" role="table" aria-label="Active incidents">
+                        <div className="incident-table__header" role="row"><span role="columnheader">Incident</span><span role="columnheader">Status</span><span role="columnheader">Created / Updated</span></div>
+                        {visible.map((incident) => <Link className="incident-table__row" key={incident.incident_id} to={`/incident-response/incidents/${encodeURIComponent(incident.incident_id)}/command-center`}><span><strong>{incident.title}</strong><small>{incident.incident_id}</small></span><span>{incident.lifecycle_status}</span><span><small>{incident.created_at}</small><small>{incident.updated_at}</small></span></Link>)}
+                    </div>}
+                </div>
+            </section>
+            <UnavailablePanel title="Response Status" state="Unavailable" visual />
+        </div>
+        <div className="incident-overview__grid incident-overview__grid--lower"><UnavailablePanel title="Response Playbooks" state="Not connected" /><UnavailablePanel title="Recent Activity" state="Unavailable" /></div>
+    </main>;
 }
 
-interface MissionConsoleSectionCardProps {
-    section: MissionConsoleSection;
+function State({ children, alert = false }: { children: ReactNode; alert?: boolean }) {
+    return <div className="incident-state" role={alert ? "alert" : undefined}>{children}</div>;
 }
 
-const responseSections: MissionConsoleSection[] = [
-    {
-        title: "Active Incidents",
-        description:
-            "Coordinate the incidents currently assigned for response.",
-        emptyState: "No active incident source is connected.",
-    },
-    {
-        title: "Current Response Phase",
-        description:
-            "Maintain shared awareness of the selected incident phase.",
-        emptyState: "No response phase is available.",
-    },
-    {
-        title: "Containment Status",
-        description:
-            "Review containment scope without executing response actions.",
-        emptyState: "No containment status is available.",
-    },
-    {
-        title: "Response Actions",
-        description:
-            "Review authorized response work associated with an incident.",
-        emptyState: "No response actions are available.",
-    },
-];
-
-const coordinationSections: MissionConsoleSection[] = [
-    {
-        title: "Evidence Collection",
-        description:
-            "Track the evidence context required for incident investigation.",
-        emptyState: "No evidence source is connected.",
-    },
-    {
-        title: "Timeline",
-        description:
-            "Review the ordered history of the selected incident.",
-        emptyState: "No incident timeline is available.",
-    },
-    {
-        title: "Affected Assets",
-        description:
-            "Maintain visibility of assets associated with the response.",
-        emptyState: "No affected assets are available.",
-    },
-    {
-        title: "Communication Status",
-        description:
-            "Coordinate stakeholder communication for the selected incident.",
-        emptyState: "No communication channel is connected.",
-    },
-    {
-        title: "Lessons Learned",
-        description:
-            "Capture review context after response and recovery conclude.",
-        emptyState: "No lessons-learned record is available.",
-    },
-];
-
-function MissionConsoleSectionCard({
-    section,
-}: MissionConsoleSectionCardProps) {
-    return (
-        <Panel
-            component="section"
-            sx={{
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 184,
-            }}
-        >
-            <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                }}
-            >
-                <Typography variant="h6">
-                    {section.title}
-                </Typography>
-
-                <Chip
-                    label="Not connected"
-                    size="small"
-                    variant="outlined"
-                    color="default"
-                />
-            </Stack>
-
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-                {section.description}
-            </Typography>
-
-            <Box
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexGrow: 1,
-                    mt: 2,
-                    p: 2,
-                    border: "1px dashed",
-                    borderColor: "divider",
-                    borderRadius: 1.5,
-                    backgroundColor: "action.hover",
-                }}
-            >
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    {section.emptyState}
-                </Typography>
-            </Box>
-        </Panel>
-    );
-}
-
-export default function IncidentResponseOverviewPage() {
-    return (
-        <Stack spacing={3}>
-            <Box component="header">
-                <Typography variant="overline" color="error.main">
-                    Coordinated incident response
-                </Typography>
-
-                <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                    Incident Response Mission Console
-                </Typography>
-
-                <Typography
-                    color="text.secondary"
-                    sx={{ mt: 1, maxWidth: 780 }}
-                >
-                    Coordinate containment, investigation, recovery and
-                    documentation within one isolated response workspace.
-                    Incident systems are not connected in this foundation.
-                </Typography>
-            </Box>
-
-            <Box component="section" aria-labelledby="response-work-title">
-                <Typography
-                    id="response-work-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
-                    Response work area
-                </Typography>
-
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: {
-                            xs: "minmax(0, 1fr)",
-                            md: "repeat(2, minmax(0, 1fr))",
-                            xl: "repeat(4, minmax(0, 1fr))",
-                        },
-                        gap: 2,
-                    }}
-                >
-                    {responseSections.map((section) => (
-                        <MissionConsoleSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </Box>
-            </Box>
-
-            <Box
-                component="section"
-                aria-labelledby="response-context-title"
-            >
-                <Typography
-                    id="response-context-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
-                    Investigation and coordination context
-                </Typography>
-
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: {
-                            xs: "minmax(0, 1fr)",
-                            md: "repeat(2, minmax(0, 1fr))",
-                            xl: "repeat(3, minmax(0, 1fr))",
-                        },
-                        gap: 2,
-                    }}
-                >
-                    {coordinationSections.map((section) => (
-                        <MissionConsoleSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </Box>
-            </Box>
-        </Stack>
-    );
+function UnavailablePanel({ title, state, visual = false }: { title: string; state: string; visual?: boolean }) {
+    const id = `${title.toLowerCase().replaceAll(" ", "-")}-title`;
+    return <section className="incident-panel unavailable-panel" aria-labelledby={id}><Typography component="h2" id={id}>{title}</Typography><div className={`unavailable-panel__stage${visual ? " unavailable-panel__stage--status" : ""}`}>{visual && <div className="response-status-visual" aria-hidden="true"><span /><span /><span /></div>}<Typography component="p" className="unavailable-panel__state">{state}</Typography><Typography component="p">No authoritative overview data source</Typography></div></section>;
 }

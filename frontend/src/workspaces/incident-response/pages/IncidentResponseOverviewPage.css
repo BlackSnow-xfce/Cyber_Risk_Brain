@@ -1,0 +1,39 @@
+.incident-overview { --panel:#071524; --border:#26384d; --text:#eef3fb; --muted:#aeb8c7; box-sizing:border-box; width:100%; min-width:0; padding:0 20px 0 15px; color:var(--text); }
+.incident-overview *, .incident-overview *::before, .incident-overview *::after { box-sizing:border-box; }
+.incident-overview__header { display:flex; align-items:baseline; gap:12px; height:54px; padding:0 9px; }
+.incident-overview__header h1 { font-size:24px; line-height:37px; font-weight:700; }
+.incident-overview__header p { color:var(--muted); font-size:14px; }
+.incident-panel { min-width:0; overflow:hidden; border:1px solid var(--border); border-radius:8px; background:var(--panel); }
+.incident-panel h2 { color:var(--text); font-size:17px; line-height:22px; font-weight:650; }
+.incident-snapshot { height:200px; padding:15px 14px; }
+.incident-snapshot__grid { display:grid; grid-template-columns:1.03fr 1.04fr 1fr 1.01fr .99fr; gap:13px; margin-top:12px; }
+.snapshot-instrument { height:131px; min-width:0; padding:14px; border:1px solid var(--border); border-radius:7px; background:#0a1929; }
+.snapshot-instrument h3 { color:var(--muted); font-size:14px; line-height:20px; font-weight:600; }
+.snapshot-instrument p { color:var(--muted); font-size:12px; }
+.snapshot-instrument__value { min-height:43px; padding-top:5px; color:var(--text); font-size:24px; line-height:34px; font-weight:700; }
+.snapshot-instrument__value--state { font-size:16px; font-weight:600; }
+.incident-overview__grid { display:grid; grid-template-columns:minmax(0,613fr) minmax(0,596fr); gap:14px; margin-top:16px; }
+.incident-overview__grid--middle>.incident-panel { height:373px; }
+.incident-overview__grid--lower>.incident-panel { height:325px; }
+.active-incidents,.unavailable-panel { padding:14px; }
+.active-incidents__toolbar { display:flex; align-items:center; justify-content:space-between; height:36px; }
+.active-incidents__search { width:100%; margin-top:6px!important; }
+.active-incidents__search .MuiInputBase-root { height:38px; background:#06111f; }
+.active-incidents__stage { height:268px; margin-top:5px; overflow:auto; border-top:1px solid var(--border); }
+.incident-state { display:flex; height:100%; align-items:center; justify-content:center; gap:10px; color:var(--muted); font-size:14px; text-align:center; }
+.incident-table { min-width:540px; font-size:12px; }
+.incident-table__header,.incident-table__row { display:grid; grid-template-columns:2fr .8fr 1.35fr; gap:10px; align-items:center; min-height:42px; padding:7px 8px; }
+.incident-table__header { position:sticky; top:0; z-index:1; color:var(--muted); background:var(--panel); font-weight:600; }
+.incident-table__row { color:var(--text); border-top:1px solid var(--border); text-decoration:none; }
+.incident-table__row:hover { background:#0b1d30; }
+.incident-table__row span { min-width:0; overflow-wrap:anywhere; }
+.incident-table__row strong,.incident-table__row small { display:block; }
+.incident-table__row small { color:var(--muted); font-size:11px; }
+.unavailable-panel__stage { display:flex; height:calc(100% - 22px); flex-direction:column; align-items:center; justify-content:center; color:var(--muted); text-align:center; }
+.unavailable-panel__stage p { font-size:13px; }
+.unavailable-panel__stage .unavailable-panel__state { margin-bottom:5px; color:var(--text); font-size:24px; line-height:32px; font-weight:650; }
+.response-status-visual { display:flex; width:188px; height:92px; align-items:flex-end; justify-content:center; gap:12px; margin-bottom:19px; border-bottom:1px solid #33475e; }
+.response-status-visual span { width:38px; border:1px solid #33475e; border-bottom:0; border-radius:6px 6px 0 0; background:#0b1d30; }
+.response-status-visual span:nth-child(1){height:38px}.response-status-visual span:nth-child(2){height:67px}.response-status-visual span:nth-child(3){height:51px}
+@media(max-width:900px){.incident-snapshot{height:auto}.incident-snapshot__grid{grid-template-columns:repeat(2,minmax(0,1fr))}.incident-overview__grid{grid-template-columns:minmax(0,1fr)}.incident-overview__grid--middle>.incident-panel,.incident-overview__grid--lower>.incident-panel{height:373px}}
+@media(max-width:560px){.incident-overview__header{height:auto;flex-direction:column;gap:0;padding-bottom:12px}.incident-snapshot__grid{grid-template-columns:minmax(0,1fr)}}
