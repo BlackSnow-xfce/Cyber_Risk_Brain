@@ -32,7 +32,7 @@ export const workspaceRegistry: Workspace[] = [
     },
     {
         id: WorkspaceId.EXECUTIVE,
-        name: "Executive",
+        name: "CISO / ISO",
         description: "Board & Business Overview",
         order: 5,
         enabled: true,

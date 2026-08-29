@@ -39,4 +39,16 @@ describe("Topbar", () => {
         expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*font-size:11px/);
         expect(stylesheet).toContain(".workspace-switcher>button:focus-visible");
     });
+    it("exposes semantic workspace group presentation hooks", () => {
+        render(<WorkspaceProvider><MemoryRouter><Topbar /></MemoryRouter></WorkspaceProvider>);
+        fireEvent.click(screen.getByRole("button", { name: /Change workspace/ }));
+
+        expect(screen.getAllByRole("group")).toHaveLength(3);
+        expect(screen.getAllByRole("separator")).toHaveLength(2);
+
+        const stylesheet = readFileSync("src/platform/navigation/Topbar.css", "utf8");
+        expect(stylesheet).toContain(".workspace-menu-label");
+        expect(stylesheet).toContain(".workspace-menu-divider");
+        expect(stylesheet).toContain(".workspace-menu-check");
+    });
 });

@@ -41,7 +41,7 @@ function LocationProbe() {
 describe("WorkspaceOutlet route synchronization", () => {
     afterEach(cleanup);
 
-    it("switches from SOC to Executive and back through the visible workspace control", async () => {
+    it("switches from SOC to CISO / ISO and back through the visible workspace control", async () => {
         render(
             <WorkspaceProvider>
                 <MemoryRouter initialEntries={["/"]}>
@@ -57,14 +57,15 @@ describe("WorkspaceOutlet route synchronization", () => {
         expect(screen.getByText("Total Findings")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: /Change workspace, current workspace SOC Analyst/ }));
-        fireEvent.click(screen.getByRole("menuitem", { name: "Executive" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "CISO / ISO" }));
 
         expect(await screen.findByText("Executive Mission Console")).toBeInTheDocument();
         expect(screen.getByLabelText("Current route")).toHaveTextContent("/executive");
         expect(screen.getByRole("button", { name: "Executive Overview" })).toBeInTheDocument();
-        expect(screen.getByLabelText("Current workspace: Executive")).toBeInTheDocument();
+        expect(screen.getByLabelText("Current workspace: CISO / ISO")).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole("button", { name: /Change workspace, current workspace Executive/ }));
+        expect(screen.getByRole("button", { name: /Change workspace, current workspace CISO \/ ISO/ })).toHaveTextContent("CISO / ISO");
+        fireEvent.click(screen.getByRole("button", { name: /Change workspace, current workspace CISO \/ ISO/ }));
         fireEvent.click(screen.getByRole("menuitem", { name: "SOC Analyst" }));
 
         expect(await screen.findByRole("main", { name: "Enterprise SOC dashboard" })).toBeInTheDocument();
