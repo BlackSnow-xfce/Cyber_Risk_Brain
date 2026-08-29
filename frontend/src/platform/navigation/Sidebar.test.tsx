@@ -18,9 +18,9 @@ const canonicalRules: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = 
     [".sidebar", ["width: 164px", "min-width: 164px", "height: 100vh", "overflow: hidden"]],
     [".sidebar-logo", ["display: flex", "align-items: center", "gap: 7px", "height: 52px", "padding: 7px 10px"]],
     [".sidebar-section", ["padding: 6px 6px 0"]],
-    [".sidebar-title", ["font-size: 13px", "font-weight: 600", "margin: 0 5px 3px"]],
+    [".sidebar-title", ["font-size: 11px", "font-weight: 600", "margin: 0 5px 3px"]],
     [".sidebar-item", ["width: 100%", "min-height: 28px", "display: flex", "align-items: center", "gap: 7px", "padding: 0 8px", "border-radius: 4px"]],
-    [".sidebar-item span", ["font-size: 14px", "flex: 1 1 auto", "min-width: 0", "white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"]],
+    [".sidebar-item span", ["font-size: 13px", "flex: 1 1 auto", "min-width: 0", "white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"]],
     [".sidebar-item svg", ["flex: 0 0 auto"]],
     [".sidebar-item:hover", ["background: #101a30", "color: white"]],
     [".sidebar-item-active", ["background: linear-gradient(", "color: white"]],
@@ -149,10 +149,10 @@ describe("Sidebar routing", () => {
         const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
 
         expect(sidebarSource).toMatch(
-            /\.sidebar-item span\s*\{[^}]*\bfont-size:\s*14px\s*;/s,
+            /\.sidebar-item span\s*\{[^}]*\bfont-size:\s*13px\s*;/s,
         );
         expect(sidebarSource).toMatch(
-            /\.sidebar-title\s*\{[^}]*\bfont-size:\s*13px\s*;[^}]*\bfont-weight:\s*600\s*;/s,
+            /\.sidebar-title\s*\{[^}]*\bfont-size:\s*11px\s*;[^}]*\bfont-weight:\s*600\s*;/s,
         );
         expect(sidebarSource).toMatch(
             /\.sidebar\s*\{[^}]*\bwidth:\s*164px\s*;[^}]*\bmin-width:\s*164px\s*;/s,

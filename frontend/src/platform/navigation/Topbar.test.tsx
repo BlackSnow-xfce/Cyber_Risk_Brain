@@ -36,7 +36,7 @@ describe("Topbar", () => {
         expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*padding:0 9px/);
         expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*background:#0c1423/);
         expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*border:1px solid #334155/);
-        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*font-size:14px/);
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*font-size:13px/);
         expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*font-weight:600/);
         expect(stylesheet).toContain(".workspace-switcher>button:focus-visible");
     });
@@ -51,8 +51,8 @@ describe("Topbar", () => {
         expect(stylesheet).toContain(".workspace-menu-label");
         expect(stylesheet).toContain(".workspace-menu-divider");
         expect(stylesheet).toContain(".workspace-menu-check");
-        expect(stylesheet).toMatch(/\.workspace-menu button \{[^}]*font-size:13px/);
-        expect(stylesheet).toMatch(/\.workspace-menu-label \{[^}]*font-size:11px/);
+        expect(stylesheet).toMatch(/\.workspace-menu button \{[^}]*font-size:12px/);
+        expect(stylesheet).toMatch(/\.workspace-menu-label \{[^}]*font-size:10px/);
         expect(stylesheet).toMatch(/\.workspace-menu-label \{[^}]*font-weight:600/);
     });
 });
