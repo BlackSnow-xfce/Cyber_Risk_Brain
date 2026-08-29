@@ -1,217 +1,148 @@
-import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
-import Stack from "@mui/material/Stack";
+import { useEffect, useState, type ReactNode } from "react";
+import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
+import { Link } from "react-router-dom";
 
-import Panel from "@/ui/panel/Panel";
+import type { HuntHypothesis } from "../HuntHypothesis";
+import { getHuntHypotheses } from "../HuntHypothesisApiClient";
+import "./ThreatHunterOverviewPage.css";
 
-interface WorkspaceSection {
+type HypothesisState =
+    | { status: "loading" }
+    | { status: "error" }
+    | { status: "loaded"; hypotheses: HuntHypothesis[] };
+
+interface OperationalCardProps {
     title: string;
-    description: string;
-    emptyState: string;
+    children: ReactNode;
 }
 
-interface WorkspaceSectionCardProps {
-    section: WorkspaceSection;
-}
-
-const primaryWorkSections: WorkspaceSection[] = [
-    {
-        title: "Active Hunts",
-        description:
-            "Coordinate hypotheses, scope and investigation progress.",
-        emptyState: "No active hunts are available.",
-    },
-    {
-        title: "Hunt Hypotheses",
-        description:
-            "Frame testable security hypotheses before investigation.",
-        emptyState: "No hunt hypotheses are available.",
-    },
-    {
-        title: "Query Workspace",
-        description:
-            "Prepare and review hunting queries within an active hunt.",
-        emptyState: "Query execution is not connected.",
-    },
-];
-
-const contextSections: WorkspaceSection[] = [
-    {
-        title: "Recent Signals",
-        description:
-            "Review signals relevant to the current hunting focus.",
-        emptyState: "No signal source is connected.",
-    },
-    {
-        title: "Entity Context",
-        description:
-            "Inspect the entities associated with the current hypothesis.",
-        emptyState: "No entity is selected.",
-    },
-    {
-        title: "MITRE Coverage",
-        description:
-            "Relate the current hunt to applicable ATT&CK techniques.",
-        emptyState: "No MITRE coverage is available.",
-    },
-    {
-        title: "Hunt Timeline",
-        description:
-            "Follow the ordered activity of the selected hunt.",
-        emptyState: "No hunt timeline is available.",
-    },
-    {
-        title: "Saved Hunts",
-        description:
-            "Return to retained hunt definitions and investigation context.",
-        emptyState: "No saved hunts are available.",
-    },
-];
-
-function WorkspaceSectionCard({
-    section,
-}: WorkspaceSectionCardProps) {
+function OperationalCard({ title, children }: OperationalCardProps) {
     return (
-        <Panel
-            component="section"
-            sx={{
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 184,
-            }}
-        >
-            <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                }}
-            >
-                <Typography variant="h6">
-                    {section.title}
-                </Typography>
-
-                <Chip
-                    label="Not connected"
-                    size="small"
-                    variant="outlined"
-                    color="default"
-                />
-            </Stack>
-
-            <Typography
-                color="text.secondary"
-                sx={{ mt: 1 }}
-            >
-                {section.description}
+        <article className="threat-hunter-overview__card">
+            <Typography component="h3" className="threat-hunter-overview__card-title">
+                {title}
             </Typography>
-
-            <Box
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexGrow: 1,
-                    mt: 2,
-                    p: 2,
-                    border: "1px dashed",
-                    borderColor: "divider",
-                    borderRadius: 1.5,
-                    backgroundColor: "action.hover",
-                }}
-            >
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    {section.emptyState}
-                </Typography>
-            </Box>
-        </Panel>
+            <div className="threat-hunter-overview__card-stage">{children}</div>
+        </article>
     );
 }
 
 export default function ThreatHunterOverviewPage() {
+    const [hypothesisState, setHypothesisState] = useState<HypothesisState>({
+        status: "loading",
+    });
+
+    useEffect(() => {
+        let active = true;
+
+        void getHuntHypotheses()
+            .then((hypotheses) => {
+                if (active) setHypothesisState({ status: "loaded", hypotheses });
+            })
+            .catch(() => {
+                if (active) setHypothesisState({ status: "error" });
+            });
+
+        return () => {
+            active = false;
+        };
+    }, []);
+
     return (
-        <Stack spacing={3}>
-            <Box component="header">
-                <Typography variant="overline" color="warning.main">
+        <main className="threat-hunter-overview">
+            <header className="threat-hunter-overview__header">
+                <Typography component="p" className="threat-hunter-overview__overline">
                     Proactive discovery workspace
                 </Typography>
-
-                <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                <Typography component="h1" className="threat-hunter-overview__title">
                     Threat Hunter Mission Console
                 </Typography>
-
-                <Typography
-                    color="text.secondary"
-                    sx={{ mt: 1, maxWidth: 760 }}
-                >
-                    Develop hypotheses, prepare queries and maintain entity
-                    context without interrupting the operational SOC workflow.
-                    Hunting data sources are not connected in this foundation.
+                <Typography component="p" className="threat-hunter-overview__description">
+                    Develop hypotheses, prepare queries and maintain entity context
+                    without interrupting the operational SOC workflow. Hunting data
+                    sources are not connected in this foundation.
                 </Typography>
-            </Box>
+            </header>
 
-            <Box component="section" aria-labelledby="hunt-work-area-title">
-                <Typography
-                    id="hunt-work-area-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
+            <section aria-labelledby="hunt-work-area-title">
+                <Typography component="h2" id="hunt-work-area-title" className="threat-hunter-overview__section-title">
                     Hunt work area
                 </Typography>
 
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: {
-                            xs: "minmax(0, 1fr)",
-                            lg: "repeat(3, minmax(0, 1fr))",
-                        },
-                        gap: 2,
-                    }}
-                >
-                    {primaryWorkSections.map((section) => (
-                        <WorkspaceSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </Box>
-            </Box>
+                <div className="threat-hunter-overview__cards">
+                    <OperationalCard title="Active Hunts">
+                        <Typography component="p" className="threat-hunter-overview__state-label">
+                            Not connected
+                        </Typography>
+                        <Typography component="p" className="threat-hunter-overview__state-copy">
+                            No active hunts are available.
+                        </Typography>
+                        <Typography component="p" className="threat-hunter-overview__state-detail">
+                            Hunting data sources are not connected.
+                        </Typography>
+                        <Button component={Link} to="/threat-hunting/hunts" variant="outlined" className="threat-hunter-overview__action">
+                            View hunts
+                        </Button>
+                    </OperationalCard>
 
-            <Box component="section" aria-labelledby="hunt-context-title">
-                <Typography
-                    id="hunt-context-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
-                    Hunting context
+                    <OperationalCard title="Hunt Hypotheses">
+                        <HypothesisCardState state={hypothesisState} />
+                        <Button component={Link} to="/threat-hunting/hypotheses" variant="outlined" className="threat-hunter-overview__action">
+                            Open hypotheses
+                        </Button>
+                    </OperationalCard>
+                </div>
+            </section>
+        </main>
+    );
+}
+
+function HypothesisCardState({ state }: { state: HypothesisState }) {
+    if (state.status === "loading") {
+        return (
+            <Typography component="p" role="status" className="threat-hunter-overview__state-label">
+                Loading persisted hypotheses…
+            </Typography>
+        );
+    }
+
+    if (state.status === "error") {
+        return (
+            <>
+                <Typography component="p" role="alert" className="threat-hunter-overview__state-label">
+                    Repository unavailable
                 </Typography>
+                <Typography component="p" className="threat-hunter-overview__state-copy">
+                    Persisted hunt hypotheses could not be loaded.
+                </Typography>
+            </>
+        );
+    }
 
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: {
-                            xs: "minmax(0, 1fr)",
-                            md: "repeat(2, minmax(0, 1fr))",
-                            xl: "repeat(3, minmax(0, 1fr))",
-                        },
-                        gap: 2,
-                    }}
-                >
-                    {contextSections.map((section) => (
-                        <WorkspaceSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </Box>
-            </Box>
-        </Stack>
+    if (state.hypotheses.length === 0) {
+        return (
+            <>
+                <Typography component="p" className="threat-hunter-overview__state-label">
+                    No data
+                </Typography>
+                <Typography component="p" className="threat-hunter-overview__state-copy">
+                    No persisted hunt hypotheses are available.
+                </Typography>
+            </>
+        );
+    }
+
+    return (
+        <>
+            <Typography component="p" className="threat-hunter-overview__hypothesis-count">
+                {state.hypotheses.length}
+            </Typography>
+            <Typography component="p" className="threat-hunter-overview__state-copy">
+                {state.hypotheses.length === 1
+                    ? "Persisted hunt hypothesis"
+                    : "Persisted hunt hypotheses"}
+            </Typography>
+        </>
     );
 }
