@@ -1,23 +1,40 @@
 import { readFileSync } from "node:fs";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Shield } from "lucide-react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { WorkspaceProvider } from "@/context/WorkspaceContext";
+import { WorkspaceId } from "@/types/workspace";
+import type { NavigationItem } from "@/workspaces/navigation";
+import { getWorkspaceNavigation, workspaceRegistry } from "@/workspaces";
 
 import Sidebar from "./Sidebar";
+import SidebarItem from "./SidebarItem";
 
-const sidebarRulePattern = /(?:^|})\s*\.sidebar\s*\{([^}]*)\}/g;
-const widthDeclarationPattern = /(?:^|;)\s*width\s*:\s*([^;]+)/g;
-const hasWidthDeclarationPattern = /(?:^|;)\s*width\s*:/;
-const canonicalLongLabels = [
-    "Threat Intelligence",
-    "Exposure Management",
-    "Executive Summary",
-    "Query Workspace",
-    "Incident Response",
-] as const;
+const sidebarSelectorPattern = /(?:^|})\s*\.sidebar(?:[-\w]|\s|>|:|\.)*\s*\{/;
+const canonicalRules: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+    [".sidebar", ["width: 164px", "min-width: 164px", "height: 100vh", "overflow: hidden"]],
+    [".sidebar-logo", ["display: flex", "align-items: center", "gap: 7px", "height: 52px", "padding: 7px 10px"]],
+    [".sidebar-section", ["padding: 6px 6px 0"]],
+    [".sidebar-title", ["font-size: 13px", "font-weight: 600", "margin: 0 5px 3px"]],
+    [".sidebar-item", ["width: 100%", "min-height: 28px", "display: flex", "align-items: center", "gap: 7px", "padding: 0 8px", "border-radius: 4px"]],
+    [".sidebar-item span", ["font-size: 14px", "flex: 1 1 auto", "min-width: 0", "white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"]],
+    [".sidebar-item svg", ["flex: 0 0 auto"]],
+    [".sidebar-item:hover", ["background: #101a30", "color: white"]],
+    [".sidebar-item-active", ["background: linear-gradient(", "color: white"]],
+];
+
+const canonicalNavigationLabels = new Map<WorkspaceId, readonly string[]>([
+    [WorkspaceId.DECISION_CENTER, ["Exposure Management", "Threat Intelligence", "Executive Summary"]],
+    [WorkspaceId.EXECUTIVE, ["Critical Business Services", "Investment Priorities", "Executive Dashboard", "Strategic Decisions"]],
+    [WorkspaceId.THREAT_HUNTING, ["Query Workspace", "Hunt Timeline"]],
+    [WorkspaceId.THREAT_INTELLIGENCE, ["Our Environment"]],
+    [WorkspaceId.INCIDENT_RESPONSE, ["Active Incidents", "Response Actions"]],
+    [WorkspaceId.RISK_MANAGEMENT, ["Business Services", "Executive Reports"]],
+    [WorkspaceId.ADMINISTRATION, ["Background Jobs", "Platform Health", "Synchronization", "System Overview", "System Settings"]],
+]);
 
 const sidebarWidth = 164;
 const sectionHorizontalPadding = 6 * 2;
@@ -42,17 +59,15 @@ function satisfiesSidebarCascadeContract(
     sidebarSource: string,
     globalSource: string,
 ): boolean {
-    const combinedSource = `${sidebarSource}\n${globalSource}`;
-    const effectiveWidths = [...combinedSource.matchAll(sidebarRulePattern)]
-        .flatMap((rule) => [...rule[1].matchAll(widthDeclarationPattern)])
-        .map((declaration) => declaration[1].trim());
+    const normalizedSource = sidebarSource.replace(/\s+/g, " ");
 
-    return /\.sidebar\s*\{[^}]*\bwidth\s*:\s*164px\s*;/s.test(sidebarSource)
-        && /\.sidebar\s*\{[^}]*\bmin-width\s*:\s*164px\s*;/s.test(sidebarSource)
-        && !/--sidebar-width\s*:/.test(globalSource)
-        && ![...globalSource.matchAll(sidebarRulePattern)]
-            .some((rule) => hasWidthDeclarationPattern.test(rule[1]))
-        && effectiveWidths.at(-1) === "164px";
+    return !sidebarSelectorPattern.test(globalSource)
+        && canonicalRules.every(([selector, declarations]) => {
+            const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const rule = normalizedSource.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))?.[1];
+            return rule !== undefined
+                && declarations.every((declaration) => rule.includes(declaration));
+        });
 }
 
 function LocationProbe() {
@@ -100,19 +115,34 @@ describe("Sidebar routing", () => {
         cleanup();
     });
 
-    it("keeps the combined production CSS cascade on the canonical 164px width", () => {
+    it("makes Sidebar.css the sole authority for the complete production cascade", () => {
         const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
         const globalSource = readFileSync("src/styles/global.css", "utf8");
 
         expect(satisfiesSidebarCascadeContract(sidebarSource, globalSource)).toBe(true);
-        expect(satisfiesSidebarCascadeContract(
-            sidebarSource,
-            `${globalSource}\n.sidebar { width: 270px; }`,
-        )).toBe(false);
-        expect(satisfiesSidebarCascadeContract(
-            sidebarSource,
-            `${globalSource}\n.sidebar { width: var(--sidebar-width); }`,
-        )).toBe(false);
+        expect(globalSource).not.toMatch(sidebarSelectorPattern);
+        expect(globalSource).toContain("--text-secondary:");
+        expect(globalSource).toContain("--surface-hover:");
+        expect(globalSource).toContain("--accent:");
+        expect(globalSource).toMatch(/\.platform-layout\s*\{/);
+        expect(globalSource).toMatch(/\.platform-content\s*\{/);
+
+        const legacyConflicts = [
+            ".sidebar { width: 270px; min-width: 270px; overflow: auto; }",
+            ".sidebar-logo { gap: 14px; padding: 24px; }",
+            ".sidebar-section { padding: 22px 14px 0; }",
+            ".sidebar-title { margin: 0 0 10px; font-size: 11px; font-weight: 700; }",
+            ".sidebar-item { min-height: 52px; gap: 14px; padding: 12px 14px; border-radius: 10px; overflow: hidden; }",
+            ".sidebar-item:hover { background: var(--surface-hover); }",
+            ".sidebar-item-active { background: var(--accent); }",
+        ];
+
+        for (const conflict of legacyConflicts) {
+            expect(satisfiesSidebarCascadeContract(
+                sidebarSource,
+                `${globalSource}\n${conflict}`,
+            )).toBe(false);
+        }
     });
 
     it("uses the readable Sidebar typography contract", () => {
@@ -151,15 +181,51 @@ describe("Sidebar routing", () => {
         expect(calculateTextBudget(false)).toBeGreaterThan(0);
         expect(calculateTextBudget(true)).toBeGreaterThan(0);
 
-        for (const label of canonicalLongLabels) {
-            expect(label).toMatch(/\S+\s+\S+/);
-            expect(labelRule).toMatch(/\bwhite-space:\s*nowrap\s*;/);
-            expect(labelRule).toMatch(/\btext-overflow:\s*ellipsis\s*;/);
-        }
-
         expect(sidebarSource).not.toMatch(
             /\.sidebar-item(?:\s|:[^{]+)*\{[^}]*(?:overflow|text-overflow)\s*:/s,
         );
+    });
+
+    it("uses all canonical workspace navigation sources for the real labels", () => {
+        for (const [workspace, expectedLabels] of canonicalNavigationLabels) {
+            const labels = getWorkspaceNavigation(workspace).map((item) => item.label);
+
+            for (const expectedLabel of expectedLabels) {
+                expect(labels).toContain(expectedLabel);
+            }
+        }
+
+        const allNavigationLabels = [...canonicalNavigationLabels.keys()]
+            .flatMap((workspace) => getWorkspaceNavigation(workspace))
+            .map((item) => item.label);
+        const incidentResponseWorkspace = workspaceRegistry.find(
+            (workspace) => workspace.id === WorkspaceId.INCIDENT_RESPONSE,
+        );
+
+        expect(incidentResponseWorkspace?.name).toBe("Incident Response");
+        expect(allNavigationLabels).not.toContain("Incident Response");
+    });
+
+    it("renders the actual SidebarItem icon, ellipsis label, Chevron and selected state", () => {
+        const item: NavigationItem = {
+            id: "controlled-parent",
+            label: "Controlled canonical navigation label",
+            section: "Controlled",
+            route: "/controlled",
+            icon: Shield,
+            children: [],
+        };
+        const { container } = render(<SidebarItem item={item} active />);
+        const button = screen.getByRole("button", { name: item.label });
+        const label = button.querySelector("span");
+        const icons = button.querySelectorAll("svg");
+
+        expect(button).toHaveClass("sidebar-item", "sidebar-item-active");
+        expect(label).toHaveTextContent(item.label);
+        expect(icons).toHaveLength(2);
+        expect(icons[0]).toHaveAttribute("width", "12");
+        expect(icons[1]).toHaveAttribute("width", "11");
+        expect(container.querySelector(".sidebar-item > span")).toBe(label);
     });
 
     it("navigates from the command center to Dashboard", () => {
