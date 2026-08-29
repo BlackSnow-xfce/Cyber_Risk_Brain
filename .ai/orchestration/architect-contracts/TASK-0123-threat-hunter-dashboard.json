@@ -1,0 +1,77 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0123-threat-hunter-dashboard",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0123",
+      "title": "Threat Hunter Dashboard Visual Unification",
+      "phase": "POST-MVP Threat Hunter",
+      "expected_head": "d78204776b0ca0b3da1c822867a3cea515056f4d",
+      "allowed_scope": [
+        "frontend/src/workspaces/threat-hunter/pages/ThreatHunterOverviewPage.tsx",
+        "frontend/src/workspaces/threat-hunter/pages/ThreatHunterOverviewPage.css",
+        "frontend/src/workspaces/threat-hunter/pages/ThreatHunterOverviewPage.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        "frontend/src/styles/global.css",
+        "frontend/src/platform/**",
+        "frontend/src/components/topbar/**",
+        "frontend/src/workspaces/registry/**",
+        "frontend/src/workspaces/threat-hunter/navigation.ts",
+        "frontend/src/workspaces/threat-hunter/ThreatHunterWorkspace.tsx",
+        "frontend/src/workspaces/threat-hunter/ThreatHunterLayout.tsx",
+        "frontend/src/workspaces/threat-hunter/ThreatHunterAreaPage.tsx",
+        "frontend/src/workspaces/threat-hunter/pages/ThreatHunterAreaPage.tsx",
+        "frontend/src/workspaces/threat-hunter/pages/HuntHypothesesPage.tsx",
+        "frontend/src/workspaces/threat-hunter/HuntHypothesis.ts",
+        "frontend/src/workspaces/threat-hunter/HuntHypothesisApiClient.ts",
+        "frontend/src/workspaces/threat-hunter/HuntHypothesisApiClient.test.ts",
+        "frontend/src/workspaces/threat-hunter/ThreatHunterWorkspace.test.tsx",
+        "frontend/src/workspaces/soc/**",
+        "frontend/src/workspaces/executive/**",
+        "frontend/src/workspaces/threat-intelligence/**",
+        "frontend/src/workspaces/incident-response/**",
+        "frontend/src/workspaces/risk-manager/**",
+        "frontend/src/workspaces/administrator/**",
+        ".ai/references/TASK-0122-product-owner-mockup.png",
+        ".ai/references/TASK-0123-product-owner-mockup.png",
+        ".ai/tasks/done/TASK-0122.md",
+        ".ai/tasks/**/TASK-0124.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Only the three explicit Threat Hunter overview paths may change; global shell, components, Registry, routing, navigation, hypothesis domain and API, other workspaces, backend, provider, runtime and environment paths remain unchanged.",
+        "The immutable visual authority is .ai/references/TASK-0123-product-owner-mockup.png with SHA-256 08bb0ceeb39f7832dfccca5fb65fed59387e05cb285cc26b67d2b2869616975a, dimensions 1683 x 934 and size 1265678 bytes.",
+        "The first viewport implements the measured mission overline, mission title, truthful disconnected copy, Hunt work heading and two dominant operational panels without copying the SOC dashboard.",
+        "The page uses a compact Main-track layout derived from the reference while preserving the approved 164px Platform Sidebar and current Topbar without overlap, clipping or document-level horizontal overflow.",
+        "Active Hunts uses the reference panel and inner-state geometry and remains truthfully unavailable or not connected without an invented count or activity.",
+        "Hunt Hypotheses uses the same panel geometry and distinguishes loading, repository error, empty persisted collection and successfully loaded real persisted hypotheses.",
+        "A hypothesis count may be shown only after successful loading from the canonical getHuntHypotheses result and is absent during loading and error states.",
+        "Actions use only the canonical /threat-hunting/hunts and /threat-hunting/hypotheses routes; no fake data-source connection flow is introduced.",
+        "Query Workspace, IOC Explorer, Entities, MITRE ATT&CK, Hunt Timeline and Saved Hunts remain reachable through unchanged navigation and all existing deep-link, Back, Forward and URL-authority behavior remains passing.",
+        "Page-local CSS implements the sampled navy surfaces, thin borders, rounded panels, compact typography and measured spacing without global selectors or shell overrides.",
+        "No KPI strip, chart or analytical visualization absent from the PNG is invented and no mockup number, fake hunt, signal, entity, technique, coverage, trend, timeline, identity, AI decision or provider output is used.",
+        "Signals, Entities, ATT&CK Coverage, Query Activity, Hunt Timeline, Saved Hunts and all trends remain explicitly unavailable or not connected wherever referenced because no authoritative overview source exists.",
+        "Loading, error, empty and unavailable states are semantically distinct and accessible.",
+        "Focused overview tests, existing Threat Hunter routing and hypothesis tests, shell and cross-workspace regressions, full frontend regression, TypeScript, production build and git diff --check pass.",
+        "Scope Guard reports exactly the three authorized paths and the visual reference remains byte-identical.",
+        "Architect Implementation Review and Product Owner browser acceptance at 1683 x 934 and 100 percent zoom remain mandatory before DONE.",
+        "Do not transition TASK-0123 to DONE or create TASK-0124."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-29T00:00:00+02:00"
+    },
+    "received_at": "2026-08-29T00:00:00+02:00"
+  }
+}
