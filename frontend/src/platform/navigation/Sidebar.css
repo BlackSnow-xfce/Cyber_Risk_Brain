@@ -67,7 +67,7 @@
 
 .sidebar-item {
     width: 100%;
-    height: 24px;
+    min-height: 28px;
 
     display: flex;
     align-items: center;
@@ -90,10 +90,18 @@
 }
 
 .sidebar-item span {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
     text-align: left;
 
     font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-item svg {
+    flex: 0 0 auto;
 }
 
 .sidebar-item svg:last-child {

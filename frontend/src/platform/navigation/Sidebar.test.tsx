@@ -11,6 +11,32 @@ import Sidebar from "./Sidebar";
 const sidebarRulePattern = /(?:^|})\s*\.sidebar\s*\{([^}]*)\}/g;
 const widthDeclarationPattern = /(?:^|;)\s*width\s*:\s*([^;]+)/g;
 const hasWidthDeclarationPattern = /(?:^|;)\s*width\s*:/;
+const canonicalLongLabels = [
+    "Threat Intelligence",
+    "Exposure Management",
+    "Executive Summary",
+    "Query Workspace",
+    "Incident Response",
+] as const;
+
+const sidebarWidth = 164;
+const sectionHorizontalPadding = 6 * 2;
+const itemHorizontalPadding = 8 * 2;
+const leadingIconWidth = 12;
+const trailingChevronWidth = 11;
+const itemGap = 7;
+
+function calculateTextBudget(hasChevron: boolean): number {
+    const iconWidths = leadingIconWidth
+        + (hasChevron ? trailingChevronWidth : 0);
+    const gaps = itemGap * (hasChevron ? 2 : 1);
+
+    return sidebarWidth
+        - sectionHorizontalPadding
+        - itemHorizontalPadding
+        - iconWidths
+        - gaps;
+}
 
 function satisfiesSidebarCascadeContract(
     sidebarSource: string,
@@ -100,6 +126,39 @@ describe("Sidebar routing", () => {
         );
         expect(sidebarSource).toMatch(
             /\.sidebar\s*\{[^}]*\bwidth:\s*164px\s*;[^}]*\bmin-width:\s*164px\s*;/s,
+        );
+    });
+
+    it("keeps long canonical labels inside compact, flex-stable items", () => {
+        const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
+        const itemRule = sidebarSource.match(/\.sidebar-item\s*\{([^}]*)\}/s)?.[1] ?? "";
+        const labelRule = sidebarSource.match(/\.sidebar-item span\s*\{([^}]*)\}/s)?.[1] ?? "";
+        const iconRule = sidebarSource.match(/\.sidebar-item svg\s*\{([^}]*)\}/s)?.[1] ?? "";
+
+        expect(itemRule).toMatch(/\bmin-height:\s*28px\s*;/);
+        expect(itemRule).not.toMatch(/(?:^|;)\s*height\s*:\s*24px\s*;/);
+        expect(itemRule).toMatch(/\bdisplay:\s*flex\s*;/);
+        expect(itemRule).toMatch(/\balign-items:\s*center\s*;/);
+        expect(iconRule).toMatch(/\bflex:\s*0 0 auto\s*;/);
+        expect(labelRule).toMatch(/\bflex:\s*1 1 auto\s*;/);
+        expect(labelRule).toMatch(/\bmin-width:\s*0\s*;/);
+        expect(labelRule).toMatch(/\bwhite-space:\s*nowrap\s*;/);
+        expect(labelRule).toMatch(/\boverflow:\s*hidden\s*;/);
+        expect(labelRule).toMatch(/\btext-overflow:\s*ellipsis\s*;/);
+
+        expect(calculateTextBudget(false)).toBe(117);
+        expect(calculateTextBudget(true)).toBe(99);
+        expect(calculateTextBudget(false)).toBeGreaterThan(0);
+        expect(calculateTextBudget(true)).toBeGreaterThan(0);
+
+        for (const label of canonicalLongLabels) {
+            expect(label).toMatch(/\S+\s+\S+/);
+            expect(labelRule).toMatch(/\bwhite-space:\s*nowrap\s*;/);
+            expect(labelRule).toMatch(/\btext-overflow:\s*ellipsis\s*;/);
+        }
+
+        expect(sidebarSource).not.toMatch(
+            /\.sidebar-item(?:\s|:[^{]+)*\{[^}]*(?:overflow|text-overflow)\s*:/s,
         );
     });
 
