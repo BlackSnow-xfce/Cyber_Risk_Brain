@@ -1,68 +1,34 @@
-import Box from "@mui/material/Box";
-import Alert from "@mui/material/Alert";
-import CircularProgress from "@mui/material/CircularProgress";
-import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
+import { Activity, Bug, Crosshair, Radio, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import IntelligenceStateCard from "./IntelligenceStateCard";
-import ThreatIntelligencePageHeader from "./ThreatIntelligencePageHeader";
 import type { FindingSummary } from "@/workspaces/soc/findings/FindingSummary";
 import { getFindings } from "@/workspaces/soc/findings/FindingsApiClient";
+import { EnvironmentFindings } from "./ThreatIntelligenceEnvironmentPage";
+import "./ThreatIntelligenceOverviewPage.css";
 
-interface ThreatIntelligenceOverviewPageProps {
-    loadFindings?: () => Promise<readonly FindingSummary[]>;
-}
+interface ThreatIntelligenceOverviewPageProps { loadFindings?: () => Promise<readonly FindingSummary[]>; }
+const unavailableSnapshots = [{ label: "Active Campaigns", state: "Not connected", Icon: Crosshair }, { label: "Threat Actors", state: "Not connected", Icon: Activity }, { label: "New IOCs", state: "Not connected", Icon: Radio }, { label: "High Risk CVEs", state: "Unavailable", Icon: Bug }] as const;
 
 export default function ThreatIntelligenceOverviewPage({ loadFindings = getFindings }: ThreatIntelligenceOverviewPageProps) {
+    const navigate = useNavigate();
     const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    useEffect(() => { let active = true; loadFindings().then((result) => { if (active) setFindings(result); }).catch(() => { if (active) setError(true); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [loadFindings]);
+    const findingsState = loading ? "Loading" : error ? "Unavailable" : String(findings.length);
 
-    useEffect(() => {
-        let active = true;
-        loadFindings().then((result) => {
-            if (active) setFindings(result);
-        }).catch(() => {
-            if (active) setError(true);
-        }).finally(() => {
-            if (active) setLoading(false);
-        });
-        return () => { active = false; };
-    }, [loadFindings]);
-
-    const overviewSections = [
-        { title: "Findings in environment", description: loading ? "Loading live findings…" : error ? "Live findings are unavailable." : `${findings.length} findings loaded from PredatorAI.`, status: loading ? "Loading" : error ? "Unavailable" : "Available" },
-        { title: "CVE / vulnerability intelligence", description: "Resolve an exact CVE in Explorer or open a finding-scoped TI view.", status: "On demand" },
-        { title: "NVD / CVSS / EPSS / CISA KEV", description: "Displayed when returned by the vulnerability intelligence contract.", status: "Source-backed" },
-        { title: "Provenance and completeness", description: "Each returned fact retains source and availability metadata.", status: "Preserved" },
-        { title: "Environment Relevance", description: "Finding relationships are shown only when the backend returns them.", status: "Not evaluated" },
-        { title: "Unsupported intelligence objects", description: "Attacker, campaign, malware and IOC relationships are not connected.", status: "Not connected" },
-    ];
-    return (
-        <Stack spacing={3}>
-            <ThreatIntelligencePageHeader
-                eyebrow="Analyst intelligence workspace"
-                title="Threat Intelligence Overview"
-                description="Assess available intelligence, its provenance and its relevance to the environment. Sources that are not connected remain explicitly visible."
-            />
-            <Box
-                sx={{
-                    display: "grid",
-                    gridTemplateColumns: {
-                        xs: "minmax(0, 1fr)",
-                        md: "repeat(2, minmax(0, 1fr))",
-                        xl: "repeat(3, minmax(0, 1fr))",
-                    },
-                    gap: 2,
-                }}
-            >
-                {overviewSections.map((section) => (
-                    <IntelligenceStateCard key={section.title} title={section.title} description={section.description} status={section.status} />
-                ))}
-            </Box>
-            {loading && <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}><CircularProgress size={18} /><Typography variant="body2">Loading live environment context…</Typography></Stack>}
-            {error && <Alert severity="warning">Live findings could not be loaded; no intelligence conclusion is inferred.</Alert>}
-        </Stack>
-    );
+    return <main className="ti-overview">
+        <section className="ti-panel ti-snapshot" aria-labelledby="snapshot-title"><h1 id="snapshot-title" className="ti-overline">Intelligence Snapshot</h1><div className="ti-snapshot-grid">
+            <article className="ti-snapshot-card"><span className="ti-icon"><ShieldCheck size={22} /></span><div><strong>{findingsState}</strong><span>Relevant Findings</span></div></article>
+            {unavailableSnapshots.map(({ label, state, Icon }) => <article className="ti-snapshot-card" key={label}><span className="ti-icon"><Icon size={22} /></span><div><strong className="ti-state">{state}</strong><span>{label}</span></div></article>)}
+        </div></section>
+        <section className="ti-panel ti-environment" aria-labelledby="environment-title"><header><h2 id="environment-title">Our Environment</h2><p>Search and explore findings in our assets</p></header><EnvironmentFindings findings={findings} loading={loading} error={error} compact /><button className="ti-panel-action" type="button" onClick={() => navigate("/threat-intelligence/environment")}>View all results <span aria-hidden="true">→</span></button></section>
+        <section className="ti-panel ti-landscape" aria-labelledby="landscape-title"><header><h2 id="landscape-title">Threat Landscape</h2><p>Current threat activity overview</p></header><div className="ti-map-stage" aria-label="Threat landscape unavailable"><div className="ti-map-shape" /><strong>Unavailable</strong><span>No geographic intelligence source is connected.</span></div></section>
+        <UnavailablePanel className="ti-feeds" title="Intelligence Feeds" subtitle="Latest updates from configured sources" state="Not connected" />
+        <UnavailablePanel className="ti-recent" title="Recent Intelligence" subtitle="Latest relevant intelligence for our environment" state="Unavailable" />
+    </main>;
 }
+
+interface UnavailablePanelProps { className: string; title: string; subtitle: string; state: string; }
+function UnavailablePanel({ className, title, subtitle, state }: UnavailablePanelProps) { return <section className={`ti-panel ti-unavailable ${className}`}><header><h2>{title}</h2><p>{subtitle}</p></header><div className="ti-list-stage"><strong>{state}</strong><span>No intelligence entries are available.</span></div></section>; }

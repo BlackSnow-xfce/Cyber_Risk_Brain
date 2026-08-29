@@ -30,7 +30,7 @@ describe("Threat Intelligence workspace", () => {
 
     it("routes overview and explorer through the isolated workspace", () => {
         renderWorkspace(null, "/threat-intelligence");
-        expect(screen.getByText("Threat Intelligence Overview")).toBeInTheDocument();
+        expect(screen.getByText("Intelligence Snapshot")).toBeInTheDocument();
 
         cleanup();
         render(<MemoryRouter initialEntries={["/threat-intelligence/explorer"]}>{workspace("explorer")}</MemoryRouter>);
@@ -39,25 +39,27 @@ describe("Threat Intelligence workspace", () => {
 
     it("treats the workspace root as the authoritative overview after history navigation", () => {
         renderWorkspace("explorer", "/threat-intelligence");
-        expect(screen.getByText("Threat Intelligence Overview")).toBeInTheDocument();
+        expect(screen.getByText("Intelligence Snapshot")).toBeInTheDocument();
     });
 
-    it("renders every overview category without fabricated intelligence", () => {
-        render(<ThreatIntelligenceOverviewPage loadFindings={() => Promise.resolve([])} />);
+    it("renders the overview hierarchy without fabricated intelligence", async () => {
+        render(<MemoryRouter><ThreatIntelligenceOverviewPage loadFindings={() => Promise.resolve([])} /></MemoryRouter>);
 
         for (const category of [
-            "Findings in environment",
-            "CVE / vulnerability intelligence",
-            "NVD / CVSS / EPSS / CISA KEV",
-            "Provenance and completeness",
-            "Environment Relevance",
+            "Relevant Findings",
+            "Active Campaigns",
+            "Threat Actors",
+            "New IOCs",
+            "High Risk CVEs",
+            "Our Environment",
+            "Threat Landscape",
+            "Intelligence Feeds",
+            "Recent Intelligence",
         ]) {
             expect(screen.getByText(category)).toBeInTheDocument();
         }
-        expect(screen.getByText("On demand")).toBeInTheDocument();
-        expect(screen.getByText("Source-backed")).toBeInTheDocument();
-        expect(screen.getByText("Preserved")).toBeInTheDocument();
-        expect(screen.getByText("Not evaluated")).toBeInTheDocument();
+        expect(await screen.findByText("0")).toBeInTheDocument();
+        expect(screen.getAllByText("Not connected")).toHaveLength(4);
     });
 
     it("marks unsupported explorer object types as unavailable", () => {
