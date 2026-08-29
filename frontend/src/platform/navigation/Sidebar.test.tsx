@@ -89,6 +89,20 @@ describe("Sidebar routing", () => {
         )).toBe(false);
     });
 
+    it("uses the readable Sidebar typography contract", () => {
+        const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
+
+        expect(sidebarSource).toMatch(
+            /\.sidebar-item span\s*\{[^}]*\bfont-size:\s*14px\s*;/s,
+        );
+        expect(sidebarSource).toMatch(
+            /\.sidebar-title\s*\{[^}]*\bfont-size:\s*13px\s*;[^}]*\bfont-weight:\s*600\s*;/s,
+        );
+        expect(sidebarSource).toMatch(
+            /\.sidebar\s*\{[^}]*\bwidth:\s*164px\s*;[^}]*\bmin-width:\s*164px\s*;/s,
+        );
+    });
+
     it("navigates from the command center to Dashboard", () => {
         renderSidebar([
             "/incident-response/incidents/incident-real-001/command-center",
