@@ -1,14 +1,58 @@
+import { readFileSync } from "node:fs";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ThreatIntelligenceOverviewPage from "./ThreatIntelligenceOverviewPage";
 
+const overviewStyles = readFileSync("src/workspaces/threat-intelligence/pages/ThreatIntelligenceOverviewPage.css", "utf8");
+
 afterEach(cleanup);
 const finding = { id: "finding-real", title: "Canonical finding", asset: "asset-real", source: "scanner-real", vendorSeverity: "Provider rating" };
 function renderOverview(loadFindings: () => Promise<readonly (typeof finding)[]>) { return render(<MemoryRouter><ThreatIntelligenceOverviewPage loadFindings={loadFindings} /><LocationProbe /></MemoryRouter>); }
 
 describe("Threat Intelligence overview", () => {
+    it("keeps the measured page, snapshot, and independent row geometry contracts", () => {
+        const pageRule = cssRule(".ti-overview");
+        const panelRule = cssRule(".ti-panel");
+        const snapshotGridRule = cssRule(".ti-snapshot-grid");
+        const snapshotCardRule = cssRule(".ti-snapshot-card");
+        const lowerPanelRule = cssRule(".ti-feeds, .ti-recent");
+
+        const [rightInset, , leftInset] = pixelValues(declaration(pageRule, "padding"));
+        expect(leftInset).toBeCloseTo(19, 4);
+        expect(rightInset).toBeCloseTo(17, 4);
+        expect(leftInset).not.toBe(2);
+        expect(rightInset).not.toBe(2);
+
+        const snapshotWidths = pixelValues(declaration(snapshotGridRule, "grid-template-columns"));
+        const snapshotGap = pixelValues(declaration(snapshotGridRule, "gap"))[0];
+        expect(snapshotWidths).toEqual([199, 204, 224, 224, 204]);
+        expect(declaration(snapshotGridRule, "grid-template-columns")).not.toContain("repeat(5");
+        expect(pixelValues(declaration(snapshotCardRule, "height"))[0]).toBe(105);
+        expect(snapshotGap).toBe(13);
+        const panelHorizontalPadding = pixelValues(declaration(panelRule, "padding"))[1] * 2;
+        const snapshotInnerWidth = 1219 - leftInset - rightInset - panelHorizontalPadding - 2;
+        expect(snapshotWidths.reduce((sum, width) => sum + width, 0) + (4 * snapshotGap)).toBeLessThanOrEqual(snapshotInnerWidth);
+
+        const tracks = fractionValues(declaration(pageRule, "grid-template-columns"));
+        const middleLeft = tracks[0] + tracks[1] + tracks[2];
+        const middleGap = tracks[3];
+        const middleRight = tracks[4];
+        expect(middleLeft / middleRight).toBeCloseTo(749 / 420, 3);
+        expect(middleGap).toBe(14);
+
+        const bottomLeft = tracks[0];
+        const bottomGap = tracks[1];
+        const bottomRight = tracks[2] + tracks[3] + tracks[4];
+        expect([bottomLeft, bottomRight]).toEqual([573, 594]);
+        expect(bottomLeft / bottomRight).toBeCloseTo(0.965, 3);
+        expect(bottomGap).toBe(16);
+        expect(bottomLeft / bottomRight).not.toBeCloseTo(1.78, 1);
+        expect(pixelValues(declaration(lowerPanelRule, "height"))[0]).toBe(411);
+    });
+
     it("renders the measured hierarchy and five truthful snapshot instruments", async () => {
         renderOverview(() => Promise.resolve([finding]));
         expect(screen.getByRole("heading", { name: "Intelligence Snapshot" })).toBeInTheDocument();
@@ -54,3 +98,24 @@ describe("Threat Intelligence overview", () => {
 });
 
 function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output>; }
+
+function cssRule(selector: string): string {
+    const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = overviewStyles.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
+    expect(match, `Missing CSS rule ${selector}`).not.toBeNull();
+    return match?.[1] ?? "";
+}
+
+function declaration(rule: string, property: string): string {
+    const match = rule.match(new RegExp(`${property}\\s*:\\s*([^;]+)`));
+    expect(match, `Missing CSS declaration ${property}`).not.toBeNull();
+    return match?.[1].trim() ?? "";
+}
+
+function pixelValues(value: string): number[] {
+    return [...value.matchAll(/([\d.]+)px/g)].map((match) => Number(match[1]));
+}
+
+function fractionValues(value: string): number[] {
+    return [...value.matchAll(/([\d.]+)fr/g)].map((match) => Number(match[1]));
+}
