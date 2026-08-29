@@ -41,11 +41,17 @@ describe("PlatformLayout", () => {
         expect(source).toContain('height: "100vh"');
     });
 
-    it("keeps deliberately wide content reachable through Main at a smaller viewport", () => {
+    it("models Main and body scroll ownership with controlled jsdom dimensions", () => {
+        // jsdom does not perform native pixel layout. This is deterministic
+        // layout-contract verification with controlled DOM dimensions, not a
+        // native browser pixel measurement. Actual rendering remains subject to
+        // Product Owner Live Acceptance at 1536 x 1024 and 100% browser zoom.
         const viewportWidth = 1024;
         const sidebarWidth = 164;
         const mainClientWidth = viewportWidth - sidebarWidth;
         const contentWidth = 1100;
+        const ownsNoHorizontalOverflow = (element: Pick<Element, "clientWidth" | "scrollWidth">) =>
+            element.scrollWidth === element.clientWidth;
 
         render(
             <WorkspaceProvider>
@@ -65,13 +71,24 @@ describe("PlatformLayout", () => {
             clientWidth: { configurable: true, value: viewportWidth },
             scrollWidth: { configurable: true, value: viewportWidth },
         });
+        Object.defineProperties(document.body, {
+            clientWidth: { configurable: true, value: viewportWidth },
+            scrollWidth: { configurable: true, value: viewportWidth },
+        });
 
+        expect(main.clientWidth).toBe(860);
+        expect(main.scrollWidth).toBe(1100);
         expect(main.scrollWidth).toBeGreaterThan(main.clientWidth);
-        expect(document.documentElement.scrollWidth).toBe(document.documentElement.clientWidth);
+        expect(ownsNoHorizontalOverflow(document.documentElement)).toBe(true);
+        expect(ownsNoHorizontalOverflow(document.body)).toBe(true);
         expect(main).toHaveStyle({ overflowX: "auto" });
 
         const maximumScrollLeft = main.scrollWidth - main.clientWidth;
+        expect(maximumScrollLeft).toBe(240);
         main.scrollLeft = maximumScrollLeft;
         expect(main.scrollLeft + main.clientWidth).toBe(main.scrollWidth);
+
+        const bodyOverflowRegression = { clientWidth: viewportWidth, scrollWidth: contentWidth };
+        expect(ownsNoHorizontalOverflow(bodyOverflowRegression)).toBe(false);
     });
 });
