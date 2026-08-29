@@ -1,0 +1,71 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0123-rework-1",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "TASK-0123",
+      "title": "Threat Hunter Dashboard Visual Unification REWORK 1",
+      "phase": "POST-MVP Threat Hunter",
+      "expected_head": "a3f0734392a95ab7732966bd026c6602bc789488",
+      "allowed_scope": [
+        "frontend/src/components/topbar/WorkspaceSwitcher.tsx",
+        "frontend/src/components/topbar/WorkspaceSwitcher.test.tsx"
+      ],
+      "prohibited_actions": [
+        "api_app.py",
+        "application/**",
+        "core/**",
+        "aidp_orchestration/**",
+        "runtime/**",
+        ".env",
+        "frontend/src/styles/global.css",
+        "frontend/src/platform/**",
+        "frontend/src/platform/navigation/Topbar.css",
+        "frontend/src/platform/navigation/Topbar.test.tsx",
+        "frontend/src/platform/navigation/Topbar.tsx",
+        "frontend/src/components/topbar/TimeRangeSelector.tsx",
+        "frontend/src/components/topbar/TopbarActions.tsx",
+        "frontend/src/components/topbar/UserMenu.tsx",
+        "frontend/src/workspaces/registry/**",
+        "frontend/src/workspaces/threat-hunter/**",
+        "frontend/src/workspaces/soc/**",
+        "frontend/src/workspaces/executive/**",
+        "frontend/src/workspaces/threat-intelligence/**",
+        "frontend/src/workspaces/incident-response/**",
+        "frontend/src/workspaces/risk-manager/**",
+        "frontend/src/workspaces/administrator/**",
+        ".ai/references/TASK-0122-product-owner-mockup.png",
+        ".ai/references/TASK-0123-product-owner-mockup.png",
+        ".ai/tasks/done/TASK-0122.md",
+        ".ai/tasks/**/TASK-0124.md"
+      ],
+      "validation_requirements": [
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Only frontend/src/components/topbar/WorkspaceSwitcher.tsx and frontend/src/components/topbar/WorkspaceSwitcher.test.tsx may change; no CSS, Topbar, dashboard, Registry, routing, workspace, backend, provider, runtime or environment file may change.",
+        "Clicking the closed WorkspaceSwitcher trigger opens the menu and clicking the same trigger again closes it.",
+        "Selecting an enabled workspace uses the existing setWorkspace boundary and canonical workspaceRoutes mapping, performs navigation and closes the menu after the menu action is processed.",
+        "A pointer interaction outside both the WorkspaceSwitcher trigger and menu immediately closes the menu without preventing, consuming or otherwise blocking the outside target action.",
+        "Pointer interactions inside the trigger and menu boundary are not treated as click-away and menu-item actions complete before dismissal.",
+        "Escape closes an open menu without changing workspace or route.",
+        "Outside-interaction and Escape listeners are active only while needed and are removed on close and component unmount; repeated open and close cycles do not accumulate listeners.",
+        "Existing SOC WORKSPACES, MANAGEMENT WORKSPACES and SYSTEM / ADMINISTRATION grouping, CISO / ISO naming, current identity, purple selected state, checkmark and aria-current remain unchanged.",
+        "Existing WorkspaceId values, workspaceRoutes, setWorkspace and navigate boundary, Back and Forward behavior and URL authority remain unchanged.",
+        "The TASK-0123 Threat Hunter dashboard, truthful Active Hunts state and canonical persisted Hunt Hypotheses behavior remain byte-identical.",
+        "No global click workaround may block propagation or default behavior; use a component-local boundary and standard React DOM listener lifecycle without CSS or global shell changes.",
+        "Focused WorkspaceSwitcher tests cover open, repeat-trigger close, outside pointer dismissal, preserved outside action, inside interaction, selection navigation and close, Escape and listener cleanup.",
+        "Existing WorkspaceSwitcher grouping and routing tests, Topbar and cross-workspace regressions, Back and Forward behavior, URL authority and TASK-0123 dashboard regressions remain passing.",
+        "Full frontend regression, TypeScript, production build and git diff --check pass; Scope Guard reports exactly the two authorized files and the TASK-0123 reference hash remains unchanged.",
+        "The original Architect Implementation Review PASS remains historical; REWORK 1 requires a new Architect Implementation Review and explicit Product Owner Live Acceptance before DONE.",
+        "Do not transition TASK-0123 to DONE or create TASK-0124."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-08-29T16:00:00+02:00"
+    },
+    "received_at": "2026-08-29T16:00:00+02:00"
+  }
+}
