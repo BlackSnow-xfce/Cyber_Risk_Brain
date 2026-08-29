@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -48,8 +48,35 @@ export default function WorkspaceSwitcher() {
     const { workspace, setWorkspace } = useWorkspace();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
+    const switcherRef = useRef<HTMLSpanElement>(null);
     const currentWorkspace = workspaceRegistry.find((item) => item.id === workspace);
-    return <span className="workspace-switcher">
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (!switcherRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener("pointerdown", handlePointerDown);
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [open]);
+
+    return <span className="workspace-switcher" ref={switcherRef}>
         <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Change workspace, current workspace ${currentWorkspace?.name ?? "Unavailable"}`} onClick={() => setOpen((value) => !value)}>{currentWorkspace?.name ?? "Workspace unavailable"} <ChevronDown size={9} /></button>
         {open && <span className="workspace-menu" role="menu">{workspaceGroups.map((group, groupIndex) => {
             const labelId = `workspace-group-${groupIndex}`;
