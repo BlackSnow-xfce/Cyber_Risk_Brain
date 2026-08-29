@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
@@ -5,6 +7,27 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WorkspaceProvider } from "@/context/WorkspaceContext";
 
 import Sidebar from "./Sidebar";
+
+const sidebarRulePattern = /(?:^|})\s*\.sidebar\s*\{([^}]*)\}/g;
+const widthDeclarationPattern = /(?:^|;)\s*width\s*:\s*([^;]+)/g;
+const hasWidthDeclarationPattern = /(?:^|;)\s*width\s*:/;
+
+function satisfiesSidebarCascadeContract(
+    sidebarSource: string,
+    globalSource: string,
+): boolean {
+    const combinedSource = `${sidebarSource}\n${globalSource}`;
+    const effectiveWidths = [...combinedSource.matchAll(sidebarRulePattern)]
+        .flatMap((rule) => [...rule[1].matchAll(widthDeclarationPattern)])
+        .map((declaration) => declaration[1].trim());
+
+    return /\.sidebar\s*\{[^}]*\bwidth\s*:\s*164px\s*;/s.test(sidebarSource)
+        && /\.sidebar\s*\{[^}]*\bmin-width\s*:\s*164px\s*;/s.test(sidebarSource)
+        && !/--sidebar-width\s*:/.test(globalSource)
+        && ![...globalSource.matchAll(sidebarRulePattern)]
+            .some((rule) => hasWidthDeclarationPattern.test(rule[1]))
+        && effectiveWidths.at(-1) === "164px";
+}
 
 function LocationProbe() {
     const { pathname, search } = useLocation();
@@ -49,6 +72,21 @@ function renderSidebarWithBack(initialEntries: string[], initialIndex: number) {
 describe("Sidebar routing", () => {
     afterEach(() => {
         cleanup();
+    });
+
+    it("keeps the combined production CSS cascade on the canonical 164px width", () => {
+        const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
+        const globalSource = readFileSync("src/styles/global.css", "utf8");
+
+        expect(satisfiesSidebarCascadeContract(sidebarSource, globalSource)).toBe(true);
+        expect(satisfiesSidebarCascadeContract(
+            sidebarSource,
+            `${globalSource}\n.sidebar { width: 270px; }`,
+        )).toBe(false);
+        expect(satisfiesSidebarCascadeContract(
+            sidebarSource,
+            `${globalSource}\n.sidebar { width: var(--sidebar-width); }`,
+        )).toBe(false);
     });
 
     it("navigates from the command center to Dashboard", () => {

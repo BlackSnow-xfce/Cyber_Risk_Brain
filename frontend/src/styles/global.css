@@ -12,7 +12,6 @@
     --accent: #7c3aed;
     --accent-hover: #8b5cf6;
 
-    --sidebar-width: 270px;
     --topbar-height: 72px;
 
     font-family:
@@ -59,19 +58,6 @@ body {
 /* =======================================================
    Sidebar
 ======================================================= */
-
-.sidebar {
-    width: var(--sidebar-width);
-
-    background: #0e1420;
-
-    border-right: 1px solid var(--border);
-
-    display: flex;
-    flex-direction: column;
-
-    overflow-y: auto;
-}
 
 .sidebar-logo {
     display: flex;

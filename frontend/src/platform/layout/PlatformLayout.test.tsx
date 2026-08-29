@@ -16,6 +16,7 @@ describe("PlatformLayout", () => {
 
     it("binds the shell to the viewport and makes Main the scroll owner", () => {
         const source = readFileSync("src/platform/layout/PlatformLayout.tsx", "utf8");
+        const sidebarSource = readFileSync("src/platform/navigation/Sidebar.css", "utf8");
         render(
             <WorkspaceProvider>
                 <MemoryRouter>
@@ -37,6 +38,8 @@ describe("PlatformLayout", () => {
             overflowY: "auto",
         });
         expect(source).toContain('gridTemplateColumns: "164px minmax(0, 1fr)"');
+        expect(sidebarSource).toMatch(/\.sidebar\s*\{[^}]*\bwidth:\s*164px;/s);
+        expect(sidebarSource).toMatch(/\.sidebar\s*\{[^}]*\bmin-width:\s*164px;/s);
         expect(source).toContain('width: "100vw"');
         expect(source).toContain('height: "100vh"');
     });
