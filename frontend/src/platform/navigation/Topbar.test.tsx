@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
@@ -22,5 +24,19 @@ describe("Topbar", () => {
         expect(screen.getByRole("region", { name: "Theme options" })).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "Theme" }));
         expect(screen.queryByRole("region", { name: "Theme options" })).not.toBeInTheDocument();
+    });
+    it("presents the current workspace as a bounded interactive control", () => {
+        render(<WorkspaceProvider><MemoryRouter><Topbar /></MemoryRouter></WorkspaceProvider>);
+
+        const switcher = screen.getByRole("button", { name: /Change workspace, current workspace SOC Analyst/ });
+        const stylesheet = readFileSync("src/platform/navigation/Topbar.css", "utf8");
+
+        expect(switcher).toHaveTextContent("SOC Analyst");
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*min-height:28px/);
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*padding:0 9px/);
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*background:#0c1423/);
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*border:1px solid #334155/);
+        expect(stylesheet).toMatch(/\.workspace-switcher>button \{[^}]*font-size:11px/);
+        expect(stylesheet).toContain(".workspace-switcher>button:focus-visible");
     });
 });

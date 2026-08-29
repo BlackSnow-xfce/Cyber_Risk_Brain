@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceProvider } from "@/context/WorkspaceContext";
 import Sidebar from "@/platform/navigation/Sidebar";
@@ -8,14 +8,12 @@ import Topbar from "@/platform/navigation/Topbar";
 
 import WorkspaceOutlet from "./WorkspaceOutlet";
 
-vi.mock("@/workspaces/soc", () => ({
-    SOCWorkspace: () => <div>SOC workspace</div>,
+vi.mock("@/workspaces/soc/findings/FindingsApiClient", async (importOriginal) => ({
+    ...await importOriginal<typeof import("@/workspaces/soc/findings/FindingsApiClient")>(),
+    getFindings: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/workspaces/incident-response", () => ({
     IncidentResponseWorkspace: () => <div>Incident Response workspace</div>,
-}));
-vi.mock("@/workspaces/executive", () => ({
-    ExecutiveWorkspace: () => <div>Executive workspace</div>,
 }));
 vi.mock("@/workspaces/threat-hunter", () => ({
     ThreatHunterWorkspace: () => <div>Threat Hunter workspace</div>,
@@ -41,6 +39,8 @@ function LocationProbe() {
 }
 
 describe("WorkspaceOutlet route synchronization", () => {
+    afterEach(cleanup);
+
     it("switches from SOC to Executive and back through the visible workspace control", async () => {
         render(
             <WorkspaceProvider>
@@ -53,12 +53,13 @@ describe("WorkspaceOutlet route synchronization", () => {
             </WorkspaceProvider>,
         );
 
-        expect(screen.getByText("SOC workspace")).toBeInTheDocument();
+        expect(await screen.findByRole("main", { name: "Enterprise SOC dashboard" })).toBeInTheDocument();
+        expect(screen.getByText("Total Findings")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: /Change workspace, current workspace SOC Analyst/ }));
         fireEvent.click(screen.getByRole("menuitem", { name: "Executive" }));
 
-        expect(await screen.findByText("Executive workspace")).toBeInTheDocument();
+        expect(await screen.findByText("Executive Mission Console")).toBeInTheDocument();
         expect(screen.getByLabelText("Current route")).toHaveTextContent("/executive");
         expect(screen.getByRole("button", { name: "Executive Overview" })).toBeInTheDocument();
         expect(screen.getByLabelText("Current workspace: Executive")).toBeInTheDocument();
@@ -66,11 +67,12 @@ describe("WorkspaceOutlet route synchronization", () => {
         fireEvent.click(screen.getByRole("button", { name: /Change workspace, current workspace Executive/ }));
         fireEvent.click(screen.getByRole("menuitem", { name: "SOC Analyst" }));
 
-        expect(await screen.findByText("SOC workspace")).toBeInTheDocument();
+        expect(await screen.findByRole("main", { name: "Enterprise SOC dashboard" })).toBeInTheDocument();
+        expect(screen.getByText("Total Findings")).toBeInTheDocument();
         expect(screen.getByLabelText("Current route")).toHaveTextContent("/");
         expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
         expect(screen.getByLabelText("Current workspace: SOC Analyst")).toBeInTheDocument();
-    });
+    }, 15_000);
 
     it("restores the SOC workspace when browser history returns from Incident Response", async () => {
         render(
@@ -89,7 +91,7 @@ describe("WorkspaceOutlet route synchronization", () => {
 
         screen.getByRole("button", { name: "Back" }).click();
 
-        expect(await screen.findByText("SOC workspace")).toBeInTheDocument();
+        expect(await screen.findByRole("heading", { name: "Findings" })).toBeInTheDocument();
         expect(screen.queryByText("Incident Response workspace")).not.toBeInTheDocument();
     });
 

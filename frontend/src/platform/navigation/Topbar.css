@@ -6,7 +6,10 @@
 .topbar-heading h1 { margin:0; font-size:20px; line-height:24px; font-weight:600; }
 .topbar-heading > span { color:#989fa5; font-size:9px; line-height:14px; }
 .workspace-switcher { position:relative; }
-.workspace-switcher>button { display:flex; align-items:center; gap:4px; padding:0; color:#989fa5; background:transparent; border:0; font-size:9px; white-space:nowrap; }
+.workspace-switcher>button { min-height:28px; display:flex; align-items:center; gap:6px; padding:0 9px; color:#e2e8f0; background:#0c1423; border:1px solid #334155; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.workspace-switcher>button:hover { color:#fff; background:#111c30; border-color:#52627a; }
+.workspace-switcher>button:focus-visible { outline:2px solid #7c5cff; outline-offset:2px; }
+.workspace-switcher>button svg { width:12px; height:12px; }
 .workspace-menu { position:absolute; z-index:30; top:22px; left:0; width:170px; display:flex; flex-direction:column; padding:5px; background:#0c1423; border:1px solid #28344a; border-radius:4px; box-shadow:0 12px 35px #0009; }
 .workspace-menu button { padding:7px 8px; color:#cbd5e1; background:transparent; border:0; border-radius:3px; text-align:left; font-size:8px; }
 .workspace-menu button[aria-current="true"] { color:#fff; background:#27145f; }
