@@ -1,204 +1,58 @@
-import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
-import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
+import type { LucideIcon } from "lucide-react";
+import { AlertTriangle, Banknote, BarChart3, Building2, FileText, Gavel, Landmark, ListTree, Scale, ShieldCheck, Users } from "lucide-react";
+import "./ExecutiveOverviewPage.css";
 
-import Panel from "@/ui/panel/Panel";
+interface Kpi { label: string; icon: LucideIcon; tone: string }
+interface EmptyTableProps { title: string; description: string; columns: string[]; emptyTitle: string; icon: LucideIcon }
 
-import ExecutiveDashboardLayout from "../ExecutiveDashboardLayout";
-
-interface MissionConsoleSection {
-    title: string;
-    description: string;
-    emptyState: string;
-}
-
-interface MissionConsoleSectionCardProps {
-    section: MissionConsoleSection;
-}
-
-const decisionSections: MissionConsoleSection[] = [
-    {
-        title: "Enterprise Risk Overview",
-        description:
-            "Review enterprise cyber-risk context for strategic oversight.",
-        emptyState: "No enterprise risk source is connected.",
-    },
-    {
-        title: "Strategic Decisions",
-        description:
-            "Review decisions that require executive ownership or direction.",
-        emptyState: "No strategic decisions are available.",
-    },
-    {
-        title: "Investment Priorities",
-        description:
-            "Review approved security investment context and priorities.",
-        emptyState: "No investment planning source is connected.",
-    },
-    {
-        title: "Executive Briefing",
-        description:
-            "Review an authorized strategic briefing when one is available.",
-        emptyState: "No executive briefing is available.",
-    },
+const kpis: Kpi[] = [
+    { label: "Enterprise Risk Posture", icon: ShieldCheck, tone: "violet" },
+    { label: "Critical Exposure", icon: AlertTriangle, tone: "red" },
+    { label: "Business Services at Risk", icon: Building2, tone: "orange" },
+    { label: "Decisions Required", icon: Gavel, tone: "amber" },
+];
+const impacts = [
+    { label: "People Impact", icon: Users, tone: "violet" }, { label: "Financial Impact", icon: Banknote, tone: "green" },
+    { label: "Operational Impact", icon: BarChart3, tone: "orange" }, { label: "Compliance Impact", icon: Scale, tone: "blue" },
 ];
 
-const enterpriseSections: MissionConsoleSection[] = [
-    {
-        title: "Business Impact",
-        description:
-            "Review existing business-impact context without deriving it in the UI.",
-        emptyState: "No business-impact source is connected.",
-    },
-    {
-        title: "Critical Business Services",
-        description:
-            "Review critical services associated with enterprise risk context.",
-        emptyState: "No business-service inventory is connected.",
-    },
-    {
-        title: "Risk Portfolio",
-        description:
-            "Review the authorized portfolio of enterprise cyber risks.",
-        emptyState: "No risk portfolio is available.",
-    },
-    {
-        title: "Security Program Progress",
-        description:
-            "Review approved security-program progress when available.",
-        emptyState: "No security-program source is connected.",
-    },
-    {
-        title: "Board Reporting",
-        description:
-            "Review board-ready reporting from an authorized source.",
-        emptyState: "No board report is available.",
-    },
-];
-
-function MissionConsoleSectionCard({
-    section,
-}: MissionConsoleSectionCardProps) {
-    return (
-        <Panel
-            component="section"
-            sx={{
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 184,
-            }}
-        >
-            <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                }}
-            >
-                <Typography variant="h6">
-                    {section.title}
-                </Typography>
-
-                <Chip
-                    label="Not connected"
-                    size="small"
-                    variant="outlined"
-                    color="default"
-                />
-            </Stack>
-
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-                {section.description}
-            </Typography>
-
-            <Box
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexGrow: 1,
-                    mt: 2,
-                    p: 2,
-                    border: "1px dashed",
-                    borderColor: "divider",
-                    borderRadius: 1.5,
-                    backgroundColor: "action.hover",
-                }}
-            >
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    {section.emptyState}
-                </Typography>
-            </Box>
-        </Panel>
-    );
+function Badge() { return <span className="executive-overview__badge">Not connected</span>; }
+function PanelHeader({ title, description }: { title: string; description: string }) {
+    return <header className="executive-overview__panel-header"><div><h2>{title}</h2><p>{description}</p></div><Badge /></header>;
+}
+function EmptyTable({ title, description, columns, emptyTitle, icon: Icon }: EmptyTableProps) {
+    return <section className="executive-overview__panel executive-overview__table-panel">
+        <PanelHeader title={title} description={description} />
+        <div className="executive-overview__table" role="table" aria-label={title}>
+            <div className="executive-overview__table-head" role="row">{columns.map((column) => <span role="columnheader" key={column}>{column}</span>)}</div>
+            <div className="executive-overview__empty" role="row"><Icon aria-hidden="true" /><strong>{emptyTitle}</strong><span>Not connected to an authorized source.</span></div>
+        </div>
+    </section>;
+}
+function KpiCard({ label, icon: Icon, tone }: Kpi) {
+    return <article className={`executive-overview__kpi executive-overview__kpi--${tone}`}>
+        <div className="executive-overview__kpi-icon"><Icon aria-hidden="true" /></div><div><h2>{label}</h2><strong>Unavailable</strong><span>Not connected</span></div>
+        <div className="executive-overview__neutral-scale" aria-hidden="true"><i /><i /><i /></div>
+    </article>;
 }
 
 export default function ExecutiveOverviewPage() {
-    return (
-        <Stack spacing={3}>
-            <Box component="header">
-                <Typography variant="overline" color="warning.main">
-                    Strategic cyber leadership
-                </Typography>
-
-                <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                    Executive Mission Console
-                </Typography>
-
-                <Typography
-                    color="text.secondary"
-                    sx={{ mt: 1, maxWidth: 800 }}
-                >
-                    Maintain strategic awareness of enterprise risk, business
-                    impact, investment priorities and decisions without exposing
-                    operational security detail. Executive data sources are not
-                    connected in this foundation.
-                </Typography>
-            </Box>
-
-            <Box component="section" aria-labelledby="executive-decisions-title">
-                <Typography
-                    id="executive-decisions-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
-                    Decision and investment agenda
-                </Typography>
-
-                <ExecutiveDashboardLayout>
-                    {decisionSections.map((section) => (
-                        <MissionConsoleSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </ExecutiveDashboardLayout>
-            </Box>
-
-            <Box component="section" aria-labelledby="enterprise-context-title">
-                <Typography
-                    id="enterprise-context-title"
-                    variant="h6"
-                    sx={{ mb: 1.5 }}
-                >
-                    Enterprise and governance context
-                </Typography>
-
-                <ExecutiveDashboardLayout>
-                    {enterpriseSections.map((section) => (
-                        <MissionConsoleSectionCard
-                            key={section.title}
-                            section={section}
-                        />
-                    ))}
-                </ExecutiveDashboardLayout>
-            </Box>
-        </Stack>
-    );
+    return <main className="executive-overview">
+        <header className="executive-overview__hero"><span className="executive-overview__legacy-name">Executive Mission Console</span><p className="executive-overview__overline">Strategic cyber risk overview</p><h1>Executive Cyber Risk Dashboard</h1><p>Enterprise risk posture, business impact and strategic priorities are shown only when connected to authorized sources.</p></header>
+        <section className="executive-overview__kpis" aria-label="Executive risk indicators">
+            {kpis.map((kpi) => <KpiCard {...kpi} key={kpi.label} />)}
+            <article className="executive-overview__kpi executive-overview__kpi--green"><div className="executive-overview__trend-icon" aria-hidden="true"><i /><i /></div><div><h2>Risk Trend</h2><strong>Unavailable</strong><span>Not connected</span></div><div className="executive-overview__neutral-scale" aria-hidden="true"><i /><i /><i /></div></article>
+        </section>
+        <div className="executive-overview__grid">
+            <section className="executive-overview__panel executive-overview__risk"><PanelHeader title="Enterprise Risk Overview" description="Enterprise cyber-risk distribution by risk level." /><div className="executive-overview__risk-content"><div className="executive-overview__ring"><span><strong>Unavailable</strong><small>Not connected</small></span></div><ul>{["Critical", "High", "Medium", "Low", "Informational"].map((label) => <li key={label}><i /><span>{label}</span><strong>Unavailable</strong></li>)}</ul></div></section>
+            <EmptyTable title="Decision Priorities" description="Executive decisions from an authorized prioritization source." columns={["Priority", "Risk / Topic", "Business Impact", "Action Required", "Target"]} emptyTitle="No decision data available." icon={ListTree} />
+            <section className="executive-overview__panel executive-overview__impact"><PanelHeader title="Business Impact" description="Authorized business-impact assessments." /><div className="executive-overview__impact-items">{impacts.map(({ label, icon: Icon, tone }) => <div className={`executive-overview__impact-item executive-overview__impact-item--${tone}`} key={label}><Icon /><strong>Unavailable</strong><span>{label}</span></div>)}</div></section>
+            <EmptyTable title="Critical Business Services" description="Business services from an authorized inventory." columns={["Service", "Criticality", "Current Risk", "Trend", "Status"]} emptyTitle="No business services available." icon={Building2} />
+            <EmptyTable title="Investment & Remediation Priorities" description="Approved security investment and remediation priorities." columns={["Priority", "Initiative / Control", "Risk Reduction", "Investment", "Target"]} emptyTitle="No investment data available." icon={Landmark} />
+            <section className="executive-overview__panel executive-overview__briefing"><PanelHeader title="Executive Briefing" description="Authorized executive briefing and key takeaways." /><div className="executive-overview__empty"><FileText /><strong>No executive briefing available.</strong><span>Not connected to an authorized source.</span></div></section>
+            <section className="executive-overview__panel executive-overview__progress"><PanelHeader title="Security Program Progress" description="Authorized security-program reporting." /><div className="executive-overview__progress-content"><div className="executive-overview__ring executive-overview__ring--small"><span><strong>Unavailable</strong><small>Not connected</small></span></div><ul>{["Program Completion", "Controls Implementation", "Risk Reduction", "Milestones Achieved"].map((label) => <li key={label}><span>{label}</span><i /><strong>Unavailable</strong></li>)}</ul></div></section>
+            <section className="executive-overview__panel executive-overview__reporting"><PanelHeader title="Board Reporting" description="Board-ready reports from an authorized repository." /><div className="executive-overview__empty"><FileText /><strong>No board report available.</strong><span>Not connected to an authorized source.</span></div></section>
+        </div>
+        <footer className="executive-overview__footer"><span>i</span><p>Information is displayed only when connected to authorized data sources. PredatorAI does not infer, estimate or generate executive risk data.</p><strong>Status: Fail-Closed.</strong></footer>
+    </main>;
 }
