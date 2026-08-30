@@ -32,7 +32,7 @@ function renderOverview(loadIncidents: () => Promise<IncidentQueueItem[]>) {
 
 describe("Incident Response overview", () => {
     it("implements the measured page hierarchy and geometry contract", () => {
-        expect(declaration(".incident-overview", "padding")).toBe("0 20px 0 15px");
+        expect(declaration(".incident-overview", "padding")).toBe("0 0 0 15px");
         expect(declaration(".incident-snapshot", "height")).toBe("200px");
         expect(declaration(".incident-snapshot__grid", "gap")).toBe("13px");
         expect(declaration(".snapshot-instrument", "height")).toBe("131px");
@@ -43,6 +43,49 @@ describe("Incident Response overview", () => {
         expect(declaration(".incident-overview__grid--lower>.incident-panel", "height")).toBe("325px");
         expect(declaration(".incident-panel", "border")).toBe("1px solid var(--border)");
         expect(declaration(".incident-panel", "border-radius")).toBe("8px");
+    });
+
+    it("fits the measured panel and snapshot tracks without clipping", () => {
+        const mainTrackWidth = 1238;
+        const pageWidth = mainTrackWidth - 15;
+        const panelGap = px(declaration(".incident-overview__grid", "gap"));
+        const panelTracks = fractions(declaration(".incident-overview__grid", "grid-template-columns"));
+        const panelWidths = resolveTracks(pageWidth, panelGap, panelTracks);
+        expect(panelWidths[0]).toBeCloseTo(613, 0);
+        expect(panelWidths[1]).toBeCloseTo(596, 0);
+        expect(sum(panelWidths) + panelGap).toBeCloseTo(pageWidth, 8);
+
+        const snapshotInnerWidth = pageWidth - 2 - (2 * 14);
+        const snapshotGap = px(declaration(".incident-snapshot__grid", "gap"));
+        const snapshotTracks = fractions(declaration(".incident-snapshot__grid", "grid-template-columns"));
+        const snapshotWidths = resolveTracks(snapshotInnerWidth, snapshotGap, snapshotTracks);
+        const targets = [231, 234, 225, 228, 223];
+        snapshotWidths.forEach((width, index) => expect(Math.abs(width - targets[index])).toBeLessThanOrEqual(6));
+        expect(sum(snapshotWidths) + (snapshotGap * 4)).toBeCloseTo(snapshotInnerWidth, 8);
+
+        const equalTracks = resolveTracks(snapshotInnerWidth, snapshotGap, [1, 1, 1, 1, 1]);
+        expect(Math.max(...equalTracks) - Math.min(...equalTracks)).toBe(0);
+        expect(Math.max(...snapshotWidths) - Math.min(...snapshotWidths)).toBeGreaterThan(10);
+        const incorrectInnerWidth = resolveTracks(snapshotInnerWidth - 40, snapshotGap, snapshotTracks);
+        expect(incorrectInnerWidth.some((width, index) => Math.abs(width - targets[index]) > 6)).toBe(true);
+        const incorrectRatio = resolveTracks(snapshotInnerWidth, snapshotGap, [1.1, 1, 1, 1, .9]);
+        expect(incorrectRatio.some((width, index) => Math.abs(width - targets[index]) > 6)).toBe(true);
+        expect(sum(resolveTracks(snapshotInnerWidth, snapshotGap, snapshotTracks)) + (14 * 4))
+            .toBeGreaterThan(snapshotInnerWidth);
+    });
+
+    it("uses symmetric circular geometry for the truthful response status", async () => {
+        renderOverview(() => Promise.resolve([]));
+        await screen.findByText("No persisted incidents are available.");
+        const statusPanel = screen.getByRole("heading", { name: "Response Status" }).closest("section");
+        const visual = statusPanel?.querySelector(".response-status-visual");
+        expect(visual).toBeInTheDocument();
+        expect(visual?.querySelectorAll("span")).toHaveLength(3);
+        expect(declaration(".response-status-visual", "width")).toBe(declaration(".response-status-visual", "height"));
+        expect(declaration(".response-status-visual", "border-radius")).toBe("50%");
+        expect(declaration(".response-status-visual span", "display")).toBe("none");
+        expect(styles).not.toMatch(/38px\s*}\s*\.response-status-visual span:nth-child\(2\).*67px/);
+        expect(styles).not.toMatch(/response-status-visual[^}]*border-bottom/);
     });
 
     it("renders five ordered snapshot instruments and truthful unavailable regions", async () => {
@@ -112,4 +155,22 @@ function declaration(selector: string, property: string): string {
     const value = rule.match(new RegExp(`${property}\\s*:\\s*([^;]+)`))?.[1];
     expect(value, `Missing ${property} in ${selector}`).toBeDefined();
     return value?.trim() ?? "";
+}
+
+function px(value: string): number {
+    return Number.parseFloat(value.replace("px", ""));
+}
+
+function fractions(value: string): number[] {
+    return [...value.matchAll(/([\d.]+)fr/g)].map((match) => Number(match[1]));
+}
+
+function resolveTracks(innerWidth: number, gap: number, tracks: number[]): number[] {
+    const availableWidth = innerWidth - (gap * (tracks.length - 1));
+    const fractionTotal = sum(tracks);
+    return tracks.map((track) => (availableWidth * track) / fractionTotal);
+}
+
+function sum(values: number[]): number {
+    return values.reduce((total, value) => total + value, 0);
 }
