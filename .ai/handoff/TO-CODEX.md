@@ -1,6 +1,6 @@
 # Handoff - Architect to Codex
 
-Status: WAITING
+Status: OPEN
 Current AIDP Task: TASK-0127
 Current Phase: READY
 Task Status: READY
