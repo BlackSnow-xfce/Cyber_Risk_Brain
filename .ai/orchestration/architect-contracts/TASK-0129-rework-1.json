@@ -1,0 +1,41 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0129-rework-1",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0129",
+      "review_iteration": 1,
+      "expected_head": "aaf095d03814e021281b7d7d4cc1ff1356e5b524",
+      "allowed_rework_scope": [
+        "application/finding_asset_business_context.py",
+        "application/business_impact_readiness.py",
+        "api_app.py",
+        "tests/application/test_finding_asset_business_context.py",
+        "tests/application/test_business_impact_readiness.py",
+        "tests/application/test_finding_risk_context.py",
+        "tests/api/test_finding_risk_context_endpoint.py",
+        "frontend/src/workspaces/soc/findings/FindingRiskContext.ts",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.ts",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.test.ts",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Make BusinessContextFact a frozen runtime-valid value boundary: name, value, and source_reference must each be non-empty strings after trimming; empty, whitespace-only, or non-string values fail deterministically without defaults or inference.",
+        "Enforce canonical snapshot integrity in FindingAssetBusinessContextUseCase. The AssetBusinessContext returned for a resolved FindingAssetContext must have the exact same canonical_asset_id; any asset-1 versus different-asset mismatch raises a controlled dedicated integrity error and never returns RESOLVED.",
+        "Complete BusinessImpactReadiness with finding_id and the existing core.explainability.ExplanationCompleteness/ExplanationProvenance authority. READY requires exact required facts, empty missing requirements, complete fact/source provenance, AVAILABLE completeness, and deterministic business_impact_readiness result provenance. UNAVAILABLE preserves exact missing requirements and any valid partial facts/provenance, and cannot claim AVAILABLE completeness.",
+        "Extend API serialization with readiness finding identity, exact facts, source records, completeness status, source type, and source reference; resolved business context retains per-fact provenance. Frontend parsing rejects incomplete, contradictory, unknown, or provenance-free READY payloads and rendering explicitly states that no Business Impact was calculated.",
+        "Add the focused construction, canonical mismatch, provenance, API, parser, rendering, DistCC, and TASK-0127/TASK-0128 regression tests specified in READY TASK-0129. Keep business_impact null and do not add impact calculation, legacy/Decision/Recommendation, Risk Manager/Executive/mock, AI/provider, severity/priority/TI/exposure/CVSS/EPSS/KEV inference, DONE transition, or TASK-0130."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-08-31T21:01:40.2719257+00:00"
+    },
+    "received_at": "2026-08-31T21:01:40.2719257+00:00"
+  }
+}
