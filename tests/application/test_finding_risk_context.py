@@ -17,6 +17,10 @@ from application import (
 )
 from core.models import UniversalFinding
 from core.explainability import CompletenessStatus
+from core.threat_intelligence import (
+    FindingIntelligenceApplicability,
+    FindingThreatIntelligence,
+)
 from tests.application.test_risk_assessment_readiness import complete_input
 
 FINDING_ID = "6d3167e9-002c-4b76-a5a7-ce47f81b78b1"
@@ -144,6 +148,7 @@ def test_unresolved_asset_states_remain_unknown(status, asset) -> None:
         status=status,
     )
     _, enrichment, _ = sources()
+    enrichment = replace(enrichment, relationships=())
     correlation = SecurityObservationCorrelationResult(
         finding_id=FINDING_ID,
         evidence=(),
@@ -160,6 +165,49 @@ def test_unresolved_asset_states_remain_unknown(status, asset) -> None:
     assert result.risk_inputs.business_criticality.state is RiskInputState.UNKNOWN
     assert result.assessment.score is None
     assert result.evidence_readiness.missing_requirements
+
+
+@pytest.mark.parametrize("correlation_snapshot", ["empty", "different"])
+def test_unresolved_asset_rejects_unconsumed_top_level_ti(
+    correlation_snapshot,
+) -> None:
+    selected = finding(asset="192.0.2.1")
+    resolution = FindingAssetContextResolution(
+        finding_id=FINDING_ID,
+        finding_source=selected.source,
+        finding_title=selected.title,
+        status=FindingAssetContextResolutionStatus.NOT_FOUND,
+    )
+    _, enrichment, _ = sources()
+    correlation_relationships = (
+        ()
+        if correlation_snapshot == "empty"
+        else (
+            FindingThreatIntelligence(
+                finding_id=FINDING_ID,
+                applicability=(
+                    FindingIntelligenceApplicability.NOT_APPLICABLE
+                ),
+            ),
+        )
+    )
+    correlation = SecurityObservationCorrelationResult(
+        finding_id=FINDING_ID,
+        evidence=(),
+        completeness=complete_input().completeness,
+        threat_intelligence=correlation_relationships,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="different threat intelligence",
+    ):
+        project(
+            resolution=resolution,
+            enrichment=enrichment,
+            correlation=correlation,
+            findings=[selected],
+        )
 
 
 def test_unavailable_threat_intelligence_fails_closed() -> None:

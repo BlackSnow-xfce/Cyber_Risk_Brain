@@ -185,13 +185,6 @@ class FindingRiskContextUseCase:
                 "Finding risk-context sources returned different asset context."
             )
 
-        if correlation.asset_context is None:
-            if correlation.threat_intelligence:
-                raise ValueError(
-                    "Unresolved asset correlation exposed threat intelligence."
-                )
-            return
-
         if threat_intelligence.relationships != correlation.threat_intelligence:
             raise ValueError(
                 "Finding risk-context sources returned different threat intelligence."
