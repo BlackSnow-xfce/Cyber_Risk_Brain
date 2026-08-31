@@ -1,0 +1,42 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-1",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 1,
+      "expected_head": "b6d1568db875034381359d4071694f4547591e78",
+      "allowed_rework_scope": [
+        "application/finding_technical_effect.py",
+        "application/business_impact_classification_readiness.py",
+        "api_app.py",
+        "tests/application/test_finding_technical_effect.py",
+        "tests/application/test_business_impact_classification_readiness.py",
+        "tests/api/test_finding_risk_context_endpoint.py",
+        "frontend/src/workspaces/soc/findings/FindingRiskContext.ts",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.ts",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.test.ts"
+      ],
+      "findings": [
+        "Enforce exact CVSS metadata/vector version binding: only metadata 3.0 with CVSS:3.0 and metadata 3.1 with CVSS:3.1 are supported. Every mismatch, missing or malformed version and unsupported prefix yields unavailable without normalization or reconciliation.",
+        "Replace the partial CIA parser with the finite strict CVSS v3 base-vector grammar. Require exactly one AV AC PR UI S C I and A metric with approved values, reject missing duplicate unknown invalid malformed and empty tokens, permit deterministic reordering, and derive only C I A into NONE LOW HIGH.",
+        "Make each AVAILABLE Technical Effect provenance-complete: preserve finding ID, CVE, exact CVSS version and vector, TechnicalEffectLevel values, non-null timezone-aware observed_at, and the unchanged existing ExplanationProvenance whose source_type is nvd and source_reference is non-empty. Missing authority cannot produce an AVAILABLE effect or READY classification.",
+        "Apply the mixed applicable-CVE fail-closed policy. Keep each CVE separate with its own vector timestamp and provenance; duplicate CVEs fail controlled. Any applicable malformed unsupported or provenance-deficient CVE makes the projection and classification readiness UNAVAILABLE with CVE-specific missing requirements. Valid other effects may remain only as explicit partial facts and can never make READY or be aggregated.",
+        "Strengthen BusinessImpactClassificationReadiness invariants so READY independently requires an AVAILABLE projection and validates every effect identity, supported version/vector grammar, NVD provenance, non-null timestamp and unique CVE. Preserve exact missing requirements and valid partial provenance for UNAVAILABLE; keep business_impact null decision null and recommendations empty.",
+        "Serialize cvss_version, original vector, finding and CVE identity, C/I/A levels, observed_at, provenance source_type and source_reference for each effect. Classification readiness must carry the same effect snapshots without lossy reconstruction.",
+        "Bind frontend effects to exactly one applicable authoritative transported TI/CVSS relationship by finding, CVE, metadata version, vector, source type/reference and observed_at. Independently re-derive C/I/A from the strict vector and then require readiness effects to equal the source-bound effect projection. Reject jointly altered copies, duplicates, missing sources, null/invalid timestamps and any identity/value/provenance mismatch.",
+        "Add the contract-specified backend adversarial tests for version mismatch, every required metric, strict values/tokens, reordered vectors, provenance/timestamp loss, classification gating, duplicate/multiple/mixed CVEs; API source transport tests; and frontend independent tampering tests plus valid single/multiple source bindings.",
+        "Preserve all already-approved TASK-0130 BusinessImportance ServiceImpactProfile JSON profile-resolution DistCC UNAVAILABLE and null-impact behavior, TASK-0127/0128/0129 semantics, frozen legacy/Decision/Recommendation/AI boundaries, Product Owner acceptance PENDING, and do not create TASK-0131 or transition DONE."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-08-31T22:51:07.9196339Z"
+    },
+    "received_at": "2026-08-31T22:51:07.9196339Z"
+  }
+}
