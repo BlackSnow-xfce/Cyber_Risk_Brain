@@ -40,6 +40,55 @@ class FindingRiskPriority:
     missing_requirements: tuple[str, ...]
     completeness: ExplanationCompleteness
 
+    def __post_init__(self) -> None:
+        if not self.finding_id.strip():
+            raise ValueError("Finding risk priority requires a finding ID.")
+        if not self.reason.strip():
+            raise ValueError("Finding risk priority requires a truthful reason.")
+
+        if self.status is FindingRiskPriorityStatus.UNAVAILABLE:
+            if self.band is not None or self.score is not None:
+                raise ValueError(
+                    "Unavailable priority must not contain a band or score."
+                )
+            if self.completeness.status is CompletenessStatus.AVAILABLE:
+                raise ValueError(
+                    "Unavailable priority cannot claim available completeness."
+                )
+            return
+
+        if self.status is not FindingRiskPriorityStatus.PRIORITIZED:
+            raise ValueError("Unsupported finding risk priority status.")
+        if self.band is None:
+            raise ValueError("Prioritized result requires a priority band.")
+        if (
+            self.score is None
+            or isinstance(self.score, bool)
+            or not 0 <= self.score <= 100
+        ):
+            raise ValueError(
+                "Prioritized result requires a bounded authoritative score."
+            )
+        if self.missing_requirements:
+            raise ValueError(
+                "Prioritized result cannot retain missing requirements."
+            )
+        if self.completeness.status is not CompletenessStatus.AVAILABLE:
+            raise ValueError(
+                "Prioritized result requires available completeness."
+            )
+        if (
+            not self.considered_evidence_ids
+            or not all(item.strip() for item in self.considered_evidence_ids)
+            or not self.referenced_input_references
+            or not all(
+                item.strip() for item in self.referenced_input_references
+            )
+        ):
+            raise ValueError(
+                "Prioritized result requires evidence and input provenance."
+            )
+
 
 class FindingRiskPriorityService:
     """Classify only a score admitted by both authoritative readiness gates."""
@@ -146,11 +195,11 @@ class FindingRiskPriorityService:
             missing.append(
                 f"risk_assessment:{assessment.status.value}"
             )
+        missing.extend(evidence_readiness.missing_requirements)
         if (
             evidence_readiness.status
             is not RiskAssessmentReadinessStatus.READY
         ):
-            missing.extend(evidence_readiness.missing_requirements)
             missing.append(
                 f"evidence_readiness:{evidence_readiness.status.value}"
             )

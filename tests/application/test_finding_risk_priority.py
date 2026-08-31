@@ -142,6 +142,100 @@ def test_insufficient_evidence_refuses_an_assessed_score() -> None:
     )
 
 
+def test_ready_evidence_with_missing_requirements_fails_closed() -> None:
+    assessment, evidence_readiness = ready_inputs(80)
+    inconsistent = replace(
+        evidence_readiness,
+        missing_requirements=("remaining_authoritative_evidence",),
+    )
+    classifier = Classifier()
+
+    result = FindingRiskPriorityService(classifier).prioritize(
+        FINDING_ID,
+        assessment,
+        inconsistent,
+    )
+
+    assert classifier.calls == []
+    assert result.status is FindingRiskPriorityStatus.UNAVAILABLE
+    assert result.band is result.score is None
+    assert result.missing_requirements == (
+        "remaining_authoritative_evidence",
+    )
+    assert "remaining_authoritative_evidence" in result.reason
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("band", DecisionPriority.HIGH, "band or score"),
+        ("score", 80, "band or score"),
+    ],
+)
+def test_unavailable_result_rejects_priority_values(
+    field, value, message
+) -> None:
+    context = project()
+    result = FindingRiskPriorityService(ForbiddenClassifier()).prioritize(
+        FINDING_ID,
+        context.assessment,
+        context.evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        replace(result, **{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("band", None, "priority band"),
+        ("score", None, "authoritative score"),
+        (
+            "missing_requirements",
+            ("remaining_context",),
+            "missing requirements",
+        ),
+    ],
+)
+def test_prioritized_result_rejects_incomplete_state(
+    field, value, message
+) -> None:
+    assessment, evidence_readiness = ready_inputs(80)
+    result = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        replace(result, **{field: value})
+
+
+def test_prioritized_result_rejects_missing_provenance() -> None:
+    assessment, evidence_readiness = ready_inputs(80)
+    result = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match="evidence and input provenance"):
+        replace(result, considered_evidence_ids=())
+
+
+def test_unavailable_result_requires_truthful_reason() -> None:
+    context = project()
+    result = FindingRiskPriorityService(ForbiddenClassifier()).prioritize(
+        FINDING_ID,
+        context.assessment,
+        context.evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match="truthful reason"):
+        replace(result, reason=" ")
+
+
 @pytest.mark.parametrize("source", ["assessment", "evidence"])
 def test_mismatched_finding_identity_fails_closed(source) -> None:
     assessment, evidence_readiness = ready_inputs()
