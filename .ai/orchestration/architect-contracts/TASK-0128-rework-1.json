@@ -1,0 +1,30 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0128-rework-1",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0128",
+      "review_iteration": 1,
+      "expected_head": "cb9dc09bbaa463fe6e2faae5f4e903306a3594e2",
+      "allowed_rework_scope": [
+        "application/finding_risk_priority.py",
+        "tests/application/test_finding_risk_priority.py"
+      ],
+      "findings": [
+        "Treat non-empty evidence_readiness.missing_requirements as a closed evidence gate regardless of a reported READY status. The contradictory READY-plus-missing state must never invoke priority classification or return PRIORITIZED; normalize it to truthful UNAVAILABLE while preserving the exact missing requirements, or explicitly reject it as an integrity error.",
+        "Enforce immutable FindingRiskPriority state invariants. PRIORITIZED requires a priority band, a bounded authoritative score, empty missing requirements, available completeness, and retained evidence/input provenance. UNAVAILABLE requires null priority band and null score plus a truthful non-empty refusal reason. Reject invalid combinations deterministically rather than allowing silent construction.",
+        "Add focused negative tests proving READY plus non-empty evidence missing requirements cannot prioritize, UNAVAILABLE cannot carry a band or score, and PRIORITIZED cannot be constructed without its required values or with missing requirements. Preserve valid PRIORITIZED behavior, the truthful DistCC UNAVAILABLE projection, and existing missing-context and missing-evidence behavior.",
+        "Preserve PriorityEngine thresholds unchanged. Do not add scoring, risk, decision, business-impact, recommendation, legacy, AI/provider, or mock enterprise-data paths. business_impact and decision remain null; recommendations remain empty. Preserve TASK-0127 and unrelated platform/workspace behavior. Do not create TASK-0129."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-08-31T14:12:59.1213644+00:00"
+    },
+    "received_at": "2026-08-31T14:12:59.1213644+00:00"
+  }
+}
