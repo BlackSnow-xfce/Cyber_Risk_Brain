@@ -295,7 +295,7 @@ function hasExactBusinessFacts(
     if (!Array.isArray(facts) || facts.length !== BUSINESS_FACT_NAMES.length) {
         return false;
     }
-    return BUSINESS_FACT_NAMES.every((name) => {
+    return hasValidUniqueBusinessFacts(facts) && BUSINESS_FACT_NAMES.every((name) => {
         const matches = facts.filter((fact) => isRecord(fact) && fact.name === name);
         return matches.length === 1 && isFactEqualToBusiness(matches[0], business, name);
     });
@@ -316,10 +316,25 @@ function hasConsistentPartialBusinessFacts(
 }
 
 function hasValidUniqueBusinessFacts(facts: unknown[]): boolean {
-    if (!facts.every(isSourceFact)) return false;
+    if (!facts.every(isBusinessFactSemanticallyValid)) return false;
     const names = facts.map((fact) => (fact as Record<string, unknown>).name);
-    return names.length === new Set(names).size && names.every((name) =>
-        BUSINESS_FACT_NAMES.includes(name as (typeof BUSINESS_FACT_NAMES)[number]));
+    return names.length === new Set(names).size;
+}
+
+function isBusinessFactSemanticallyValid(value: unknown): boolean {
+    if (!isSourceFact(value) || !BUSINESS_FACT_NAMES.includes(
+        value.name as (typeof BUSINESS_FACT_NAMES)[number],
+    )) {
+        return false;
+    }
+    if (value.name === "environment") {
+        return ["PRODUCTION", "PRE_PRODUCTION", "DEVELOPMENT", "TEST"]
+            .includes(value.value);
+    }
+    if (value.name === "service_criticality") {
+        return ["CRITICAL", "HIGH", "MEDIUM", "LOW"].includes(value.value);
+    }
+    return value.value.length > 0;
 }
 
 function factsReferenceKnownSources(
@@ -389,7 +404,11 @@ function isThreatIntelligenceFact(value: unknown): boolean {
         Object.hasOwn(value, "value");
 }
 
-function isSourceFact(value: unknown): boolean {
+function isSourceFact(value: unknown): value is {
+    name: string;
+    value: string;
+    source_reference: string;
+} {
     return isRecord(value) && typeof value.name === "string" && value.name.length > 0 &&
         typeof value.value === "string" && typeof value.source_reference === "string" &&
         value.source_reference.length > 0;

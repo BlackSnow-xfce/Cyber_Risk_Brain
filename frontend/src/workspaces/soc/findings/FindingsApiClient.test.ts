@@ -274,4 +274,81 @@ describe("getFindingRiskContext", () => {
         ));
         await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
     });
+
+    const partialUnavailablePayload = (
+        facts: readonly Record<string, unknown>[],
+        missingRequirements: readonly string[] = ["business_service"],
+    ) => ({
+        ...riskContextPayload,
+        business_impact_readiness: {
+            ...riskContextPayload.business_impact_readiness,
+            facts,
+            missing_requirements: missingRequirements,
+            source_references: [...new Set(facts.map((fact) => fact.source_reference))],
+        },
+    });
+
+    it.each([
+        ["environment BANANA", { name: "environment", value: "BANANA", source_reference: "cmdb:1" }],
+        ["environment lowercase", { name: "environment", value: "production", source_reference: "cmdb:1" }],
+        ["environment title case", { name: "environment", value: "Production", source_reference: "cmdb:1" }],
+        ["environment invalid type", { name: "environment", value: 1, source_reference: "cmdb:1" }],
+        ["service criticality SEVERE", { name: "service_criticality", value: "SEVERE", source_reference: "cmdb:1" }],
+        ["service criticality lowercase", { name: "service_criticality", value: "critical", source_reference: "cmdb:1" }],
+        ["service criticality title case", { name: "service_criticality", value: "Critical", source_reference: "cmdb:1" }],
+        ["service criticality invalid type", { name: "service_criticality", value: true, source_reference: "cmdb:1" }],
+    ])("rejects partial unavailable with invalid %s", async (_label, fact) => {
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(partialUnavailablePayload([fact])), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
+
+    it.each([
+        ["environment only", [
+            { name: "environment", value: "TEST", source_reference: "cmdb:1" },
+        ]],
+        ["service criticality only", [
+            { name: "service_criticality", value: "LOW", source_reference: "cmdb:1" },
+        ]],
+        ["canonical asset and service", [
+            { name: "canonical_asset_id", value: "asset-1", source_reference: "cmdb:1" },
+            { name: "business_service", value: "Payments", source_reference: "cmdb:1" },
+        ]],
+    ])("accepts valid partial unavailable %s", async (_label, facts) => {
+        const missingRequirements = ["environment", "service_criticality"];
+        const payload = partialUnavailablePayload(facts, missingRequirements);
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(payload), { status: 200 }),
+        ));
+        const result = await getFindingRiskContext("finding/id");
+        expect(result.business_impact_readiness?.status).toBe("UNAVAILABLE");
+        expect(result.business_impact_readiness?.missing_requirements)
+            .toEqual(missingRequirements);
+        expect(result.business_impact).toBeNull();
+    });
+
+    it("rejects a partial unavailable fact contradicting resolved authority", async () => {
+        const payload = readyBusinessPayload();
+        payload.business_impact_readiness = {
+            ...payload.business_impact_readiness,
+            status: "UNAVAILABLE",
+            facts: [{ name: "environment", value: "TEST", source_reference: "cmdb:1" }],
+            missing_requirements: ["service_criticality"],
+            completeness_status: "partial",
+            source_reference: "business-impact-readiness:unavailable:finding/id",
+        };
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(payload), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
+
+    it("rejects duplicate partial unavailable facts", async () => {
+        const fact = { name: "environment", value: "TEST", source_reference: "cmdb:1" };
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(partialUnavailablePayload([fact, fact])), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
 });
