@@ -236,6 +236,7 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         impactReadiness.source_type === "business_impact_readiness" &&
         impactReadiness.source_reference ===
             `business-impact-readiness:${String(impactReadiness.status).toLowerCase()}:${value.finding_id}` &&
+        isBusinessSnapshotConsistent(business, impactReadiness) &&
         (impactReadiness.status !== "READY" ||
             (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0 &&
                 impactReadiness.completeness_status === "available" &&
@@ -257,8 +258,86 @@ function isBusinessContextStateValid(value: Record<string, unknown>): boolean {
         ? fields.every((item) => typeof item === "string" && item.length > 0) &&
             ["PRODUCTION", "PRE_PRODUCTION", "DEVELOPMENT", "TEST"].includes(String(value.environment)) &&
             ["CRITICAL", "HIGH", "MEDIUM", "LOW"].includes(String(value.service_criticality)) &&
-            value.facts.length === 4
+            hasExactBusinessFacts(value, value.facts)
         : fields.every((item) => item === null) && value.facts.length === 0;
+}
+
+const BUSINESS_FACT_NAMES = [
+    "canonical_asset_id",
+    "business_service",
+    "environment",
+    "service_criticality",
+] as const;
+
+function isBusinessSnapshotConsistent(
+    business: Record<string, unknown>,
+    readiness: Record<string, unknown>,
+): boolean {
+    if (!Array.isArray(readiness.facts)) return false;
+    if (!isStringArray(readiness.source_references) ||
+        !factsReferenceKnownSources(readiness.facts, readiness.source_references)) {
+        return false;
+    }
+    if (business.status === "RESOLVED") {
+        if (!hasExactBusinessFacts(business, business.facts)) return false;
+        return readiness.status === "READY"
+            ? hasExactBusinessFacts(business, readiness.facts)
+            : hasConsistentPartialBusinessFacts(business, readiness.facts);
+    }
+    return readiness.status === "UNAVAILABLE" &&
+        hasValidUniqueBusinessFacts(readiness.facts);
+}
+
+function hasExactBusinessFacts(
+    business: Record<string, unknown>,
+    facts: unknown,
+): boolean {
+    if (!Array.isArray(facts) || facts.length !== BUSINESS_FACT_NAMES.length) {
+        return false;
+    }
+    return BUSINESS_FACT_NAMES.every((name) => {
+        const matches = facts.filter((fact) => isRecord(fact) && fact.name === name);
+        return matches.length === 1 && isFactEqualToBusiness(matches[0], business, name);
+    });
+}
+
+function hasConsistentPartialBusinessFacts(
+    business: Record<string, unknown>,
+    facts: unknown[],
+): boolean {
+    return hasValidUniqueBusinessFacts(facts) && facts.every((fact) =>
+        isRecord(fact) && BUSINESS_FACT_NAMES.includes(
+            fact.name as (typeof BUSINESS_FACT_NAMES)[number],
+        ) && isFactEqualToBusiness(
+            fact,
+            business,
+            fact.name as (typeof BUSINESS_FACT_NAMES)[number],
+        ));
+}
+
+function hasValidUniqueBusinessFacts(facts: unknown[]): boolean {
+    if (!facts.every(isSourceFact)) return false;
+    const names = facts.map((fact) => (fact as Record<string, unknown>).name);
+    return names.length === new Set(names).size && names.every((name) =>
+        BUSINESS_FACT_NAMES.includes(name as (typeof BUSINESS_FACT_NAMES)[number]));
+}
+
+function factsReferenceKnownSources(
+    facts: unknown[],
+    sourceReferences: readonly string[],
+): boolean {
+    return facts.every((fact) => isRecord(fact) &&
+        typeof fact.source_reference === "string" &&
+        sourceReferences.includes(fact.source_reference));
+}
+
+function isFactEqualToBusiness(
+    fact: unknown,
+    business: Record<string, unknown>,
+    name: (typeof BUSINESS_FACT_NAMES)[number],
+): boolean {
+    return isRecord(fact) && fact.name === name && fact.value === business[name] &&
+        fact.source_reference === business.source_reference;
 }
 
 function hasCompleteBusinessFacts(facts: unknown[], sourceReferences: readonly string[]): boolean {

@@ -176,4 +176,102 @@ describe("getFindingRiskContext", () => {
         ));
         await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
     });
+
+    const readyBusinessPayload = () => {
+        const facts = [
+            { name: "canonical_asset_id", value: "asset-1", source_reference: "cmdb:1" },
+            { name: "business_service", value: "Payments", source_reference: "cmdb:1" },
+            { name: "environment", value: "PRODUCTION", source_reference: "cmdb:1" },
+            { name: "service_criticality", value: "CRITICAL", source_reference: "cmdb:1" },
+        ];
+        return {
+            ...riskContextPayload,
+            business_context: {
+                status: "RESOLVED", canonical_asset_id: "asset-1",
+                business_service: "Payments", environment: "PRODUCTION",
+                service_criticality: "CRITICAL", source_reference: "cmdb:1", facts,
+            },
+            business_impact_readiness: {
+                finding_id: "finding/id", status: "READY", reason: "Complete.", facts,
+                missing_requirements: [] as string[], source_references: ["cmdb:1"],
+                completeness_status: "available", source_type: "business_impact_readiness",
+                source_reference: "business-impact-readiness:ready:finding/id",
+            },
+        };
+    };
+
+    it.each([
+        ["top-level environment differs from context fact", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_context.facts = payload.business_context.facts.map((fact) =>
+                fact.name === "environment" ? { ...fact, value: "TEST" } : fact);
+        }],
+        ["top-level environment differs from readiness fact", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.map((fact) =>
+                fact.name === "environment" ? { ...fact, value: "TEST" } : fact);
+        }],
+        ["top-level criticality differs from context fact", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_context.facts = payload.business_context.facts.map((fact) =>
+                fact.name === "service_criticality" ? { ...fact, value: "LOW" } : fact);
+        }],
+        ["top-level criticality differs from readiness fact", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.map((fact) =>
+                fact.name === "service_criticality" ? { ...fact, value: "LOW" } : fact);
+        }],
+        ["context and readiness values differ", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_context.environment = "TEST";
+            payload.business_context.facts = payload.business_context.facts.map((fact) =>
+                fact.name === "environment" ? { ...fact, value: "TEST" } : fact);
+        }],
+        ["fact provenance differs", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.map((fact) =>
+                fact.name === "service_criticality" ? { ...fact, source_reference: "cmdb:2" } : fact);
+            payload.business_impact_readiness.source_references = ["cmdb:1", "cmdb:2"];
+        }],
+        ["required mirrored fact is missing", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.slice(1);
+        }],
+        ["mirrored fact is duplicated", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = [
+                ...payload.business_impact_readiness.facts,
+                payload.business_impact_readiness.facts[0],
+            ];
+        }],
+        ["unexpected fact is added", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = [
+                ...payload.business_impact_readiness.facts,
+                { name: "business_owner", value: "owner", source_reference: "cmdb:1" },
+            ];
+        }],
+        ["canonical relationship is altered", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.map((fact) =>
+                fact.name === "canonical_asset_id" ? { ...fact, value: "asset-2" } : fact);
+        }],
+        ["business service is altered", (payload: ReturnType<typeof readyBusinessPayload>) => {
+            payload.business_impact_readiness.facts = payload.business_impact_readiness.facts.map((fact) =>
+                fact.name === "business_service" ? { ...fact, value: "Other" } : fact);
+        }],
+    ])("rejects inconsistent business snapshot: %s", async (_label, mutate) => {
+        const payload = readyBusinessPayload();
+        mutate(payload);
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(payload), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
+
+    it("accepts a consistent partial unavailable snapshot", async () => {
+        const payload = readyBusinessPayload();
+        payload.business_impact_readiness = {
+            ...payload.business_impact_readiness,
+            status: "UNAVAILABLE",
+            facts: payload.business_impact_readiness.facts.slice(0, 2),
+            missing_requirements: ["environment", "service_criticality"],
+            completeness_status: "partial",
+            source_reference: "business-impact-readiness:unavailable:finding/id",
+        };
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(payload), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
+    });
 });

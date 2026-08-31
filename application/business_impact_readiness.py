@@ -8,6 +8,10 @@ from application.finding_asset_business_context import (
     FindingAssetBusinessContextResolution,
     FindingAssetBusinessContextResolutionStatus,
 )
+from core.enterprise_context.asset_business_context import (
+    BusinessEnvironment,
+    ServiceCriticality,
+)
 from core.explainability import (
     CompletenessStatus,
     ExplanationCompleteness,
@@ -29,7 +33,7 @@ class BusinessContextFact:
     def __post_init__(self) -> None:
         for field_name in ("name", "value", "source_reference"):
             value = getattr(self, field_name)
-            if not isinstance(value, str) or not value.strip():
+            if type(value) is not str or not value.strip():
                 raise ValueError(
                     f"Business context fact {field_name} must be a non-empty string."
                 )
@@ -115,6 +119,17 @@ class BusinessImpactReadiness:
                 raise ValueError("Ready business impact requires business context provenance.")
             if self.completeness.status is not CompletenessStatus.AVAILABLE:
                 raise ValueError("Ready business impact requires available completeness.")
+            facts_by_name = {fact.name: fact for fact in self.facts}
+            self._require_enum_value(
+                facts_by_name["environment"],
+                BusinessEnvironment,
+                "environment",
+            )
+            self._require_enum_value(
+                facts_by_name["service_criticality"],
+                ServiceCriticality,
+                "service criticality",
+            )
             return
 
         if self.status is not BusinessImpactReadinessStatus.UNAVAILABLE:
@@ -123,6 +138,21 @@ class BusinessImpactReadiness:
             raise ValueError("Unavailable business impact requires missing requirements.")
         if self.completeness.status is CompletenessStatus.AVAILABLE:
             raise ValueError("Unavailable business impact cannot claim available completeness.")
+
+    @staticmethod
+    def _require_enum_value(
+        fact: BusinessContextFact,
+        authority: type[BusinessEnvironment] | type[ServiceCriticality],
+        label: str,
+    ) -> None:
+        if type(fact.value) is not str:
+            raise ValueError(f"Business context {label} fact is invalid.")
+        try:
+            authority(fact.value)
+        except ValueError as error:
+            raise ValueError(
+                f"Business context {label} fact is invalid."
+            ) from error
 
 
 class BusinessImpactReadinessService:

@@ -8,6 +8,7 @@ from application.business_impact_readiness import (
 )
 from application.finding_asset_business_context import FindingAssetBusinessContextResolution, FindingAssetBusinessContextResolutionStatus
 from core.enterprise_context import AssetBusinessContext, BusinessEnvironment, ServiceCriticality
+from core.enterprise_context.asset_context import AssetCriticality
 from core.explainability import CompletenessStatus, ExplanationCompleteness, ExplanationProvenance
 
 
@@ -94,6 +95,56 @@ def test_ready_rejects_incomplete_or_unproven_states(changes):
 
 def test_valid_ready_construction_succeeds():
     assert _valid_ready().status is BusinessImpactReadinessStatus.READY
+
+
+@pytest.mark.parametrize("name,value", [
+    ("environment", "BANANA"),
+    ("environment", "production"),
+    ("service_criticality", "SEVERE"),
+    ("service_criticality", "critical"),
+])
+def test_ready_rejects_values_outside_authoritative_enums(name, value):
+    facts = tuple(
+        replace(fact, value=value) if fact.name == name else fact
+        for fact in _valid_ready().facts
+    )
+    with pytest.raises(ValueError):
+        _valid_ready(facts=facts)
+
+
+@pytest.mark.parametrize("value", [1, True, object()])
+def test_business_context_fact_rejects_invalid_authority_runtime_types(value):
+    with pytest.raises(ValueError):
+        BusinessContextFact("environment", value, "cmdb:1")
+
+
+def test_asset_criticality_cannot_substitute_for_service_criticality():
+    with pytest.raises(ValueError):
+        BusinessContextFact(
+            "service_criticality", AssetCriticality.CRITICAL, "cmdb:1"
+        )
+
+
+@pytest.mark.parametrize("environment", list(BusinessEnvironment))
+def test_ready_accepts_every_authoritative_business_environment(environment):
+    facts = tuple(
+        replace(fact, value=environment.value)
+        if fact.name == "environment"
+        else fact
+        for fact in _valid_ready().facts
+    )
+    assert _valid_ready(facts=facts).status is BusinessImpactReadinessStatus.READY
+
+
+@pytest.mark.parametrize("criticality", list(ServiceCriticality))
+def test_ready_accepts_every_authoritative_service_criticality(criticality):
+    facts = tuple(
+        replace(fact, value=criticality.value)
+        if fact.name == "service_criticality"
+        else fact
+        for fact in _valid_ready().facts
+    )
+    assert _valid_ready(facts=facts).status is BusinessImpactReadinessStatus.READY
 
 
 def test_unavailable_preserves_requirements_and_rejects_available_completeness():
