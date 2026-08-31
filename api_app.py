@@ -20,7 +20,10 @@ from application import (
     AIModelSelectionUnavailableError,
     AssetContextConfigurationError,
     AssetContextQueryService,
+    AssetBusinessContextQueryService,
+    BusinessImpactReadinessService,
     FindingAssetContextUseCase,
+    FindingAssetBusinessContextUseCase,
     FindingExplanationModelOutput,
     FindingExplanationResult,
     FindingExplanationStatement,
@@ -142,6 +145,7 @@ from settings import (
     AI_MODEL_SELECTION_AUDIT_PATH,
     AI_MODEL_SELECTION_STATE_PATH,
     ASSET_CONTEXT_PATH,
+    ASSET_BUSINESS_CONTEXT_PATH,
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
     HUNT_HYPOTHESIS_REPOSITORY_PATH,
@@ -495,6 +499,29 @@ class FindingRiskPriorityResponse(BaseModel):
     source_reference: str
 
 
+class FindingBusinessContextFactResponse(BaseModel):
+    name: str
+    value: str
+    source_reference: str
+
+
+class FindingAssetBusinessContextResponse(BaseModel):
+    status: str
+    canonical_asset_id: str | None
+    business_service: str | None
+    environment: str | None
+    service_criticality: str | None
+    source_reference: str | None
+
+
+class FindingBusinessImpactReadinessResponse(BaseModel):
+    status: str
+    reason: str
+    facts: list[FindingBusinessContextFactResponse]
+    missing_requirements: list[str]
+    source_references: list[str]
+
+
 class FindingRiskContextResponse(BaseModel):
     finding_id: str
     source_facts: list[FindingRiskSourceFactResponse]
@@ -507,6 +534,8 @@ class FindingRiskContextResponse(BaseModel):
     evidence_readiness: FindingEvidenceReadinessResponse
     refusal_reason: str | None
     priority: FindingRiskPriorityResponse
+    business_context: FindingAssetBusinessContextResponse
+    business_impact_readiness: FindingBusinessImpactReadinessResponse
     business_impact: None
     decision: None
     recommendations: list[None]
@@ -1133,6 +1162,10 @@ def get_finding_risk_context_use_case() -> FindingRiskContextUseCase:
         correlation=correlation,
         risk_readiness=RiskReadinessService(),
         evidence_readiness=RiskAssessmentReadinessService(),
+        business_context=FindingAssetBusinessContextUseCase(
+            AssetBusinessContextQueryService(ASSET_BUSINESS_CONTEXT_PATH)
+        ),
+        business_impact_readiness=BusinessImpactReadinessService(),
     )
 
 
@@ -1499,6 +1532,8 @@ def _finding_risk_context_response(
     )
     readiness = context.evidence_readiness
     completeness = context.correlation.completeness
+    business_context = context.business_context.context
+    impact_readiness = context.business_impact_readiness
     return FindingRiskContextResponse(
         finding_id=context.finding_id,
         source_facts=[
@@ -1599,6 +1634,43 @@ def _finding_risk_context_response(
             source_reference=(
                 context.priority.completeness.provenance.source_reference
             ),
+        ),
+        business_context=FindingAssetBusinessContextResponse(
+            status=context.business_context.status.value,
+            canonical_asset_id=(
+                business_context.canonical_asset_id
+                if business_context is not None else None
+            ),
+            business_service=(
+                business_context.business_service
+                if business_context is not None else None
+            ),
+            environment=(
+                business_context.environment.value
+                if business_context is not None else None
+            ),
+            service_criticality=(
+                business_context.service_criticality.value
+                if business_context is not None else None
+            ),
+            source_reference=(
+                business_context.source_reference
+                if business_context is not None else None
+            ),
+        ),
+        business_impact_readiness=FindingBusinessImpactReadinessResponse(
+            status=impact_readiness.status.value,
+            reason=impact_readiness.reason,
+            facts=[
+                FindingBusinessContextFactResponse(
+                    name=fact.name,
+                    value=fact.value,
+                    source_reference=fact.source_reference,
+                )
+                for fact in impact_readiness.facts
+            ],
+            missing_requirements=list(impact_readiness.missing_requirements),
+            source_references=list(impact_readiness.source_references),
         ),
         business_impact=None,
         decision=None,

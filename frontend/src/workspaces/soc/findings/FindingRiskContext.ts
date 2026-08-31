@@ -67,6 +67,21 @@ export interface FindingRiskContext {
         source_type: string;
         source_reference: string;
     } | null;
+    business_context?: {
+        status: "RESOLVED" | "NOT_FOUND" | "MISSING_CANONICAL_ASSET";
+        canonical_asset_id: string | null;
+        business_service: string | null;
+        environment: "PRODUCTION" | "PRE_PRODUCTION" | "DEVELOPMENT" | "TEST" | null;
+        service_criticality: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+        source_reference: string | null;
+    };
+    business_impact_readiness?: {
+        status: "READY" | "UNAVAILABLE";
+        reason: string;
+        facts: readonly { name: string; value: string; source_reference: string }[];
+        missing_requirements: readonly string[];
+        source_references: readonly string[];
+    };
     business_impact: null;
     decision: null;
     recommendations: readonly never[];

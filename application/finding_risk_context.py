@@ -6,6 +6,15 @@ from application.finding_asset_context import (
     FindingAssetContextResolution,
     FindingAssetContextUseCase,
 )
+from application.business_impact_readiness import (
+    BusinessImpactReadiness,
+    BusinessImpactReadinessService,
+)
+from application.finding_asset_business_context import (
+    FindingAssetBusinessContextResolution,
+    FindingAssetBusinessContextResolutionStatus,
+    FindingAssetBusinessContextUseCase,
+)
 from application.finding_explanation_use_case import (
     FindingNotFoundError,
     FindingSelectionError,
@@ -54,9 +63,24 @@ class FindingRiskContext:
     evidence_readiness: RiskAssessmentReadinessResult
     refusal_reason: str | None
     priority: FindingRiskPriority
+    business_context: FindingAssetBusinessContextResolution
+    business_impact_readiness: BusinessImpactReadiness
     business_impact: None = None
     decision: None = None
     recommendations: tuple[None, ...] = ()
+
+
+def _unavailable_business_context(
+    asset_context: FindingAssetContextResolution,
+) -> FindingAssetBusinessContextResolution:
+    return FindingAssetBusinessContextResolution(
+        finding_id=asset_context.finding_id,
+        status=(
+            FindingAssetBusinessContextResolutionStatus.NOT_FOUND
+            if asset_context.asset_context is not None
+            else FindingAssetBusinessContextResolutionStatus.MISSING_CANONICAL_ASSET
+        ),
+    )
 
 
 class FindingRiskContextUseCase:
@@ -71,6 +95,8 @@ class FindingRiskContextUseCase:
         risk_readiness: RiskReadinessService,
         evidence_readiness: RiskAssessmentReadinessService,
         risk_priority: FindingRiskPriorityService | None = None,
+        business_context: FindingAssetBusinessContextUseCase | None = None,
+        business_impact_readiness: BusinessImpactReadinessService | None = None,
     ) -> None:
         self._findings = findings
         self._asset_context = asset_context
@@ -79,6 +105,10 @@ class FindingRiskContextUseCase:
         self._risk_readiness = risk_readiness
         self._evidence_readiness = evidence_readiness
         self._risk_priority = risk_priority or FindingRiskPriorityService()
+        self._business_context = business_context
+        self._business_impact_readiness = (
+            business_impact_readiness or BusinessImpactReadinessService()
+        )
 
     def project(self, finding_id: str) -> FindingRiskContext:
         finding = self._select_finding(finding_id)
@@ -106,6 +136,14 @@ class FindingRiskContextUseCase:
             assessment,
             evidence_readiness,
         )
+        business_context = (
+            self._business_context.resolve(asset_context)
+            if self._business_context is not None
+            else _unavailable_business_context(asset_context)
+        )
+        business_impact_readiness = self._business_impact_readiness.evaluate(
+            business_context
+        )
         refusal_parts = [
             f"{item.name}:{item.state.value}"
             for item in assessment.missing_inputs
@@ -129,8 +167,9 @@ class FindingRiskContextUseCase:
                 else None
             ),
             priority=priority,
+            business_context=business_context,
+            business_impact_readiness=business_impact_readiness,
         )
-
     def _select_finding(self, finding_id: str) -> UniversalFinding:
         matches = [
             finding

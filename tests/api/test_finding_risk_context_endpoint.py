@@ -74,6 +74,16 @@ def test_endpoint_transports_typed_provenance_evidence_and_fail_closed_result() 
     assert payload["priority"]["missing_requirements"]
     assert payload["priority"]["source_type"] == "finding_risk_priority"
     assert payload["business_impact"] is None
+    assert payload["business_context"] == {
+        "status": "NOT_FOUND",
+        "canonical_asset_id": None,
+        "business_service": None,
+        "environment": None,
+        "service_criticality": None,
+        "source_reference": None,
+    }
+    assert payload["business_impact_readiness"]["status"] == "UNAVAILABLE"
+    assert "business_service" in payload["business_impact_readiness"]["missing_requirements"]
     assert payload["decision"] is None
     assert payload["recommendations"] == []
 

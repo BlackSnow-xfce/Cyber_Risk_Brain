@@ -180,12 +180,16 @@ function isNullableString(value: unknown): value is string | null {
 function isFindingRiskContext(value: unknown): value is FindingRiskContext {
     if (!isRecord(value) || !isRecord(value.asset_context) ||
         !isRecord(value.threat_intelligence) || !isRecord(value.correlation) ||
-        !isRecord(value.assessment) || !isRecord(value.evidence_readiness)) {
+        !isRecord(value.assessment) || !isRecord(value.evidence_readiness) ||
+        !isRecord(value.business_context) ||
+        !isRecord(value.business_impact_readiness)) {
         return false;
     }
     const asset = value.asset_context;
     const assessment = value.assessment;
     const readiness = value.evidence_readiness;
+    const business = value.business_context;
+    const impactReadiness = value.business_impact_readiness;
     const resolved = asset.status === "resolved";
     const assetFieldsValid = resolved
         ? [asset.observed_identifier_type, asset.observed_identifier_value, asset.canonical_asset_id, asset.criticality, asset.source_reference]
@@ -219,11 +223,42 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         isStringArray(readiness.missing_requirements) &&
         typeof readiness.completeness_status === "string" &&
         typeof readiness.source_type === "string" && typeof readiness.source_reference === "string" &&
-        isNullableString(value.refusal_reason) && value.priority === null &&
+        isNullableString(value.refusal_reason) && isRiskPriority(value.priority) &&
+        ["RESOLVED", "NOT_FOUND", "MISSING_CANONICAL_ASSET"].includes(String(business.status)) &&
+        isBusinessContextStateValid(business) &&
+        ["READY", "UNAVAILABLE"].includes(String(impactReadiness.status)) &&
+        typeof impactReadiness.reason === "string" &&
+        Array.isArray(impactReadiness.facts) && impactReadiness.facts.every(isSourceFact) &&
+        isStringArray(impactReadiness.missing_requirements) &&
+        isStringArray(impactReadiness.source_references) &&
+        (impactReadiness.status !== "READY" ||
+            (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0)) &&
         value.business_impact === null && value.decision === null &&
         Array.isArray(value.recommendations) && value.recommendations.length === 0 &&
         (!insufficient || (assessment.score === null && value.refusal_reason !== null &&
             assessment.missing_inputs.length > 0));
+}
+
+function isBusinessContextStateValid(value: Record<string, unknown>): boolean {
+    const fields = [value.canonical_asset_id, value.business_service, value.environment,
+        value.service_criticality, value.source_reference];
+    return value.status === "RESOLVED"
+        ? fields.every((item) => typeof item === "string" && item.length > 0) &&
+            ["PRODUCTION", "PRE_PRODUCTION", "DEVELOPMENT", "TEST"].includes(String(value.environment)) &&
+            ["CRITICAL", "HIGH", "MEDIUM", "LOW"].includes(String(value.service_criticality))
+        : fields.every((item) => item === null);
+}
+
+function isRiskPriority(value: unknown): boolean {
+    if (!isRecord(value) || !["PRIORITIZED", "UNAVAILABLE"].includes(String(value.status)) ||
+        typeof value.reason !== "string" || !isStringArray(value.considered_evidence_ids) ||
+        !isStringArray(value.referenced_input_references) ||
+        !isStringArray(value.missing_requirements) || typeof value.completeness_status !== "string" ||
+        typeof value.source_type !== "string" || typeof value.source_reference !== "string") return false;
+    return value.status === "PRIORITIZED"
+        ? ["critical", "high", "medium", "low", "informational"].includes(String(value.band)) &&
+            typeof value.score === "number" && value.missing_requirements.length === 0
+        : value.band === null && value.score === null;
 }
 
 function hasRequiredRiskInputs(value: unknown): boolean {

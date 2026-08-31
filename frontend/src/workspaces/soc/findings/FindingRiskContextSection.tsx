@@ -47,6 +47,31 @@ export default function FindingRiskContextSection({
                             Canonical asset {context.asset_context.canonical_asset_id}; criticality {context.asset_context.criticality}. Source: {context.asset_context.source_reference}
                         </Typography>
                     )}
+                    {context.business_context && context.business_impact_readiness && <>
+                    <Typography variant="subtitle2">Authoritative business context</Typography>
+                    {context.business_context.status === "RESOLVED" ? (
+                        <Stack spacing={0.25}>
+                            {context.business_impact_readiness.facts.map((fact) => (
+                                <Typography key={fact.name} variant="body2">
+                                    {fact.name}: {fact.value}. Source: {fact.source_reference}
+                                </Typography>
+                            ))}
+                        </Stack>
+                    ) : (
+                        <Alert severity="warning">
+                            Business context {context.business_context.status}. No organizational facts were inferred.
+                        </Alert>
+                    )}
+                    <Typography variant="subtitle2">Business-impact readiness</Typography>
+                    <Typography variant="body2">
+                        {context.business_impact_readiness.status}: {context.business_impact_readiness.reason}
+                    </Typography>
+                    {context.business_impact_readiness.missing_requirements.map((requirement) => (
+                        <Typography key={requirement} variant="body2">
+                            Business-impact requirement: {requirement}
+                        </Typography>
+                    ))}
+                    </>}
                     <Typography variant="subtitle2">Threat intelligence</Typography>
                     {context.threat_intelligence.relationships.map((relationship, index) => (
                         <Stack

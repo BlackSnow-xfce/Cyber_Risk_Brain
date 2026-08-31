@@ -39,6 +39,14 @@ const context: FindingRiskContext = {
         source_type: "finding_risk_priority",
         source_reference: "finding-risk-priority:unavailable:finding-001",
     },
+    business_context: {
+        status: "NOT_FOUND", canonical_asset_id: null, business_service: null,
+        environment: null, service_criticality: null, source_reference: null,
+    },
+    business_impact_readiness: {
+        status: "UNAVAILABLE", reason: "Authoritative business context is missing.",
+        facts: [], missing_requirements: ["business_service"], source_references: [],
+    },
     business_impact: null, decision: null, recommendations: [],
 };
 
@@ -71,6 +79,26 @@ describe("FindingRiskContextSection", () => {
         expect(screen.getByText(/Priority unavailable/)).toHaveTextContent(
             "Band and score are not available",
         );
+        expect(screen.getByText(/Business context NOT_FOUND/)).toBeInTheDocument();
+        expect(screen.getByText("Business-impact requirement: business_service")).toBeInTheDocument();
+    });
+
+    it("renders resolved business facts with provenance without inferring impact", () => {
+        render(<FindingRiskContextSection context={{
+            ...context,
+            business_context: {
+                status: "RESOLVED", canonical_asset_id: "asset-1",
+                business_service: "Payments", environment: "PRODUCTION",
+                service_criticality: "CRITICAL", source_reference: "cmdb:1",
+            },
+            business_impact_readiness: {
+                status: "READY", reason: "Authoritative facts are available.",
+                facts: [{ name: "business_service", value: "Payments", source_reference: "cmdb:1" }],
+                missing_requirements: [], source_references: ["cmdb:1"],
+            },
+        }} error={null} loading={false} onLoad={vi.fn()} />);
+        expect(screen.getByText("business_service: Payments. Source: cmdb:1")).toBeInTheDocument();
+        expect(screen.getByText(/READY: Authoritative facts/)).toBeInTheDocument();
     });
 
     it("renders only a transported gated priority with evidence provenance", () => {

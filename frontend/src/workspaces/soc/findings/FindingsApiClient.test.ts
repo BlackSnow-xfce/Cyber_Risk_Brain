@@ -64,7 +64,11 @@ const riskContextPayload = {
     risk_inputs: ["business_criticality", "exposure", "detection_available", "threat_intelligence_match", "mitre_tactic"].map((name) => ({ name, state: name === "business_criticality" ? "UNKNOWN" : "NOT_EVALUATED", value: null, source: null })),
     assessment: { status: "INSUFFICIENT_CONTEXT", available_inputs: [], missing_inputs: [{ name: "exposure", state: "NOT_EVALUATED", value: null, source: null }], score: null },
     evidence_readiness: { status: "INSUFFICIENT_EVIDENCE", reason: "Missing evidence.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["canonical_asset_context"], completeness_status: "no_data", source_type: "readiness", source_reference: "finding/id" },
-    refusal_reason: "Required context is missing.", priority: null, business_impact: null,
+    refusal_reason: "Required context is missing.",
+    priority: { status: "UNAVAILABLE", band: null, score: null, reason: "Missing context.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["context"], completeness_status: "no_data", source_type: "finding_risk_priority", source_reference: "finding/id" },
+    business_context: { status: "NOT_FOUND", canonical_asset_id: null, business_service: null, environment: null, service_criticality: null, source_reference: null },
+    business_impact_readiness: { status: "UNAVAILABLE", reason: "Missing business context.", facts: [], missing_requirements: ["business_service", "environment", "service_criticality", "business_context_provenance"], source_references: [] },
+    business_impact: null,
     decision: null, recommendations: [],
 };
 

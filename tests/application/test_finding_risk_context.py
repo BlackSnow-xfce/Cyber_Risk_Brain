@@ -123,6 +123,9 @@ def test_resolved_projection_preserves_exact_provenance_and_fails_closed() -> No
     assert result.priority.status.value == "UNAVAILABLE"
     assert result.priority.band is result.priority.score is None
     assert result.business_impact is result.decision is None
+    assert result.business_context.status.value == "NOT_FOUND"
+    assert result.business_impact_readiness.status.value == "UNAVAILABLE"
+    assert "business_service" in result.business_impact_readiness.missing_requirements
     assert result.recommendations == ()
     assert result.risk_inputs.business_criticality.state is RiskInputState.AUTHORITATIVE
     assert result.risk_inputs.business_criticality.source == (
