@@ -59,11 +59,12 @@ class FindingRiskPriority:
 
         if self.status is not FindingRiskPriorityStatus.PRIORITIZED:
             raise ValueError("Unsupported finding risk priority status.")
-        if self.band is None:
-            raise ValueError("Prioritized result requires a priority band.")
+        if not isinstance(self.band, DecisionPriority):
+            raise ValueError(
+                "Prioritized result requires a DecisionPriority band."
+            )
         if (
-            self.score is None
-            or isinstance(self.score, bool)
+            type(self.score) is not int
             or not 0 <= self.score <= 100
         ):
             raise ValueError(

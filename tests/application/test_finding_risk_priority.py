@@ -189,7 +189,7 @@ def test_unavailable_result_rejects_priority_values(
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("band", None, "priority band"),
+        ("band", None, "DecisionPriority band"),
         ("score", None, "authoritative score"),
         (
             "missing_requirements",
@@ -222,6 +222,55 @@ def test_prioritized_result_rejects_missing_provenance() -> None:
 
     with pytest.raises(ValueError, match="evidence and input provenance"):
         replace(result, considered_evidence_ids=())
+
+
+@pytest.mark.parametrize(
+    "band",
+    [
+        "invented",
+        DecisionPriority.HIGH.value,
+        1,
+        object(),
+    ],
+)
+def test_prioritized_result_rejects_non_enum_band(band) -> None:
+    assessment, evidence_readiness = ready_inputs(80)
+    result = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match="DecisionPriority band"):
+        replace(result, band=band)
+
+
+@pytest.mark.parametrize("score", [80.5, 80.0, True, False, -1, 101])
+def test_prioritized_result_rejects_invalid_score_runtime_value(score) -> None:
+    assessment, evidence_readiness = ready_inputs(80)
+    result = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        evidence_readiness,
+    )
+
+    with pytest.raises(ValueError, match="bounded authoritative score"):
+        replace(result, score=score)
+
+
+@pytest.mark.parametrize("score", [0, 1, 50, 80, 100])
+def test_prioritized_result_accepts_authoritative_integer_score(score) -> None:
+    assessment, evidence_readiness = ready_inputs(score)
+
+    result = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        evidence_readiness,
+    )
+
+    assert isinstance(result.band, DecisionPriority)
+    assert type(result.score) is int
+    assert result.score == score
 
 
 def test_unavailable_result_requires_truthful_reason() -> None:
