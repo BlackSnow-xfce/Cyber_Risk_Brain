@@ -1,6 +1,6 @@
-# Handoff - Architect to Codex - TASK-0127 REWORK 3
+# Handoff - Architect to Codex
 
 Status: WAITING
-Current AIDP Task: TASK-0127
-Current Phase: READY
-Task Status: READY / REWORK 3
+Current AIDP Task: NONE
+Current Phase: NONE
+Task Status: NONE
