@@ -1,9 +1,9 @@
 # Handoff - Architecture Review TASK-0130
 
-Status: CLOSED
+Status: WAITING
 Task: TASK-0130
-Task Status: REVIEW / REWORK REQUIRED
+Task Status: READY / REWORK 1
 Reviewer: Architect
 Architect Task-Specification Review: PASS / APPROVED
-Architect Implementation Review: FAIL / REWORK REQUIRED
+Architect Implementation Review: PENDING
 Product Owner Live Acceptance: PENDING / NOT READY
