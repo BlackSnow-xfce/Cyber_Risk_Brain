@@ -5,6 +5,7 @@ import FindingsWorkspace from "./FindingsWorkspace";
 import type { FindingExplanationResult } from "./FindingExplanation";
 import { FindingExplanationRequestError } from "./FindingsApiClient";
 import type { FindingSummary } from "./FindingSummary";
+import type { FindingRiskContext } from "./FindingRiskContext";
 import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 
 afterEach(() => {
@@ -26,6 +27,20 @@ const secondFinding: FindingSummary = {
     title: "Second controlled finding",
     vendorSeverity: "Low",
     asset: "192.0.2.11",
+};
+
+const riskContext: FindingRiskContext = {
+    finding_id: finding.id,
+    source_facts: [{ name: "title", value: finding.title, source_reference: finding.source }],
+    asset_context: { status: "not_found", observed_identifier_type: "ip_address", observed_identifier_value: finding.asset, canonical_asset_id: null, criticality: null, source_reference: null },
+    threat_intelligence: { finding_id: finding.id, finding_source: finding.source, finding_title: finding.title, relationships: [] },
+    correlation: { completeness_status: "no_data", source_type: "correlation", source_reference: finding.id },
+    evidence: [],
+    risk_inputs: [],
+    assessment: { status: "INSUFFICIENT_CONTEXT", available_inputs: [], missing_inputs: [{ name: "exposure", state: "NOT_EVALUATED", value: null, source: null }], score: null },
+    evidence_readiness: { status: "INSUFFICIENT_EVIDENCE", reason: "Missing evidence.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["canonical_asset_context"], completeness_status: "no_data", source_type: "readiness", source_reference: finding.id },
+    refusal_reason: "Required context is missing.", priority: null, business_impact: null,
+    decision: null, recommendations: [],
 };
 
 const generatedExplanation: FindingExplanationResult = {
@@ -375,6 +390,66 @@ describe("FindingsWorkspace", () => {
             screen.getByRole("button", { name: /Second controlled finding/ }),
         );
         expect(loadExplanation).not.toHaveBeenCalled();
+    });
+
+    it("loads risk context only on request and discards it when selection changes", async () => {
+        const pending = deferred<FindingRiskContext>();
+        const loadRiskContext = vi.fn(() => pending.promise);
+        render(<FindingsWorkspace
+            loadFindings={() => Promise.resolve([finding, secondFinding])}
+            loadRiskContext={loadRiskContext}
+        />);
+
+        await selectFinding();
+        expect(loadRiskContext).not.toHaveBeenCalled();
+        fireEvent.click(await screen.findByRole("button", { name: "Load risk context" }));
+        expect(loadRiskContext).toHaveBeenCalledWith(finding.id);
+        fireEvent.click(screen.getByRole("button", { name: /Second controlled finding/ }));
+
+        await act(async () => {
+            pending.resolve(riskContext);
+            await pending.promise;
+        });
+        expect(screen.queryByText("Required context is missing.")).not.toBeInTheDocument();
+    });
+
+    it("rejects a stale risk response after navigation returns to the same finding", async () => {
+        const pending = deferred<FindingRiskContext>();
+        render(<FindingsWorkspace
+            loadFindings={() => Promise.resolve([finding, secondFinding])}
+            loadRiskContext={() => pending.promise}
+        />);
+
+        await selectFinding();
+        fireEvent.click(await screen.findByRole("button", { name: "Load risk context" }));
+        fireEvent.click(screen.getByRole("button", { name: /Second controlled finding/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Controlled scanner finding/ }));
+
+        await act(async () => {
+            pending.resolve(riskContext);
+            await pending.promise;
+        });
+
+        expect(screen.queryByText("Required context is missing.")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Load risk context" })).toBeEnabled();
+    });
+
+    it("renders a requested fail-closed risk context without invoking decisions", async () => {
+        const loadRiskContext = vi.fn(() => Promise.resolve(riskContext));
+        render(<FindingsWorkspace
+            loadFindings={() => Promise.resolve([finding])}
+            loadRiskContext={loadRiskContext}
+        />);
+
+        await selectFinding();
+        fireEvent.click(await screen.findByRole("button", { name: "Load risk context" }));
+
+        expect(
+            await screen.findByText("Evidence requirement: canonical_asset_context"),
+        ).toBeInTheDocument();
+        expect(screen.getByText(/PredatorAI refuses to calculate risk, priority/)).toBeInTheDocument();
+        expect(loadRiskContext).toHaveBeenCalledExactlyOnceWith(finding.id);
+        expect(screen.queryByText("Decision")).not.toBeInTheDocument();
     });
 
     it("requests the selected finding and renders the structured result", async () => {

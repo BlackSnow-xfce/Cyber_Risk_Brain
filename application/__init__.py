@@ -61,6 +61,11 @@ from application.finding_threat_intelligence import (
     FindingThreatIntelligenceEnrichment,
     FindingThreatIntelligenceUseCase,
 )
+from application.finding_risk_context import (
+    FindingRiskContext,
+    FindingRiskContextUseCase,
+    FindingSourceFact,
+)
 from application.incident_investigation import (
     INCIDENT_INVESTIGATION_CONTRACT_VERSION,
     IncidentInvestigationCandidate,
@@ -260,6 +265,9 @@ __all__ = [
     "FindingSelectionError",
     "FindingThreatIntelligenceEnrichment",
     "FindingThreatIntelligenceUseCase",
+    "FindingRiskContext",
+    "FindingRiskContextUseCase",
+    "FindingSourceFact",
     "FindingsConfigurationError",
     "FindingsQueryService",
     "InferenceKind",

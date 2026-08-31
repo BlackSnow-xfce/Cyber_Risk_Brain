@@ -20,10 +20,13 @@ from application import (
     AIModelSelectionUnavailableError,
     AssetContextConfigurationError,
     AssetContextQueryService,
+    FindingAssetContextUseCase,
     FindingExplanationModelOutput,
     FindingExplanationResult,
     FindingExplanationStatement,
     FindingExplanationUseCase,
+    FindingRiskContext,
+    FindingRiskContextUseCase,
     build_finding_explanation_authorization,
     FindingNotFoundError,
     FindingExplanationService,
@@ -77,6 +80,8 @@ from application import (
     LocalOperatorSessionCsrfError,
     LocalOperatorSessionStore,
     RiskReadinessService,
+    RiskAssessmentReadinessService,
+    SecurityObservationCorrelationApplicationService,
     FileAIModelSelectionAuditSink,
     FileAIModelSelectionStore,
     PersistedAIModelSelectionPolicy,
@@ -107,6 +112,8 @@ from core.incident_response import (
     ThreatIntelligenceReference,
 )
 from core.predator_engine import PredatorEngine
+from core.decision.models import Evidence
+from core.security_observation import SecurityObservationCorrelationService
 from core.threat_hunting import (
     HuntHypothesis,
     HuntHypothesisReference,
@@ -177,6 +184,62 @@ class FindingResponse(BaseModel):
     title: str
     vendorSeverity: str
     asset: str
+
+
+class FindingRiskSourceFactResponse(BaseModel):
+    name: str
+    value: str
+    source_reference: str
+
+
+class FindingRiskAssetContextResponse(BaseModel):
+    status: str
+    observed_identifier_type: str | None
+    observed_identifier_value: str | None
+    canonical_asset_id: str | None
+    criticality: str | None
+    source_reference: str | None
+
+
+class FindingRiskEvidenceResponse(BaseModel):
+    identifier: str
+    kind: str
+    evidence_type: str
+    contract_version: str
+    source_type: str
+    source_reference: str
+    input_references: list[str]
+
+
+class FindingRiskInputResponse(BaseModel):
+    name: str
+    state: str
+    value: str | bool | None
+    source: str | None
+
+
+class FindingRiskAssessmentResponse(BaseModel):
+    status: str
+    available_inputs: list[FindingRiskInputResponse]
+    missing_inputs: list[FindingRiskInputResponse]
+    score: int | None
+
+
+class FindingEvidenceReadinessResponse(BaseModel):
+    status: str
+    reason: str
+    considered_evidence_ids: list[str]
+    referenced_input_references: list[str]
+    missing_requirements: list[str]
+    completeness_status: str
+    source_type: str
+    source_reference: str
+
+
+class FindingCorrelationResponse(BaseModel):
+    completeness_status: str
+    source_type: str
+    source_reference: str
 
 
 class HuntHypothesisReferenceResponse(BaseModel):
@@ -417,6 +480,23 @@ class FindingThreatIntelligenceEnrichmentResponse(BaseModel):
     finding_source: str
     finding_title: str
     relationships: list[FindingThreatIntelligenceRelationshipResponse]
+
+
+class FindingRiskContextResponse(BaseModel):
+    finding_id: str
+    source_facts: list[FindingRiskSourceFactResponse]
+    asset_context: FindingRiskAssetContextResponse
+    threat_intelligence: FindingThreatIntelligenceEnrichmentResponse
+    correlation: FindingCorrelationResponse
+    evidence: list[FindingRiskEvidenceResponse]
+    risk_inputs: list[FindingRiskInputResponse]
+    assessment: FindingRiskAssessmentResponse
+    evidence_readiness: FindingEvidenceReadinessResponse
+    refusal_reason: str | None
+    priority: None
+    business_impact: None
+    decision: None
+    recommendations: list[None]
 
 
 class IncidentPrincipalResponse(BaseModel):
@@ -1018,6 +1098,31 @@ def get_finding_threat_intelligence_use_case() -> (
     )
 
 
+def get_finding_risk_context_use_case() -> FindingRiskContextUseCase:
+    findings = FindingsQueryService(GREENBONE_REPORT_PATH)
+    asset_context = FindingAssetContextUseCase(
+        findings=findings,
+        asset_contexts=AssetContextQueryService(ASSET_CONTEXT_PATH),
+    )
+    threat_intelligence = FindingThreatIntelligenceUseCase(
+        findings=findings,
+        reader=get_composite_threat_intelligence_reader(),
+    )
+    correlation = SecurityObservationCorrelationApplicationService(
+        finding_threat_intelligence=threat_intelligence,
+        finding_asset_context=asset_context,
+        correlation=SecurityObservationCorrelationService(),
+    )
+    return FindingRiskContextUseCase(
+        findings=findings,
+        asset_context=asset_context,
+        threat_intelligence=threat_intelligence,
+        correlation=correlation,
+        risk_readiness=RiskReadinessService(),
+        evidence_readiness=RiskAssessmentReadinessService(),
+    )
+
+
 def get_incident_command_center_query_service() -> IncidentCommandCenterQueryService:
     return IncidentCommandCenterQueryService(
         reference_resolver=IncidentReferenceResolutionService(
@@ -1360,6 +1465,127 @@ def _finding_threat_intelligence_enrichment_response(
             _finding_threat_intelligence_relationship_response(relationship)
             for relationship in enrichment.relationships
         ],
+    )
+
+
+def _finding_risk_context_response(
+    context: FindingRiskContext,
+) -> FindingRiskContextResponse:
+    resolution = context.asset_context
+    observed = resolution.observed_identifier
+    asset = resolution.asset_context
+    risk_values = (
+        ("business_criticality", context.risk_inputs.business_criticality),
+        ("exposure", context.risk_inputs.exposure),
+        ("detection_available", context.risk_inputs.detection_available),
+        (
+            "threat_intelligence_match",
+            context.risk_inputs.threat_intelligence_match,
+        ),
+        ("mitre_tactic", context.risk_inputs.mitre_tactic),
+    )
+    readiness = context.evidence_readiness
+    completeness = context.correlation.completeness
+    return FindingRiskContextResponse(
+        finding_id=context.finding_id,
+        source_facts=[
+            FindingRiskSourceFactResponse(
+                name=fact.name,
+                value=fact.value,
+                source_reference=fact.source_reference,
+            )
+            for fact in context.source_facts
+        ],
+        asset_context=FindingRiskAssetContextResponse(
+            status=resolution.status.value,
+            observed_identifier_type=(
+                observed.identifier_type.value if observed is not None else None
+            ),
+            observed_identifier_value=(observed.value if observed is not None else None),
+            canonical_asset_id=(asset.canonical_asset_id if asset is not None else None),
+            criticality=(asset.criticality.value if asset is not None else None),
+            source_reference=(asset.source_reference if asset is not None else None),
+        ),
+        threat_intelligence=_finding_threat_intelligence_enrichment_response(
+            context.threat_intelligence
+        ),
+        correlation=FindingCorrelationResponse(
+            completeness_status=completeness.status.value,
+            source_type=completeness.provenance.source_type,
+            source_reference=completeness.provenance.source_reference,
+        ),
+        evidence=[_canonical_evidence_response(item) for item in context.evidence],
+        risk_inputs=[
+            FindingRiskInputResponse(
+                name=name,
+                state=value.state.value,
+                value=(
+                    value.value.value
+                    if hasattr(value.value, "value")
+                    else value.value
+                ),
+                source=value.source,
+            )
+            for name, value in risk_values
+        ],
+        assessment=FindingRiskAssessmentResponse(
+            status=context.assessment.status.value,
+            available_inputs=[
+                FindingRiskInputResponse(
+                    name=item.name,
+                    state="AUTHORITATIVE",
+                    value=item.value,
+                    source=item.source,
+                )
+                for item in context.assessment.available_inputs
+            ],
+            missing_inputs=[
+                FindingRiskInputResponse(
+                    name=item.name,
+                    state=item.state.value,
+                    value=None,
+                    source=None,
+                )
+                for item in context.assessment.missing_inputs
+            ],
+            score=context.assessment.score,
+        ),
+        evidence_readiness=FindingEvidenceReadinessResponse(
+            status=readiness.status.value,
+            reason=readiness.reason,
+            considered_evidence_ids=list(readiness.considered_evidence_ids),
+            referenced_input_references=list(readiness.referenced_input_references),
+            missing_requirements=list(readiness.missing_requirements),
+            completeness_status=readiness.completeness.status.value,
+            source_type=readiness.completeness.provenance.source_type,
+            source_reference=readiness.completeness.provenance.source_reference,
+        ),
+        refusal_reason=context.refusal_reason,
+        priority=None,
+        business_impact=None,
+        decision=None,
+        recommendations=[],
+    )
+
+
+def _canonical_evidence_response(
+    evidence: Evidence,
+) -> FindingRiskEvidenceResponse:
+    if (
+        evidence.identifier is None
+        or evidence.kind is None
+        or evidence.contract_version is None
+        or evidence.provenance is None
+    ):
+        raise ValueError("Risk context contains incomplete canonical evidence.")
+    return FindingRiskEvidenceResponse(
+        identifier=evidence.identifier,
+        kind=evidence.kind.value,
+        evidence_type=evidence.evidence_type.value,
+        contract_version=evidence.contract_version,
+        source_type=evidence.provenance.source_type,
+        source_reference=evidence.provenance.source_reference,
+        input_references=list(evidence.provenance.input_references),
     )
 
 
@@ -1984,6 +2210,49 @@ def finding_threat_intelligence(
         ) from error
 
     return _finding_threat_intelligence_enrichment_response(enrichment)
+
+
+@app.get(
+    "/api/findings/{finding_id}/risk-context",
+    response_model=FindingRiskContextResponse,
+)
+def finding_risk_context(
+    finding_id: str,
+    use_case: FindingRiskContextUseCase = Depends(
+        get_finding_risk_context_use_case
+    ),
+) -> FindingRiskContextResponse:
+    try:
+        return _finding_risk_context_response(use_case.project(finding_id))
+    except FindingNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Finding was not found.") from error
+    except (
+        FindingsConfigurationError,
+        AssetContextConfigurationError,
+        ThreatIntelligenceConfigurationError,
+    ) as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ThreatIntelligenceNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ThreatIntelligenceTimeoutError as error:
+        raise HTTPException(status_code=504, detail=str(error)) from error
+    except ThreatIntelligenceSourceUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ThreatIntelligenceInvalidResponseError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="Threat intelligence source returned an invalid response.",
+        ) from error
+    except (ThreatIntelligenceDataError, FindingSelectionError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Finding risk context could not be resolved.",
+        ) from error
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Configured risk-context source contains invalid data.",
+        ) from error
 
 
 @app.get(

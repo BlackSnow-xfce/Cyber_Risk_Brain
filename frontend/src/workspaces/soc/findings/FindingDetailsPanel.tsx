@@ -13,6 +13,8 @@ import FindingExplanationSection from "./FindingExplanationSection";
 import type { FindingIncidentReference } from "./FindingIncidentApiClient";
 import type { FindingSummary } from "./FindingSummary";
 import FindingThreatIntelligenceSection from "./FindingThreatIntelligenceSection";
+import type { FindingRiskContext } from "./FindingRiskContext";
+import FindingRiskContextSection from "./FindingRiskContextSection";
 
 interface FindingDetailsPanelProps {
     finding: FindingSummary | null;
@@ -24,6 +26,10 @@ interface FindingDetailsPanelProps {
     threatIntelligenceError: string | null;
     threatIntelligenceLoading: boolean;
     onLoadThreatIntelligence: () => void;
+    riskContext: FindingRiskContext | null;
+    riskContextError: string | null;
+    riskContextLoading: boolean;
+    onLoadRiskContext: () => void;
     incidents: readonly FindingIncidentReference[];
     incidentsError: string | null;
     incidentsLoading: boolean;
@@ -41,6 +47,10 @@ export default function FindingDetailsPanel({
     threatIntelligenceError,
     threatIntelligenceLoading,
     onLoadThreatIntelligence,
+    riskContext,
+    riskContextError,
+    riskContextLoading,
+    onLoadRiskContext,
     incidents,
     incidentsError,
     incidentsLoading,
@@ -128,6 +138,12 @@ export default function FindingDetailsPanel({
                             error={threatIntelligenceError}
                             loading={threatIntelligenceLoading}
                             onLoad={onLoadThreatIntelligence}
+                        />
+                        <FindingRiskContextSection
+                            context={riskContext}
+                            error={riskContextError}
+                            loading={riskContextLoading}
+                            onLoad={onLoadRiskContext}
                         />
                         <FindingExplanationSection
                             explanation={explanation}

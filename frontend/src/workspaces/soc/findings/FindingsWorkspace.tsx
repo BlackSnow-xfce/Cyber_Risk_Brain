@@ -15,9 +15,12 @@ import {
 import FindingDetailsPanel from "./FindingDetailsPanel";
 import type { FindingExplanationResult } from "./FindingExplanation";
 import type { FindingSummary } from "./FindingSummary";
+import type { FindingRiskContext } from "./FindingRiskContext";
 import {
     FindingExplanationRequestError,
+    FindingRiskContextRequestError,
     generateFindingExplanation,
+    getFindingRiskContext,
     getFindings,
 } from "./FindingsApiClient";
 import FindingsList from "./FindingsList";
@@ -37,6 +40,7 @@ interface FindingsWorkspaceProps {
     loadFindingIncidents?: (
         findingId: string,
     ) => Promise<readonly FindingIncidentReference[]>;
+    loadRiskContext?: (findingId: string) => Promise<FindingRiskContext>;
 }
 
 export default function FindingsWorkspace({
@@ -44,6 +48,7 @@ export default function FindingsWorkspace({
     loadExplanation = generateFindingExplanation,
     loadThreatIntelligence = getFindingThreatIntelligence,
     loadFindingIncidents = getFindingIncidents,
+    loadRiskContext = getFindingRiskContext,
 }: FindingsWorkspaceProps) {
     const [findings, setFindings] = useState<readonly FindingSummary[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -68,6 +73,10 @@ export default function FindingsWorkspace({
     const [findingIncidentsError, setFindingIncidentsError] = useState<string | null>(null);
     const [findingIncidentsLoading, setFindingIncidentsLoading] = useState(false);
     const findingIncidentsRequestVersion = useRef(0);
+    const [riskContext, setRiskContext] = useState<FindingRiskContext | null>(null);
+    const [riskContextError, setRiskContextError] = useState<string | null>(null);
+    const [riskContextLoading, setRiskContextLoading] = useState(false);
+    const riskContextRequestVersion = useRef(0);
     const [detailFeedbackActive, setDetailFeedbackActive] = useState(false);
     const detailFeedbackTimer = useRef<number | null>(null);
     const loadThreatIntelligenceRef = useRef(loadThreatIntelligence);
@@ -87,6 +96,10 @@ export default function FindingsWorkspace({
         setFindingIncidents([]);
         setFindingIncidentsError(null);
         setFindingIncidentsLoading(false);
+        riskContextRequestVersion.current += 1;
+        setRiskContext(null);
+        setRiskContextError(null);
+        setRiskContextLoading(false);
         autoFocusRequest.current = null;
     }, []);
 
@@ -148,6 +161,7 @@ export default function FindingsWorkspace({
         return () => {
             explanationRequestVersion.current += 1;
             threatIntelligenceRequestVersion.current += 1;
+            riskContextRequestVersion.current += 1;
         };
     }, [loadFindings]);
 
@@ -254,6 +268,38 @@ export default function FindingsWorkspace({
         } finally {
             if (threatIntelligenceRequestVersion.current === requestVersion) {
                 setThreatIntelligenceLoading(false);
+            }
+        }
+    };
+
+    const requestRiskContext = async () => {
+        if (selectedFinding === null || riskContextLoading) {
+            return;
+        }
+        const findingId = selectedFinding.id;
+        const requestVersion = riskContextRequestVersion.current + 1;
+        riskContextRequestVersion.current = requestVersion;
+        setRiskContext(null);
+        setRiskContextError(null);
+        setRiskContextLoading(true);
+        try {
+            const result = await loadRiskContext(findingId);
+            if (riskContextRequestVersion.current !== requestVersion) {
+                return;
+            }
+            if (result.finding_id !== findingId) {
+                setRiskContextError("Risk context response did not match the selected finding.");
+                return;
+            }
+            setRiskContext(result);
+        } catch (requestError) {
+            if (riskContextRequestVersion.current !== requestVersion) {
+                return;
+            }
+            setRiskContextError(riskContextErrorMessage(requestError));
+        } finally {
+            if (riskContextRequestVersion.current === requestVersion) {
+                setRiskContextLoading(false);
             }
         }
     };
@@ -378,6 +424,10 @@ export default function FindingsWorkspace({
                         threatIntelligenceError={threatIntelligenceError}
                         threatIntelligenceLoading={threatIntelligenceLoading}
                         onLoadThreatIntelligence={requestThreatIntelligence}
+                        riskContext={riskContext}
+                        riskContextError={riskContextError}
+                        riskContextLoading={riskContextLoading}
+                        onLoadRiskContext={requestRiskContext}
                         incidents={findingIncidents}
                         incidentsError={findingIncidentsError}
                         incidentsLoading={findingIncidentsLoading}
@@ -419,4 +469,15 @@ function explanationErrorMessage(error: unknown): string {
     }
 
     return "Finding explanation could not be generated.";
+}
+
+function riskContextErrorMessage(error: unknown): string {
+    if (error instanceof FindingRiskContextRequestError) {
+        if (error.status === 404) return "Risk context is not available for this finding.";
+        if (error.status === 502 || error.status === 503 || error.status === 504) {
+            return "Authoritative risk-context sources are currently unavailable.";
+        }
+        if (error.status === null) return "Risk context request could not reach the service.";
+    }
+    return "Risk context could not be loaded for this finding.";
 }
