@@ -1,8 +1,8 @@
 # Handoff - Architecture Review TASK-0129 REWORK 3
 
-Status: WAITING
+Status: OPEN
 Task: TASK-0129
-Task Status: READY / REWORK 3
+Task Status: REVIEW / ARCHITECT PENDING
 Reviewer: Architect
 Architect Task-Specification Review: PASS / APPROVED
 Architect Implementation Review: PENDING
