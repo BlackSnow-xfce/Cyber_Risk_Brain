@@ -3,4 +3,4 @@
 Status: WAITING
 Current AIDP Task: TASK-0129
 Current Phase: REVIEW
-Task Status: REVIEW / ARCHITECT PENDING
+Task Status: REVIEW / REWORK REQUIRED
