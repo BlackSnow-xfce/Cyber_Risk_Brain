@@ -512,14 +512,19 @@ class FindingAssetBusinessContextResponse(BaseModel):
     environment: str | None
     service_criticality: str | None
     source_reference: str | None
+    facts: list[FindingBusinessContextFactResponse]
 
 
 class FindingBusinessImpactReadinessResponse(BaseModel):
+    finding_id: str
     status: str
     reason: str
     facts: list[FindingBusinessContextFactResponse]
     missing_requirements: list[str]
     source_references: list[str]
+    completeness_status: str
+    source_type: str
+    source_reference: str
 
 
 class FindingRiskContextResponse(BaseModel):
@@ -1657,8 +1662,17 @@ def _finding_risk_context_response(
                 business_context.source_reference
                 if business_context is not None else None
             ),
+            facts=[
+                FindingBusinessContextFactResponse(
+                    name=fact.name,
+                    value=fact.value,
+                    source_reference=fact.source_reference,
+                )
+                for fact in impact_readiness.facts
+            ],
         ),
         business_impact_readiness=FindingBusinessImpactReadinessResponse(
+            finding_id=impact_readiness.finding_id,
             status=impact_readiness.status.value,
             reason=impact_readiness.reason,
             facts=[
@@ -1671,6 +1685,11 @@ def _finding_risk_context_response(
             ],
             missing_requirements=list(impact_readiness.missing_requirements),
             source_references=list(impact_readiness.source_references),
+            completeness_status=impact_readiness.completeness.status.value,
+            source_type=impact_readiness.completeness.provenance.source_type,
+            source_reference=(
+                impact_readiness.completeness.provenance.source_reference
+            ),
         ),
         business_impact=None,
         decision=None,

@@ -66,8 +66,8 @@ const riskContextPayload = {
     evidence_readiness: { status: "INSUFFICIENT_EVIDENCE", reason: "Missing evidence.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["canonical_asset_context"], completeness_status: "no_data", source_type: "readiness", source_reference: "finding/id" },
     refusal_reason: "Required context is missing.",
     priority: { status: "UNAVAILABLE", band: null, score: null, reason: "Missing context.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["context"], completeness_status: "no_data", source_type: "finding_risk_priority", source_reference: "finding/id" },
-    business_context: { status: "NOT_FOUND", canonical_asset_id: null, business_service: null, environment: null, service_criticality: null, source_reference: null },
-    business_impact_readiness: { status: "UNAVAILABLE", reason: "Missing business context.", facts: [], missing_requirements: ["business_service", "environment", "service_criticality", "business_context_provenance"], source_references: [] },
+    business_context: { status: "NOT_FOUND", canonical_asset_id: null, business_service: null, environment: null, service_criticality: null, source_reference: null, facts: [] },
+    business_impact_readiness: { finding_id: "finding/id", status: "UNAVAILABLE", reason: "Missing business context.", facts: [], missing_requirements: ["business_service", "environment", "service_criticality", "business_context_provenance"], source_references: [], completeness_status: "no_data", source_type: "business_impact_readiness", source_reference: "business-impact-readiness:unavailable:finding/id" },
     business_impact: null,
     decision: null, recommendations: [],
 };
@@ -135,5 +135,45 @@ describe("getFindingRiskContext", () => {
         expect(result.assessment.status).toBe("INSUFFICIENT_CONTEXT");
         expect(result.assessment.score).toBeNull();
         expect(result.recommendations).toEqual([]);
+    });
+
+    it("rejects contradictory business-impact readiness without provenance", async () => {
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            ...riskContextPayload,
+            business_impact_readiness: {
+                ...riskContextPayload.business_impact_readiness,
+                status: "READY",
+                missing_requirements: [],
+                completeness_status: "available",
+            },
+        }), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
+
+    it("accepts complete ready business context with fact and result provenance", async () => {
+        const facts = [
+            { name: "canonical_asset_id", value: "asset-1", source_reference: "cmdb:1" },
+            { name: "business_service", value: "Payments", source_reference: "cmdb:1" },
+            { name: "environment", value: "TEST", source_reference: "cmdb:1" },
+            { name: "service_criticality", value: "LOW", source_reference: "cmdb:1" },
+        ];
+        const payload = {
+            ...riskContextPayload,
+            business_context: {
+                status: "RESOLVED", canonical_asset_id: "asset-1",
+                business_service: "Payments", environment: "TEST",
+                service_criticality: "LOW", source_reference: "cmdb:1", facts,
+            },
+            business_impact_readiness: {
+                finding_id: "finding/id", status: "READY", reason: "Complete.",
+                facts, missing_requirements: [], source_references: ["cmdb:1"],
+                completeness_status: "available", source_type: "business_impact_readiness",
+                source_reference: "business-impact-readiness:ready:finding/id",
+            },
+        };
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(payload), { status: 200 }),
+        ));
+        await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
     });
 });

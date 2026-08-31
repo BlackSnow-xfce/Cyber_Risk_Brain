@@ -74,13 +74,18 @@ export interface FindingRiskContext {
         environment: "PRODUCTION" | "PRE_PRODUCTION" | "DEVELOPMENT" | "TEST" | null;
         service_criticality: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
         source_reference: string | null;
+        facts: readonly { name: string; value: string; source_reference: string }[];
     };
     business_impact_readiness?: {
+        finding_id: string;
         status: "READY" | "UNAVAILABLE";
         reason: string;
         facts: readonly { name: string; value: string; source_reference: string }[];
         missing_requirements: readonly string[];
         source_references: readonly string[];
+        completeness_status: string;
+        source_type: string;
+        source_reference: string;
     };
     business_impact: null;
     decision: null;

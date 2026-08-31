@@ -5,6 +5,9 @@ from fastapi import HTTPException
 
 import api_app
 from application import (
+    BusinessImpactReadinessService,
+    FindingAssetBusinessContextResolution,
+    FindingAssetBusinessContextResolutionStatus,
     FindingNotFoundError,
     FindingRiskPriorityService,
     FindingsConfigurationError,
@@ -12,6 +15,11 @@ from application import (
     ThreatIntelligenceInvalidResponseError,
     ThreatIntelligenceSourceUnavailableError,
     ThreatIntelligenceTimeoutError,
+)
+from core.enterprise_context import (
+    AssetBusinessContext,
+    BusinessEnvironment,
+    ServiceCriticality,
 )
 from tests.application.test_finding_risk_context import FINDING_ID, project
 
@@ -81,8 +89,15 @@ def test_endpoint_transports_typed_provenance_evidence_and_fail_closed_result() 
         "environment": None,
         "service_criticality": None,
         "source_reference": None,
+        "facts": [],
     }
     assert payload["business_impact_readiness"]["status"] == "UNAVAILABLE"
+    assert payload["business_impact_readiness"]["finding_id"] == FINDING_ID
+    assert payload["business_impact_readiness"]["completeness_status"] == "no_data"
+    assert payload["business_impact_readiness"]["source_type"] == "business_impact_readiness"
+    assert payload["business_impact_readiness"]["source_reference"] == (
+        f"business-impact-readiness:unavailable:{FINDING_ID}"
+    )
     assert "business_service" in payload["business_impact_readiness"]["missing_requirements"]
     assert payload["decision"] is None
     assert payload["recommendations"] == []
@@ -117,6 +132,40 @@ def test_endpoint_transports_explainable_gated_priority() -> None:
     assert payload["source_reference"] == (
         f"finding-risk-priority:prioritized:{FINDING_ID}"
     )
+
+
+def test_endpoint_preserves_ready_business_context_and_result_provenance() -> None:
+    context = project()
+    business_context = FindingAssetBusinessContextResolution(
+        finding_id=FINDING_ID,
+        status=FindingAssetBusinessContextResolutionStatus.RESOLVED,
+        context=AssetBusinessContext(
+            "asset-lab-metasploitable2-001", "Controlled Service",
+            BusinessEnvironment.TEST, ServiceCriticality.LOW,
+            "product-owner:controlled-business-context",
+        ),
+    )
+    readiness = BusinessImpactReadinessService().evaluate(business_context)
+    payload = api_app.finding_risk_context(
+        FINDING_ID,
+        UseCase(replace(
+            context,
+            business_context=business_context,
+            business_impact_readiness=readiness,
+        )),
+    ).model_dump()
+
+    assert payload["business_context"]["facts"] == payload["business_impact_readiness"]["facts"]
+    assert payload["business_impact_readiness"]["finding_id"] == FINDING_ID
+    assert payload["business_impact_readiness"]["completeness_status"] == "available"
+    assert payload["business_impact_readiness"]["source_reference"] == (
+        f"business-impact-readiness:ready:{FINDING_ID}"
+    )
+    assert all(
+        fact["source_reference"] == "product-owner:controlled-business-context"
+        for fact in payload["business_impact_readiness"]["facts"]
+    )
+    assert payload["business_impact"] is None
 
 
 @pytest.mark.parametrize(

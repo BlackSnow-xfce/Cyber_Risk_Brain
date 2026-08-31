@@ -8,6 +8,10 @@ from application.finding_asset_context import FindingAssetContextResolution
 from core.enterprise_context import AssetBusinessContext
 
 
+class FindingAssetBusinessContextIntegrityError(ValueError):
+    """Raised when canonical asset snapshots do not identify the same asset."""
+
+
 class FindingAssetBusinessContextResolutionStatus(str, Enum):
     RESOLVED = "RESOLVED"
     NOT_FOUND = "NOT_FOUND"
@@ -43,6 +47,13 @@ class FindingAssetBusinessContextUseCase:
                 status=FindingAssetBusinessContextResolutionStatus.MISSING_CANONICAL_ASSET,
             )
         context = self._contexts.resolve(asset.canonical_asset_id)
+        if (
+            context is not None
+            and context.canonical_asset_id != asset.canonical_asset_id
+        ):
+            raise FindingAssetBusinessContextIntegrityError(
+                "Finding asset and business context identify different canonical assets."
+            )
         return FindingAssetBusinessContextResolution(
             finding_id=asset_resolution.finding_id,
             status=(

@@ -1,5 +1,8 @@
+import pytest
+
 from application.asset_business_context import AssetBusinessContextQueryService
 from application.finding_asset_business_context import (
+    FindingAssetBusinessContextIntegrityError,
     FindingAssetBusinessContextResolutionStatus as Status,
     FindingAssetBusinessContextUseCase,
 )
@@ -25,3 +28,15 @@ def test_missing_canonical_asset_is_explicit():
 def test_missing_business_record_is_not_found():
     result = FindingAssetBusinessContextUseCase(AssetBusinessContextQueryService(None)).resolve(_resolution())
     assert result.status is Status.NOT_FOUND
+
+
+def test_canonical_asset_snapshot_mismatch_fails_closed():
+    from core.enterprise_context import AssetBusinessContext, BusinessEnvironment, ServiceCriticality
+
+    wrong = AssetBusinessContext(
+        "different-asset", "Service", BusinessEnvironment.PRODUCTION,
+        ServiceCriticality.CRITICAL, "cmdb:wrong",
+    )
+    source = type("WrongSource", (), {"resolve": lambda self, asset_id: wrong})()
+    with pytest.raises(FindingAssetBusinessContextIntegrityError):
+        FindingAssetBusinessContextUseCase(source).resolve(_resolution())

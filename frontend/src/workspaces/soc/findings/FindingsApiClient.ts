@@ -227,12 +227,22 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         ["RESOLVED", "NOT_FOUND", "MISSING_CANONICAL_ASSET"].includes(String(business.status)) &&
         isBusinessContextStateValid(business) &&
         ["READY", "UNAVAILABLE"].includes(String(impactReadiness.status)) &&
+        impactReadiness.finding_id === value.finding_id &&
         typeof impactReadiness.reason === "string" &&
         Array.isArray(impactReadiness.facts) && impactReadiness.facts.every(isSourceFact) &&
         isStringArray(impactReadiness.missing_requirements) &&
         isStringArray(impactReadiness.source_references) &&
+        typeof impactReadiness.completeness_status === "string" &&
+        impactReadiness.source_type === "business_impact_readiness" &&
+        impactReadiness.source_reference ===
+            `business-impact-readiness:${String(impactReadiness.status).toLowerCase()}:${value.finding_id}` &&
         (impactReadiness.status !== "READY" ||
-            (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0)) &&
+            (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0 &&
+                impactReadiness.completeness_status === "available" &&
+                hasCompleteBusinessFacts(impactReadiness.facts, impactReadiness.source_references))) &&
+        (impactReadiness.status !== "UNAVAILABLE" ||
+            (impactReadiness.missing_requirements.length > 0 &&
+                impactReadiness.completeness_status !== "available")) &&
         value.business_impact === null && value.decision === null &&
         Array.isArray(value.recommendations) && value.recommendations.length === 0 &&
         (!insufficient || (assessment.score === null && value.refusal_reason !== null &&
@@ -242,11 +252,21 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
 function isBusinessContextStateValid(value: Record<string, unknown>): boolean {
     const fields = [value.canonical_asset_id, value.business_service, value.environment,
         value.service_criticality, value.source_reference];
+    if (!Array.isArray(value.facts) || !value.facts.every(isSourceFact)) return false;
     return value.status === "RESOLVED"
         ? fields.every((item) => typeof item === "string" && item.length > 0) &&
             ["PRODUCTION", "PRE_PRODUCTION", "DEVELOPMENT", "TEST"].includes(String(value.environment)) &&
-            ["CRITICAL", "HIGH", "MEDIUM", "LOW"].includes(String(value.service_criticality))
-        : fields.every((item) => item === null);
+            ["CRITICAL", "HIGH", "MEDIUM", "LOW"].includes(String(value.service_criticality)) &&
+            value.facts.length === 4
+        : fields.every((item) => item === null) && value.facts.length === 0;
+}
+
+function hasCompleteBusinessFacts(facts: unknown[], sourceReferences: readonly string[]): boolean {
+    const required = ["canonical_asset_id", "business_service", "environment", "service_criticality"];
+    return facts.length === required.length && required.every((name) =>
+        facts.filter((fact) => isRecord(fact) && fact.name === name &&
+            typeof fact.source_reference === "string" &&
+            sourceReferences.includes(fact.source_reference)).length === 1);
 }
 
 function isRiskPriority(value: unknown): boolean {

@@ -41,11 +41,13 @@ const context: FindingRiskContext = {
     },
     business_context: {
         status: "NOT_FOUND", canonical_asset_id: null, business_service: null,
-        environment: null, service_criticality: null, source_reference: null,
+        environment: null, service_criticality: null, source_reference: null, facts: [],
     },
     business_impact_readiness: {
-        status: "UNAVAILABLE", reason: "Authoritative business context is missing.",
+        finding_id: "finding-001", status: "UNAVAILABLE", reason: "Authoritative business context is missing.",
         facts: [], missing_requirements: ["business_service"], source_references: [],
+        completeness_status: "no_data", source_type: "business_impact_readiness",
+        source_reference: "business-impact-readiness:unavailable:finding-001",
     },
     business_impact: null, decision: null, recommendations: [],
 };
@@ -90,15 +92,30 @@ describe("FindingRiskContextSection", () => {
                 status: "RESOLVED", canonical_asset_id: "asset-1",
                 business_service: "Payments", environment: "PRODUCTION",
                 service_criticality: "CRITICAL", source_reference: "cmdb:1",
+                facts: [
+                    { name: "canonical_asset_id", value: "asset-1", source_reference: "cmdb:1" },
+                    { name: "business_service", value: "Payments", source_reference: "cmdb:1" },
+                    { name: "environment", value: "PRODUCTION", source_reference: "cmdb:1" },
+                    { name: "service_criticality", value: "CRITICAL", source_reference: "cmdb:1" },
+                ],
             },
             business_impact_readiness: {
-                status: "READY", reason: "Authoritative facts are available.",
-                facts: [{ name: "business_service", value: "Payments", source_reference: "cmdb:1" }],
+                finding_id: "finding-001", status: "READY", reason: "Authoritative facts are available.",
+                facts: [
+                    { name: "canonical_asset_id", value: "asset-1", source_reference: "cmdb:1" },
+                    { name: "business_service", value: "Payments", source_reference: "cmdb:1" },
+                    { name: "environment", value: "PRODUCTION", source_reference: "cmdb:1" },
+                    { name: "service_criticality", value: "CRITICAL", source_reference: "cmdb:1" },
+                ],
                 missing_requirements: [], source_references: ["cmdb:1"],
+                completeness_status: "available", source_type: "business_impact_readiness",
+                source_reference: "business-impact-readiness:ready:finding-001",
             },
         }} error={null} loading={false} onLoad={vi.fn()} />);
         expect(screen.getByText("business_service: Payments. Source: cmdb:1")).toBeInTheDocument();
         expect(screen.getByText(/READY: Authoritative facts/)).toBeInTheDocument();
+        expect(screen.getByText(/business-impact-readiness:ready:finding-001/)).toBeInTheDocument();
+        expect(screen.getAllByText(/does not calculate Business Impact/).length).toBeGreaterThan(0);
     });
 
     it("renders only a transported gated priority with evidence provenance", () => {

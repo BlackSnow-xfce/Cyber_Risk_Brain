@@ -66,6 +66,12 @@ export default function FindingRiskContextSection({
                     <Typography variant="body2">
                         {context.business_impact_readiness.status}: {context.business_impact_readiness.reason}
                     </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                        Readiness source: {context.business_impact_readiness.source_type} / {context.business_impact_readiness.source_reference}; completeness {context.business_impact_readiness.completeness_status}
+                    </Typography>
+                    <Alert severity="info">
+                        Business-impact readiness does not calculate Business Impact. Business impact remains unavailable.
+                    </Alert>
                     {context.business_impact_readiness.missing_requirements.map((requirement) => (
                         <Typography key={requirement} variant="body2">
                             Business-impact requirement: {requirement}
