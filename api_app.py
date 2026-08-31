@@ -545,10 +545,12 @@ class FindingServiceImpactProfileResponse(BaseModel):
 class FindingTechnicalEffectItemResponse(BaseModel):
     finding_id: str
     cve_identifier: str
+    cvss_version: str
     cvss_vector: str
     confidentiality: str
     integrity: str
     availability: str
+    source_type: str
     source_reference: str
     observed_at: datetime | None
 
@@ -1606,10 +1608,12 @@ def _finding_risk_context_response(
         return FindingTechnicalEffectItemResponse(
             finding_id=item.finding_id,
             cve_identifier=item.cve_identifier,
+            cvss_version=item.cvss_version,
             cvss_vector=item.cvss_vector,
             confidentiality=item.confidentiality.value,
             integrity=item.integrity.value,
             availability=item.availability.value,
+            source_type=item.source_type,
             source_reference=item.source_reference,
             observed_at=item.observed_at,
         )

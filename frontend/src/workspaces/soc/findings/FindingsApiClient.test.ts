@@ -363,4 +363,91 @@ describe("getFindingRiskContext", () => {
         ));
         await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
     });
+
+    const sourceBoundTechnicalPayload = () => {
+        const observedAt = "2026-01-01T00:00:00+00:00";
+        const effect = {
+            finding_id: "finding/id", cve_identifier: "CVE-2024-1234", cvss_version: "3.1",
+            cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+            confidentiality: "HIGH", integrity: "LOW", availability: "NONE",
+            source_type: "nvd", source_reference: "nvd:CVE-2024-1234#cvss-3.1", observed_at: observedAt,
+        };
+        const unavailableFact = (sourceType: string, sourceReference: string) => ({
+            status: "no_data", provenance: { source_type: sourceType, source_reference: sourceReference },
+            observed_at: null, value: null,
+        });
+        return {
+            ...riskContextPayload,
+            threat_intelligence: {
+                ...riskContextPayload.threat_intelligence,
+                relationships: [{ applicability: "applicable", cve_identifier: "CVE-2024-1234", intelligence: {
+                    contract_version: "1.0", cve_identifier: "CVE-2024-1234",
+                    nvd: unavailableFact("nvd", "nvd:none"),
+                    cvss: { status: "available", provenance: { source_type: "nvd", source_reference: effect.source_reference }, observed_at: observedAt,
+                        value: { version: "3.1", base_score: 8, vector: effect.cvss_vector, severity: "HIGH" } },
+                    epss: unavailableFact("epss", "epss:none"), cisa_kev: unavailableFact("cisa_kev", "kev:none"),
+                    exploitation_evidence: unavailableFact("cisa_kev", "evidence:none"),
+                }}],
+            },
+            technical_effect: {
+                finding_id: "finding/id", status: "AVAILABLE", effects: [effect], missing_requirements: [],
+                completeness_status: "available", source_type: "finding_technical_effect",
+                source_reference: "finding-technical-effect:available:finding/id",
+            },
+            business_impact_classification_readiness: {
+                ...riskContextPayload.business_impact_classification_readiness,
+                technical_effects: [effect], missing_requirements: ["service_impact_profile"],
+                source_references: [effect.source_reference],
+            },
+        };
+    };
+
+    it("accepts an exact authoritative TI-bound technical effect", async () => {
+        const payload = sourceBoundTechnicalPayload();
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
+    });
+
+    it("accepts multiple exact CVE bindings without cross-source mixing", async () => {
+        const payload = sourceBoundTechnicalPayload();
+        const secondEffect = {
+            ...payload.technical_effect.effects[0],
+            cve_identifier: "CVE-2024-5678",
+            source_reference: "nvd:CVE-2024-5678#cvss-3.1",
+        };
+        const secondRelationship = structuredClone(payload.threat_intelligence.relationships[0]);
+        secondRelationship.cve_identifier = secondEffect.cve_identifier;
+        secondRelationship.intelligence.cve_identifier = secondEffect.cve_identifier;
+        secondRelationship.intelligence.cvss.provenance.source_reference = secondEffect.source_reference;
+        payload.threat_intelligence.relationships.push(secondRelationship);
+        payload.technical_effect.effects.push(secondEffect);
+        payload.business_impact_classification_readiness.technical_effects.push(secondEffect);
+        payload.business_impact_classification_readiness.source_references.push(secondEffect.source_reference);
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
+    });
+
+    it.each([
+        ["CVE", (effect: Record<string, unknown>) => { effect.cve_identifier = "CVE-2024-9999"; }],
+        ["version", (effect: Record<string, unknown>) => { effect.cvss_version = "3.0"; effect.cvss_vector = "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"; }],
+        ["vector", (effect: Record<string, unknown>) => { effect.cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"; effect.confidentiality = "LOW"; }],
+        ["source type", (effect: Record<string, unknown>) => { effect.source_type = "epss"; }],
+        ["source reference", (effect: Record<string, unknown>) => { effect.source_reference = "nvd:other"; }],
+        ["observed_at", (effect: Record<string, unknown>) => { effect.observed_at = "2026-02-01T00:00:00+00:00"; }],
+        ["null observed_at", (effect: Record<string, unknown>) => { effect.observed_at = null; }],
+        ["confidentiality", (effect: Record<string, unknown>) => { effect.confidentiality = "LOW"; }],
+        ["integrity", (effect: Record<string, unknown>) => { effect.integrity = "HIGH"; }],
+        ["availability", (effect: Record<string, unknown>) => { effect.availability = "LOW"; }],
+    ])("rejects jointly tampered %s not matching authoritative TI", async (_label, mutate) => {
+        const payload = sourceBoundTechnicalPayload();
+        mutate(payload.technical_effect.effects[0]);
+        payload.business_impact_classification_readiness.technical_effects = [
+            { ...payload.technical_effect.effects[0] },
+        ];
+        payload.business_impact_classification_readiness.source_references = [
+            String(payload.technical_effect.effects[0].source_reference),
+        ];
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
 });

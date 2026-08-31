@@ -22,6 +22,8 @@ from core.enterprise_context import (
     ServiceCriticality,
 )
 from tests.application.test_finding_risk_context import FINDING_ID, project
+from tests.application.test_finding_technical_effect import _enrichment
+from application.finding_technical_effect import FindingTechnicalEffectService
 
 
 class UseCase:
@@ -143,6 +145,35 @@ def test_endpoint_transports_explainable_gated_priority() -> None:
     assert payload["source_reference"] == (
         f"finding-risk-priority:prioritized:{FINDING_ID}"
     )
+
+
+def test_endpoint_preserves_complete_technical_effect_source_binding() -> None:
+    context = project()
+    technical = FindingTechnicalEffectService().project(_enrichment())
+    technical = replace(
+        technical,
+        finding_id=FINDING_ID,
+        effects=tuple(
+            replace(effect, finding_id=FINDING_ID)
+            for effect in technical.effects
+        ),
+        completeness=replace(
+            technical.completeness,
+            provenance=replace(
+                technical.completeness.provenance,
+                source_reference=f"finding-technical-effect:available:{FINDING_ID}",
+            ),
+        ),
+    )
+    payload = api_app.finding_risk_context(
+        FINDING_ID,
+        UseCase(replace(context, technical_effect=technical)),
+    ).model_dump()["technical_effect"]["effects"][0]
+    assert payload["cvss_version"] == "3.1"
+    assert payload["cvss_vector"].startswith("CVSS:3.1/")
+    assert payload["source_type"] == "nvd"
+    assert payload["source_reference"] == "nvd:record"
+    assert payload["observed_at"] is not None
 
 
 def test_endpoint_preserves_ready_business_context_and_result_provenance() -> None:

@@ -24,23 +24,36 @@ class FindingTechnicalEffectStatus(StrEnum):
 class FindingTechnicalEffect:
     finding_id: str
     cve_identifier: str
+    cvss_version: str
     cvss_vector: str
     confidentiality: TechnicalEffectLevel
     integrity: TechnicalEffectLevel
     availability: TechnicalEffectLevel
-    source_reference: str
-    observed_at: datetime | None
+    provenance: ExplanationProvenance
+    observed_at: datetime
 
     def __post_init__(self) -> None:
-        for name in ("finding_id", "cve_identifier", "cvss_vector", "source_reference"):
+        for name in ("finding_id", "cve_identifier", "cvss_version", "cvss_vector"):
             value = getattr(self, name)
             if type(value) is not str or not value.strip():
                 raise ValueError(f"Technical effect {name} is invalid.")
         for name in ("confidentiality", "integrity", "availability"):
             if not isinstance(getattr(self, name), TechnicalEffectLevel):
                 raise ValueError(f"Technical effect {name} is invalid.")
-        if self.observed_at is not None and self.observed_at.utcoffset() is None:
+        if self.cvss_version not in {"3.0", "3.1"} or not self.cvss_vector.startswith(f"CVSS:{self.cvss_version}/"):
+            raise ValueError("Technical effect CVSS version and vector are inconsistent.")
+        if not isinstance(self.provenance, ExplanationProvenance) or self.provenance.source_type != "nvd":
+            raise ValueError("Technical effect provenance is invalid.")
+        if not isinstance(self.observed_at, datetime) or self.observed_at.utcoffset() is None:
             raise ValueError("Technical effect observed_at must include a timezone.")
+
+    @property
+    def source_type(self) -> str:
+        return self.provenance.source_type
+
+    @property
+    def source_reference(self) -> str:
+        return self.provenance.source_reference
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +87,7 @@ class FindingTechnicalEffectProjection:
             if not self.effects or self.missing_requirements or self.completeness.status is not CompletenessStatus.AVAILABLE:
                 raise ValueError("Available technical effect projection is inconsistent.")
         elif self.status is FindingTechnicalEffectStatus.UNAVAILABLE:
-            if self.effects or not self.missing_requirements or self.completeness.status is CompletenessStatus.AVAILABLE:
+            if not self.missing_requirements or self.completeness.status is CompletenessStatus.AVAILABLE:
                 raise ValueError("Unavailable technical effect projection is inconsistent.")
         else:
             raise ValueError("Technical effect projection status is invalid.")
@@ -82,15 +95,26 @@ class FindingTechnicalEffectProjection:
 
 class FindingTechnicalEffectService:
     _LEVELS = {"N": TechnicalEffectLevel.NONE, "L": TechnicalEffectLevel.LOW, "H": TechnicalEffectLevel.HIGH}
+    _METRICS = {
+        "AV": frozenset({"N", "A", "L", "P"}),
+        "AC": frozenset({"L", "H"}),
+        "PR": frozenset({"N", "L", "H"}),
+        "UI": frozenset({"N", "R"}),
+        "S": frozenset({"U", "C"}),
+        "C": frozenset({"N", "L", "H"}),
+        "I": frozenset({"N", "L", "H"}),
+        "A": frozenset({"N", "L", "H"}),
+    }
 
     def project(self, enrichment: FindingThreatIntelligenceEnrichment) -> FindingTechnicalEffectProjection:
         effects: list[FindingTechnicalEffect] = []
         failures: list[str] = []
+        applicable = 0
         for relationship in enrichment.relationships:
             vulnerability = relationship.vulnerability
             if relationship.applicability is not FindingIntelligenceApplicability.APPLICABLE or vulnerability is None:
-                failures.append("applicable_technical_effect")
                 continue
+            applicable += 1
             cvss = vulnerability.cvss
             if cvss.completeness.status is not CompletenessStatus.AVAILABLE or cvss.value is None:
                 failures.append(f"technical_effect:{vulnerability.cve_identifier.value}")
@@ -99,30 +123,39 @@ class FindingTechnicalEffectService:
             if parsed is None:
                 failures.append(f"supported_cvss_v3_effect:{vulnerability.cve_identifier.value}")
                 continue
+            if cvss.observed_at is None or cvss.provenance.source_type != "nvd":
+                failures.append(f"technical_effect_provenance:{vulnerability.cve_identifier.value}")
+                continue
             effects.append(FindingTechnicalEffect(
                 finding_id=enrichment.finding_id,
                 cve_identifier=vulnerability.cve_identifier.value,
+                cvss_version=cvss.value.version,
                 cvss_vector=cvss.value.vector,
                 confidentiality=parsed[0], integrity=parsed[1], availability=parsed[2],
-                source_reference=cvss.provenance.source_reference,
+                provenance=cvss.provenance,
                 observed_at=cvss.observed_at,
             ))
+        identifiers = tuple(item.cve_identifier for item in effects)
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("Technical effect source contains duplicate CVE identities.")
+        if applicable == 0:
+            failures.append("applicable_technical_effect")
         if failures or not effects:
             missing = tuple(dict.fromkeys(failures or ("applicable_technical_effect",)))
-            return self._result(enrichment.finding_id, FindingTechnicalEffectStatus.UNAVAILABLE, (), missing, CompletenessStatus.NO_DATA)
+            return self._result(enrichment.finding_id, FindingTechnicalEffectStatus.UNAVAILABLE, tuple(effects), missing, CompletenessStatus.NO_DATA)
         return self._result(enrichment.finding_id, FindingTechnicalEffectStatus.AVAILABLE, tuple(effects), (), CompletenessStatus.AVAILABLE)
 
     @classmethod
     def _parse_vector(cls, version: str, vector: str) -> tuple[TechnicalEffectLevel, TechnicalEffectLevel, TechnicalEffectLevel] | None:
-        if version not in {"3.0", "3.1"} or not vector.startswith(("CVSS:3.0/", "CVSS:3.1/")):
+        if type(version) is not str or version not in {"3.0", "3.1"} or not vector.startswith(f"CVSS:{version}/"):
             return None
         metrics: dict[str, str] = {}
         for item in vector.split("/")[1:]:
             parts = item.split(":")
-            if len(parts) != 2 or parts[0] in metrics:
+            if len(parts) != 2 or not parts[0] or not parts[1] or parts[0] in metrics or parts[0] not in cls._METRICS or parts[1] not in cls._METRICS[parts[0]]:
                 return None
             metrics[parts[0]] = parts[1]
-        if any(metrics.get(name) not in cls._LEVELS for name in ("C", "I", "A")):
+        if set(metrics) != set(cls._METRICS):
             return None
         return (cls._LEVELS[metrics["C"]], cls._LEVELS[metrics["I"]], cls._LEVELS[metrics["A"]])
 

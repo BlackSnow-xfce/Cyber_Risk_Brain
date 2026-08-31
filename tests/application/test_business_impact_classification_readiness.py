@@ -4,6 +4,7 @@ from application.finding_service_impact_profile import FindingServiceImpactProfi
 from application.finding_technical_effect import FindingTechnicalEffect, FindingTechnicalEffectProjection, FindingTechnicalEffectStatus, TechnicalEffectLevel
 from core.enterprise_context import BusinessImportance, ServiceImpactProfile
 from core.explainability import CompletenessStatus, ExplanationCompleteness, ExplanationProvenance
+from datetime import datetime, timezone
 
 
 def _complete(status, source, reference):
@@ -21,7 +22,7 @@ def _profile(profile=True):
 
 
 def _technical(available=True):
-    effects = (FindingTechnicalEffect("finding-1", "CVE-2024-1234", "CVSS:3.1/C:H/I:L/A:N", TechnicalEffectLevel.HIGH, TechnicalEffectLevel.LOW, TechnicalEffectLevel.NONE, "nvd:1", None),) if available else ()
+    effects = (FindingTechnicalEffect("finding-1", "CVE-2024-1234", "3.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", TechnicalEffectLevel.HIGH, TechnicalEffectLevel.LOW, TechnicalEffectLevel.NONE, ExplanationProvenance("nvd", "nvd:1"), datetime(2026, 1, 1, tzinfo=timezone.utc)),) if available else ()
     status = FindingTechnicalEffectStatus.AVAILABLE if available else FindingTechnicalEffectStatus.UNAVAILABLE
     return FindingTechnicalEffectProjection("finding-1", status, effects, () if available else ("technical_effect",), _complete(CompletenessStatus.AVAILABLE if available else CompletenessStatus.NO_DATA, "finding_technical_effect", f"finding-technical-effect:{status.value.lower()}:finding-1"))
 

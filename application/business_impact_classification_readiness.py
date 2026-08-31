@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from application.business_impact_readiness import BusinessContextFact, BusinessImpactReadiness, BusinessImpactReadinessStatus
 from application.finding_service_impact_profile import FindingServiceImpactProfileResolution, FindingServiceImpactProfileResolutionStatus
-from application.finding_technical_effect import FindingTechnicalEffect, FindingTechnicalEffectProjection, FindingTechnicalEffectStatus
+from application.finding_technical_effect import FindingTechnicalEffect, FindingTechnicalEffectProjection, FindingTechnicalEffectService, FindingTechnicalEffectStatus
 from core.explainability import CompletenessStatus, ExplanationCompleteness, ExplanationProvenance
 from core.enterprise_context import BusinessImportance
 
@@ -53,6 +53,9 @@ class BusinessImpactClassificationReadiness:
             raise ValueError("Classification readiness loses source provenance.")
         if any(effect.finding_id != self.finding_id for effect in self.technical_effects):
             raise ValueError("Classification readiness technical effects identify another finding.")
+        effect_identifiers = tuple(effect.cve_identifier for effect in self.technical_effects)
+        if len(effect_identifiers) != len(set(effect_identifiers)):
+            raise ValueError("Classification readiness technical effects must be unique.")
         for facts in (self.business_facts, self.service_impact_facts):
             names = tuple(fact.name for fact in facts)
             if len(names) != len(set(names)):
@@ -60,6 +63,12 @@ class BusinessImpactClassificationReadiness:
         if self.status is BusinessImpactClassificationReadinessStatus.READY:
             if self.missing_requirements or self.completeness.status is not CompletenessStatus.AVAILABLE or not self.technical_effects or len(self.service_impact_facts) != 5:
                 raise ValueError("Ready classification readiness is inconsistent.")
+            for effect in self.technical_effects:
+                parsed = FindingTechnicalEffectService._parse_vector(effect.cvss_version, effect.cvss_vector)
+                if parsed != (effect.confidentiality, effect.integrity, effect.availability):
+                    raise ValueError("Ready classification readiness contains an invalid technical effect.")
+                if effect.source_type != "nvd" or effect.observed_at.utcoffset() is None:
+                    raise ValueError("Ready classification readiness contains incomplete technical provenance.")
             business = {fact.name: fact for fact in self.business_facts}
             service = {fact.name: fact for fact in self.service_impact_facts}
             if set(business) != {"canonical_asset_id", "business_service", "environment", "service_criticality"} or set(service) != {"canonical_asset_id", "business_service", "confidentiality_importance", "integrity_importance", "availability_importance"}:

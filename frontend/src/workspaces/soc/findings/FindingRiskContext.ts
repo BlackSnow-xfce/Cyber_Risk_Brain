@@ -126,11 +126,13 @@ export interface FindingRiskContext {
 export interface TechnicalEffect {
     finding_id: string;
     cve_identifier: string;
+    cvss_version: "3.0" | "3.1";
     cvss_vector: string;
     confidentiality: "NONE" | "LOW" | "HIGH";
     integrity: "NONE" | "LOW" | "HIGH";
     availability: "NONE" | "LOW" | "HIGH";
+    source_type: "nvd";
     source_reference: string;
-    observed_at: string | null;
+    observed_at: string;
 }
 import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";

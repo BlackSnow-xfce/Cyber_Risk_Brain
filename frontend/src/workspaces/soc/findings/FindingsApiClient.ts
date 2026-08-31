@@ -244,7 +244,7 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
             `business-impact-readiness:${String(impactReadiness.status).toLowerCase()}:${value.finding_id}` &&
         isBusinessSnapshotConsistent(business, impactReadiness) &&
         isServiceImpactProfile(profile, business) &&
-        isTechnicalEffectProjection(technicalEffect, value.finding_id) &&
+        isTechnicalEffectProjection(technicalEffect, value.finding_id, value.threat_intelligence.relationships) &&
         isClassificationReadiness(classificationReadiness, value.finding_id, impactReadiness, profile, technicalEffect) &&
         (impactReadiness.status !== "READY" ||
             (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0 &&
@@ -277,22 +277,68 @@ function isServiceImpactProfile(profile: Record<string, unknown>, business: Reco
 
 function isTechnicalEffect(value: unknown, findingId: unknown): boolean {
     return isRecord(value) && value.finding_id === findingId && typeof value.cve_identifier === "string" &&
-        /^CVE-\d{4}-\d{4,}$/.test(value.cve_identifier) && typeof value.cvss_vector === "string" &&
-        (value.cvss_vector.startsWith("CVSS:3.0/") || value.cvss_vector.startsWith("CVSS:3.1/")) &&
+        /^CVE-\d{4}-\d{4,}$/.test(value.cve_identifier) && ["3.0", "3.1"].includes(String(value.cvss_version)) &&
+        typeof value.cvss_vector === "string" && value.cvss_vector.startsWith(`CVSS:${String(value.cvss_version)}/`) &&
         [value.confidentiality, value.integrity, value.availability]
             .every((item) => TECHNICAL_EFFECT_LEVEL.includes(String(item))) &&
+        value.source_type === "nvd" &&
         typeof value.source_reference === "string" && value.source_reference.length > 0 &&
-        (value.observed_at === null || (typeof value.observed_at === "string" && !Number.isNaN(Date.parse(value.observed_at))));
+        typeof value.observed_at === "string" && hasTimezone(value.observed_at) &&
+        technicalLevels(value.cvss_version, value.cvss_vector)?.join(":") ===
+            [value.confidentiality, value.integrity, value.availability].join(":");
 }
 
-function isTechnicalEffectProjection(value: Record<string, unknown>, findingId: unknown): boolean {
+function isTechnicalEffectProjection(value: Record<string, unknown>, findingId: unknown, relationships: unknown): boolean {
     if (value.finding_id !== findingId || !["AVAILABLE", "UNAVAILABLE"].includes(String(value.status)) ||
         !Array.isArray(value.effects) || !value.effects.every((effect) => isTechnicalEffect(effect, findingId)) ||
+        !value.effects.every((effect) => isEffectSourceBound(effect, relationships)) ||
         !isStringArray(value.missing_requirements) || value.source_type !== "finding_technical_effect" ||
         value.source_reference !== `finding-technical-effect:${String(value.status).toLowerCase()}:${String(findingId)}`) return false;
+    const cves = value.effects.map((effect) => (effect as Record<string, unknown>).cve_identifier);
+    if (cves.length !== new Set(cves).size) return false;
     return value.status === "AVAILABLE"
         ? value.effects.length > 0 && value.missing_requirements.length === 0 && value.completeness_status === "available"
-        : value.effects.length === 0 && value.missing_requirements.length > 0 && value.completeness_status !== "available";
+        : value.missing_requirements.length > 0 && value.completeness_status !== "available";
+}
+
+function hasTimezone(value: string): boolean {
+    return /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+const CVSS_VALUES: Readonly<Record<string, readonly string[]>> = {
+    AV: ["N", "A", "L", "P"], AC: ["L", "H"], PR: ["N", "L", "H"],
+    UI: ["N", "R"], S: ["U", "C"], C: ["N", "L", "H"],
+    I: ["N", "L", "H"], A: ["N", "L", "H"],
+};
+
+function technicalLevels(version: unknown, vector: unknown): readonly string[] | null {
+    if (!["3.0", "3.1"].includes(String(version)) || typeof vector !== "string" ||
+        !vector.startsWith(`CVSS:${String(version)}/`)) return null;
+    const metrics: Record<string, string> = {};
+    for (const token of vector.split("/").slice(1)) {
+        const parts = token.split(":");
+        if (parts.length !== 2 || !(parts[0] in CVSS_VALUES) || parts[0] in metrics ||
+            !CVSS_VALUES[parts[0]].includes(parts[1])) return null;
+        metrics[parts[0]] = parts[1];
+    }
+    if (Object.keys(metrics).length !== Object.keys(CVSS_VALUES).length) return null;
+    const map: Readonly<Record<string, string>> = { N: "NONE", L: "LOW", H: "HIGH" };
+    return [map[metrics.C], map[metrics.I], map[metrics.A]];
+}
+
+function isEffectSourceBound(effect: unknown, relationships: unknown): boolean {
+    if (!isRecord(effect) || !Array.isArray(relationships)) return false;
+    const matches = relationships.filter((relationship) => {
+        if (!isRecord(relationship) || relationship.applicability !== "applicable" ||
+            relationship.cve_identifier !== effect.cve_identifier || !isRecord(relationship.intelligence) ||
+            relationship.intelligence.cve_identifier !== effect.cve_identifier || !isRecord(relationship.intelligence.cvss)) return false;
+        const cvss = relationship.intelligence.cvss;
+        if (cvss.status !== "available" || !isRecord(cvss.value) || !isRecord(cvss.provenance)) return false;
+        return cvss.value.version === effect.cvss_version && cvss.value.vector === effect.cvss_vector &&
+            cvss.provenance.source_type === effect.source_type &&
+            cvss.provenance.source_reference === effect.source_reference && cvss.observed_at === effect.observed_at;
+    });
+    return matches.length === 1;
 }
 
 function isClassificationReadiness(
