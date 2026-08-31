@@ -1,6 +1,6 @@
-# Handoff - Architect to Codex - TASK-0128 REWORK 2
+# Handoff - Architect to Codex
 
 Status: WAITING
-Current AIDP Task: TASK-0128
-Current Phase: REVIEW
-Task Status: ARCHITECT_APPROVED
+Current AIDP Task: NONE
+Current Phase: NONE
+Task Status: NONE
