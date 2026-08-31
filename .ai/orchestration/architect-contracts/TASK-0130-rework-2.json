@@ -1,0 +1,33 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-2",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 2,
+      "expected_head": "a42062ce78d4b55b55f927eb7be1357788b09fa7",
+      "allowed_rework_scope": [
+        "application/finding_technical_effect.py",
+        "tests/application/test_finding_technical_effect.py",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.ts",
+        "frontend/src/workspaces/soc/findings/FindingsApiClient.test.ts"
+      ],
+      "findings": [
+        "Enforce deterministic CIA derivation inside the immutable FindingTechnicalEffect boundary itself. Direct construction must strictly validate the supported version/vector and reject stored confidentiality integrity or availability values that differ from the existing strict vector derivation; do not rely only on service projection or later readiness validation and do not introduce another parser mapping enum or model.",
+        "Add direct-construction regression tests proving vector C:N I:L A:H rejects supplied HIGH HIGH NONE, while the exact derived NONE LOW HIGH construction and normal service-produced effects remain valid.",
+        "Require frontend cvss_version to be a runtime string before membership prefix source-binding or vector validation. Accept only exact string 3.0 or 3.1 and remove String coercion from this authority path; numeric 3.1 and other runtime types must fail closed.",
+        "Add frontend regression tests proving an otherwise authoritative string 3.1 snapshot is accepted, numeric 3.1 in a Technical Effect is rejected, and a jointly coerced numeric 3.1 across authoritative TI/CVSS source Technical Effect and Classification Readiness is still rejected.",
+        "Preserve all passing TASK-0130 and REWORK-1 strict CVSS provenance timestamp mixed-CVE classification source-binding API DistCC and null Business Impact behavior, frozen legacy and AI boundaries, TASK-0127/0128/0129 semantics, Product Owner acceptance PENDING, and do not create TASK-0131 or transition DONE."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-08-31T23:27:30Z"
+    },
+    "received_at": "2026-08-31T23:27:30Z"
+  }
+}
