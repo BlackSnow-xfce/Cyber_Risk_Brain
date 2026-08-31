@@ -88,6 +88,26 @@ export default function FindingRiskContextSection({
                     {context.evidence_readiness.missing_requirements.map((requirement) => (
                         <Typography key={requirement} variant="body2">Evidence requirement: {requirement}</Typography>
                     ))}
+                    <Typography variant="subtitle2">Finding risk priority</Typography>
+                    {context.priority?.status === "PRIORITIZED" ? (
+                        <Stack spacing={0.25}>
+                            <Typography variant="body2">
+                                Priority: {context.priority.band}; gated score: {context.priority.score}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {context.priority.reason} Source: {context.priority.source_type} / {context.priority.source_reference}
+                            </Typography>
+                            {context.priority.considered_evidence_ids.map((identifier) => (
+                                <Typography key={identifier} variant="caption" color="text.secondary">
+                                    Evidence: {identifier}
+                                </Typography>
+                            ))}
+                        </Stack>
+                    ) : (
+                        <Alert severity="warning">
+                            Priority unavailable. {context.priority?.reason} Band and score are not available.
+                        </Alert>
+                    )}
                     {context.assessment.status === "INSUFFICIENT_CONTEXT" && (
                         <Alert severity="warning">
                             PredatorAI refuses to calculate risk, priority, business impact, a decision, or recommendations. {context.refusal_reason} Score, priority, business impact, decision, and recommendations are not available.

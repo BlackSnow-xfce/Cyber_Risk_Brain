@@ -27,7 +27,19 @@ const context: FindingRiskContext = {
         source_reference: "risk-assessment-readiness:insufficient:finding-001",
     },
     refusal_reason: "Risk calculation refused because required context is missing.",
-    priority: null, business_impact: null, decision: null, recommendations: [],
+    priority: {
+        status: "UNAVAILABLE",
+        band: null,
+        score: null,
+        reason: "Required authoritative context is missing.",
+        considered_evidence_ids: [],
+        referenced_input_references: [],
+        missing_requirements: ["risk_input:exposure:NOT_EVALUATED"],
+        completeness_status: "no_data",
+        source_type: "finding_risk_priority",
+        source_reference: "finding-risk-priority:unavailable:finding-001",
+    },
+    business_impact: null, decision: null, recommendations: [],
 };
 
 describe("FindingRiskContextSection", () => {
@@ -56,6 +68,42 @@ describe("FindingRiskContextSection", () => {
         expect(screen.getByText("Evidence requirement: canonical_asset_context")).toBeInTheDocument();
         expect(screen.getByText(/refuses to calculate risk, priority, business impact/)).toBeInTheDocument();
         expect(screen.getByText(/Score, priority, business impact, decision, and recommendations are not available/)).toBeInTheDocument();
+        expect(screen.getByText(/Priority unavailable/)).toHaveTextContent(
+            "Band and score are not available",
+        );
+    });
+
+    it("renders only a transported gated priority with evidence provenance", () => {
+        const prioritized: FindingRiskContext = {
+            ...context,
+            priority: {
+                status: "PRIORITIZED",
+                band: "high",
+                score: 80,
+                reason: "Classified from the authoritative gated score.",
+                considered_evidence_ids: ["correlation:finding-001:CVE-2004-2687"],
+                referenced_input_references: ["finding:greenbone:finding-001"],
+                missing_requirements: [],
+                completeness_status: "available",
+                source_type: "finding_risk_priority",
+                source_reference: "finding-risk-priority:prioritized:finding-001",
+            },
+        };
+
+        render(
+            <FindingRiskContextSection
+                context={prioritized}
+                error={null}
+                loading={false}
+                onLoad={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByText("Priority: high; gated score: 80")).toBeInTheDocument();
+        expect(screen.getByText(/Classified from the authoritative gated score/)).toHaveTextContent(
+            "finding-risk-priority:prioritized:finding-001",
+        );
+        expect(screen.getByText("Evidence: correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
     });
 
     it("renders canonical asset, TI provenance, and canonical evidence metadata", () => {

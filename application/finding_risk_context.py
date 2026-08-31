@@ -10,6 +10,10 @@ from application.finding_explanation_use_case import (
     FindingNotFoundError,
     FindingSelectionError,
 )
+from application.finding_risk_priority import (
+    FindingRiskPriority,
+    FindingRiskPriorityService,
+)
 from application.finding_threat_intelligence import (
     FindingThreatIntelligenceEnrichment,
     FindingThreatIntelligenceUseCase,
@@ -49,7 +53,7 @@ class FindingRiskContext:
     assessment: RiskAssessmentResult
     evidence_readiness: RiskAssessmentReadinessResult
     refusal_reason: str | None
-    priority: None = None
+    priority: FindingRiskPriority
     business_impact: None = None
     decision: None = None
     recommendations: tuple[None, ...] = ()
@@ -66,6 +70,7 @@ class FindingRiskContextUseCase:
         correlation: SecurityObservationCorrelationApplicationService,
         risk_readiness: RiskReadinessService,
         evidence_readiness: RiskAssessmentReadinessService,
+        risk_priority: FindingRiskPriorityService | None = None,
     ) -> None:
         self._findings = findings
         self._asset_context = asset_context
@@ -73,6 +78,7 @@ class FindingRiskContextUseCase:
         self._correlation = correlation
         self._risk_readiness = risk_readiness
         self._evidence_readiness = evidence_readiness
+        self._risk_priority = risk_priority or FindingRiskPriorityService()
 
     def project(self, finding_id: str) -> FindingRiskContext:
         finding = self._select_finding(finding_id)
@@ -95,6 +101,11 @@ class FindingRiskContextUseCase:
         ).with_asset_context(asset_context.asset_context)
         assessment = self._risk_readiness.assess(risk_inputs)
         evidence_readiness = self._evidence_readiness.evaluate(correlation)
+        priority = self._risk_priority.prioritize(
+            finding.id,
+            assessment,
+            evidence_readiness,
+        )
         refusal_parts = [
             f"{item.name}:{item.state.value}"
             for item in assessment.missing_inputs
@@ -117,6 +128,7 @@ class FindingRiskContextUseCase:
                 if refusal_parts
                 else None
             ),
+            priority=priority,
         )
 
     def _select_finding(self, finding_id: str) -> UniversalFinding:

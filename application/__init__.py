@@ -66,6 +66,11 @@ from application.finding_risk_context import (
     FindingRiskContextUseCase,
     FindingSourceFact,
 )
+from application.finding_risk_priority import (
+    FindingRiskPriority,
+    FindingRiskPriorityService,
+    FindingRiskPriorityStatus,
+)
 from application.incident_investigation import (
     INCIDENT_INVESTIGATION_CONTRACT_VERSION,
     IncidentInvestigationCandidate,
@@ -267,6 +272,9 @@ __all__ = [
     "FindingThreatIntelligenceUseCase",
     "FindingRiskContext",
     "FindingRiskContextUseCase",
+    "FindingRiskPriority",
+    "FindingRiskPriorityService",
+    "FindingRiskPriorityStatus",
     "FindingSourceFact",
     "FindingsConfigurationError",
     "FindingsQueryService",

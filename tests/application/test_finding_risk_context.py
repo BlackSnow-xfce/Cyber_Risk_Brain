@@ -120,7 +120,9 @@ def test_resolved_projection_preserves_exact_provenance_and_fails_closed() -> No
     assert result.evidence_readiness.status.value == "READY"
     assert result.assessment.status is RiskAssessmentStatus.INSUFFICIENT_CONTEXT
     assert result.assessment.score is None
-    assert result.priority is result.business_impact is result.decision is None
+    assert result.priority.status.value == "UNAVAILABLE"
+    assert result.priority.band is result.priority.score is None
+    assert result.business_impact is result.decision is None
     assert result.recommendations == ()
     assert result.risk_inputs.business_criticality.state is RiskInputState.AUTHORITATIVE
     assert result.risk_inputs.business_criticality.source == (
@@ -190,6 +192,8 @@ def test_unresolved_asset_states_remain_unknown(status, asset) -> None:
 
     assert result.risk_inputs.business_criticality.state is RiskInputState.UNKNOWN
     assert result.assessment.score is None
+    assert result.priority.status.value == "UNAVAILABLE"
+    assert result.priority.band is result.priority.score is None
     assert result.evidence_readiness.missing_requirements
 
 
@@ -289,6 +293,7 @@ def test_incomplete_applicable_threat_intelligence_remains_explicit() -> None:
     )
     assert result.evidence_readiness.status.value == "INSUFFICIENT_EVIDENCE"
     assert result.assessment.score is None
+    assert result.priority.status.value == "UNAVAILABLE"
 
 
 @pytest.mark.parametrize(

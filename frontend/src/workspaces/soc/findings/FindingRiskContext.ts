@@ -55,7 +55,18 @@ export interface FindingRiskContext {
         source_reference: string;
     };
     refusal_reason: string | null;
-    priority: null;
+    priority: {
+        status: "PRIORITIZED" | "UNAVAILABLE";
+        band: "critical" | "high" | "medium" | "low" | "informational" | null;
+        score: number | null;
+        reason: string;
+        considered_evidence_ids: readonly string[];
+        referenced_input_references: readonly string[];
+        missing_requirements: readonly string[];
+        completeness_status: string;
+        source_type: string;
+        source_reference: string;
+    } | null;
     business_impact: null;
     decision: null;
     recommendations: readonly never[];

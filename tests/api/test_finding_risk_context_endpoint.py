@@ -1,10 +1,14 @@
+from dataclasses import replace
+
 import pytest
 from fastapi import HTTPException
 
 import api_app
 from application import (
     FindingNotFoundError,
+    FindingRiskPriorityService,
     FindingsConfigurationError,
+    RiskAssessmentStatus,
     ThreatIntelligenceInvalidResponseError,
     ThreatIntelligenceSourceUnavailableError,
     ThreatIntelligenceTimeoutError,
@@ -57,10 +61,52 @@ def test_endpoint_transports_typed_provenance_evidence_and_fail_closed_result() 
     }
     assert payload["assessment"]["status"] == "INSUFFICIENT_CONTEXT"
     assert payload["assessment"]["score"] is None
-    assert payload["priority"] is None
+    assert payload["priority"]["status"] == "UNAVAILABLE"
+    assert payload["priority"]["band"] is None
+    assert payload["priority"]["score"] is None
+    assert payload["priority"]["considered_evidence_ids"] == [
+        evidence["identifier"]
+    ]
+    assert payload["priority"]["referenced_input_references"][: len(
+        evidence["input_references"]
+    )] == evidence["input_references"]
+    assert "greenbone" in payload["priority"]["referenced_input_references"]
+    assert payload["priority"]["missing_requirements"]
+    assert payload["priority"]["source_type"] == "finding_risk_priority"
     assert payload["business_impact"] is None
     assert payload["decision"] is None
     assert payload["recommendations"] == []
+
+
+def test_endpoint_transports_explainable_gated_priority() -> None:
+    context = project()
+    assessment = replace(
+        context.assessment,
+        status=RiskAssessmentStatus.ASSESSED,
+        missing_inputs=(),
+        score=80,
+    )
+    priority = FindingRiskPriorityService().prioritize(
+        FINDING_ID,
+        assessment,
+        context.evidence_readiness,
+    )
+
+    response = api_app.finding_risk_context(
+        FINDING_ID,
+        UseCase(replace(context, assessment=assessment, priority=priority)),
+    )
+    payload = response.model_dump()["priority"]
+
+    assert payload["status"] == "PRIORITIZED"
+    assert payload["band"] == "high"
+    assert payload["score"] == 80
+    assert payload["considered_evidence_ids"]
+    assert payload["referenced_input_references"]
+    assert payload["missing_requirements"] == []
+    assert payload["source_reference"] == (
+        f"finding-risk-priority:prioritized:{FINDING_ID}"
+    )
 
 
 @pytest.mark.parametrize(

@@ -482,6 +482,19 @@ class FindingThreatIntelligenceEnrichmentResponse(BaseModel):
     relationships: list[FindingThreatIntelligenceRelationshipResponse]
 
 
+class FindingRiskPriorityResponse(BaseModel):
+    status: str
+    band: str | None
+    score: int | None
+    reason: str
+    considered_evidence_ids: list[str]
+    referenced_input_references: list[str]
+    missing_requirements: list[str]
+    completeness_status: str
+    source_type: str
+    source_reference: str
+
+
 class FindingRiskContextResponse(BaseModel):
     finding_id: str
     source_facts: list[FindingRiskSourceFactResponse]
@@ -493,7 +506,7 @@ class FindingRiskContextResponse(BaseModel):
     assessment: FindingRiskAssessmentResponse
     evidence_readiness: FindingEvidenceReadinessResponse
     refusal_reason: str | None
-    priority: None
+    priority: FindingRiskPriorityResponse
     business_impact: None
     decision: None
     recommendations: list[None]
@@ -1561,7 +1574,32 @@ def _finding_risk_context_response(
             source_reference=readiness.completeness.provenance.source_reference,
         ),
         refusal_reason=context.refusal_reason,
-        priority=None,
+        priority=FindingRiskPriorityResponse(
+            status=context.priority.status.value,
+            band=(
+                context.priority.band.value
+                if context.priority.band is not None
+                else None
+            ),
+            score=context.priority.score,
+            reason=context.priority.reason,
+            considered_evidence_ids=list(
+                context.priority.considered_evidence_ids
+            ),
+            referenced_input_references=list(
+                context.priority.referenced_input_references
+            ),
+            missing_requirements=list(
+                context.priority.missing_requirements
+            ),
+            completeness_status=context.priority.completeness.status.value,
+            source_type=(
+                context.priority.completeness.provenance.source_type
+            ),
+            source_reference=(
+                context.priority.completeness.provenance.source_reference
+            ),
+        ),
         business_impact=None,
         decision=None,
         recommendations=[],
