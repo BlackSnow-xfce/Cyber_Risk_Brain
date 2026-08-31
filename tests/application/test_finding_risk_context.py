@@ -37,16 +37,23 @@ class Findings:
 class Source:
     def __init__(self, value) -> None:
         self.value = value
+        self.enrich_calls = 0
+        self.correlation_snapshot = None
 
     def resolve(self, finding_id):
         return self.value
 
     def enrich(self, finding_id):
+        self.enrich_calls += 1
         if isinstance(self.value, Exception):
             raise self.value
         return self.value
 
     def correlate(self, finding_id):
+        return self.value
+
+    def correlate_snapshot(self, finding_id, asset_context, threat_intelligence):
+        self.correlation_snapshot = (asset_context, threat_intelligence)
         return self.value
 
 
@@ -130,6 +137,25 @@ def test_resolved_projection_preserves_exact_provenance_and_fails_closed() -> No
         reference.startswith("asset-context:")
         for reference in evidence.provenance.input_references
     )
+
+
+def test_projection_reads_ti_once_and_passes_the_exact_snapshot_to_correlation() -> None:
+    resolution, enrichment, correlation = sources()
+    threat_intelligence = Source(enrichment)
+    correlation_source = Source(correlation)
+
+    result = FindingRiskContextUseCase(
+        Findings(),
+        Source(resolution),
+        threat_intelligence,
+        correlation_source,
+        RiskReadinessService(ForbiddenCalculator()),
+        RiskAssessmentReadinessService(),
+    ).project(FINDING_ID)
+
+    assert threat_intelligence.enrich_calls == 1
+    assert correlation_source.correlation_snapshot == (resolution, enrichment)
+    assert result.threat_intelligence is enrichment
 
 
 @pytest.mark.parametrize(

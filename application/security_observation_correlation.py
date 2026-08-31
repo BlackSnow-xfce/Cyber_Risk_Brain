@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from application.finding_asset_context import (
+    FindingAssetContextResolution,
     FindingAssetContextResolutionStatus,
     FindingAssetContextUseCase,
 )
 from application.finding_threat_intelligence import (
+    FindingThreatIntelligenceEnrichment,
     FindingThreatIntelligenceUseCase,
 )
 from core.decision.models import Evidence
@@ -71,8 +73,41 @@ class SecurityObservationCorrelationApplicationService:
             )
 
         enrichment = self._finding_threat_intelligence.enrich(finding_id)
+        return self.correlate_snapshot(
+            finding_id,
+            asset_resolution,
+            enrichment,
+        )
+
+    def correlate_snapshot(
+        self,
+        finding_id: str,
+        asset_resolution: FindingAssetContextResolution,
+        enrichment: FindingThreatIntelligenceEnrichment,
+    ) -> SecurityObservationCorrelationResult:
+        """Correlate one caller-owned authoritative source snapshot."""
         if enrichment.finding_id != asset_resolution.finding_id:
             raise ValueError("Correlation source reads returned different findings.")
+        if (
+            asset_resolution.finding_id != finding_id
+            or any(
+                relationship.finding_id != finding_id
+                for relationship in enrichment.relationships
+            )
+        ):
+            raise ValueError("Correlation source reads returned different findings.")
+
+        if (
+            asset_resolution.status
+            is not FindingAssetContextResolutionStatus.RESOLVED
+            or asset_resolution.asset_context is None
+        ):
+            return self._incomplete(
+                finding_id,
+                CompletenessStatus.NO_DATA,
+                "canonical-asset-context-unresolved",
+                threat_intelligence=enrichment.relationships,
+            )
 
         evidence: list[Evidence] = []
         for relationship in enrichment.relationships:

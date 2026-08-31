@@ -1,4 +1,5 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
+from datetime import datetime, timezone
 
 import pytest
 
@@ -78,6 +79,52 @@ def test_complete_inputs_create_deterministic_derived_evidence() -> None:
     assert "risk" not in evidence.key
     assert "priority" not in evidence.key
     assert "decision" not in evidence.key
+
+
+def test_caller_owned_snapshot_is_correlated_without_source_rereads() -> None:
+    resolution = asset_resolution()
+    observed_at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    snapshot = enrichment(
+        replace(
+            intelligence(),
+            nvd=replace(
+                intelligence().nvd,
+                observed_at=observed_at,
+            ),
+        )
+    )
+    ti = StubFindingThreatIntelligence(enrichment(intelligence()))
+    assets = StubFindingAssetContext(resolution)
+    service = SecurityObservationCorrelationApplicationService(
+        ti,
+        assets,
+        SecurityObservationCorrelationService(),
+    )
+
+    result = service.correlate_snapshot("finding-001", resolution, snapshot)
+
+    assert assets.calls == 0
+    assert ti.calls == 0
+    assert result.asset_context is resolution.asset_context
+    assert result.threat_intelligence is snapshot.relationships
+    vulnerability = result.threat_intelligence[0].vulnerability
+    assert vulnerability is not None
+    assert vulnerability.nvd.observed_at == observed_at
+
+
+def test_unresolved_caller_snapshot_preserves_ti_without_deriving_evidence() -> None:
+    resolution = asset_resolution(
+        status=FindingAssetContextResolutionStatus.NOT_FOUND
+    )
+    snapshot = enrichment(intelligence())
+    service = application_service()
+
+    result = service.correlate_snapshot("finding-001", resolution, snapshot)
+
+    assert result.evidence == ()
+    assert result.asset_context is None
+    assert result.threat_intelligence is snapshot.relationships
+    assert result.completeness.status is CompletenessStatus.NO_DATA
 
 
 def test_derived_evidence_retains_all_source_input_references() -> None:

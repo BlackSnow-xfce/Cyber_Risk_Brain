@@ -78,7 +78,11 @@ class FindingRiskContextUseCase:
         finding = self._select_finding(finding_id)
         asset_context = self._asset_context.resolve(finding_id)
         threat_intelligence = self._threat_intelligence.enrich(finding_id)
-        correlation = self._correlation.correlate(finding_id)
+        correlation = self._correlation.correlate_snapshot(
+            finding_id,
+            asset_context,
+            threat_intelligence,
+        )
         self._require_consistent_snapshot(
             finding,
             asset_context,
