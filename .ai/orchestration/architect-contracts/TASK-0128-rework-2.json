@@ -1,0 +1,30 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0128-rework-2",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0128",
+      "review_iteration": 2,
+      "expected_head": "e96607e3250cac4712f4ac272c94a1c8633b9286",
+      "allowed_rework_scope": [
+        "application/finding_risk_priority.py",
+        "tests/application/test_finding_risk_priority.py"
+      ],
+      "findings": [
+        "Make FindingRiskPriority a runtime-valid immutable value boundary. For PRIORITIZED, band must be an actual core.decision.models.DecisionPriority member returned by the existing PriorityEngine; reject arbitrary strings and every other runtime type without coercion or a parallel enum.",
+        "For PRIORITIZED, score must be an exact non-boolean Python int in the inclusive range 0 through 100, matching RiskAssessmentResult.score and PriorityEngine.calculate. Reject floats such as 80.5, booleans, strings, and other invalid values without rounding, coercion, or normalization.",
+        "Add focused negative tests for string and non-enum bands, float and boolean scores, plus positive tests for the existing DecisionPriority values and authoritative integer scores. Preserve all REWORK 1 gate, construction, provenance, normal missing-context/evidence, valid-priority, and truthful DistCC UNAVAILABLE tests.",
+        "Keep PriorityEngine and its thresholds unchanged. Do not add scoring, risk, decision, business-impact, recommendation, legacy, AI/provider, mock enterprise-data, or technical-signal shortcut paths. Do not create TASK-0129."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-08-31T14:45:21.1139236+00:00"
+    },
+    "received_at": "2026-08-31T14:45:21.1139236+00:00"
+  }
+}
