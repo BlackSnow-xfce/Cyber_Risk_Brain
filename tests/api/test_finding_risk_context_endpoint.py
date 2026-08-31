@@ -99,6 +99,17 @@ def test_endpoint_transports_typed_provenance_evidence_and_fail_closed_result() 
         f"business-impact-readiness:unavailable:{FINDING_ID}"
     )
     assert "business_service" in payload["business_impact_readiness"]["missing_requirements"]
+    assert payload["service_impact_profile"] == {
+        "status": "NOT_FOUND", "canonical_asset_id": None,
+        "business_service": None, "confidentiality_importance": None,
+        "integrity_importance": None, "availability_importance": None,
+        "source_reference": None,
+    }
+    assert payload["technical_effect"]["finding_id"] == FINDING_ID
+    assert payload["technical_effect"]["source_type"] == "finding_technical_effect"
+    assert payload["business_impact_classification_readiness"]["status"] == "UNAVAILABLE"
+    assert "service_impact_profile" in payload["business_impact_classification_readiness"]["missing_requirements"]
+    assert payload["business_impact_classification_readiness"]["source_type"] == "business_impact_classification_readiness"
     assert payload["decision"] is None
     assert payload["recommendations"] == []
 

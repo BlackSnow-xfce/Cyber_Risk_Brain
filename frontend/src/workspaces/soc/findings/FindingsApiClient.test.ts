@@ -68,6 +68,9 @@ const riskContextPayload = {
     priority: { status: "UNAVAILABLE", band: null, score: null, reason: "Missing context.", considered_evidence_ids: [], referenced_input_references: [], missing_requirements: ["context"], completeness_status: "no_data", source_type: "finding_risk_priority", source_reference: "finding/id" },
     business_context: { status: "NOT_FOUND", canonical_asset_id: null, business_service: null, environment: null, service_criticality: null, source_reference: null, facts: [] },
     business_impact_readiness: { finding_id: "finding/id", status: "UNAVAILABLE", reason: "Missing business context.", facts: [], missing_requirements: ["business_service", "environment", "service_criticality", "business_context_provenance"], source_references: [], completeness_status: "no_data", source_type: "business_impact_readiness", source_reference: "business-impact-readiness:unavailable:finding/id" },
+    service_impact_profile: { status: "NOT_FOUND", canonical_asset_id: null, business_service: null, confidentiality_importance: null, integrity_importance: null, availability_importance: null, source_reference: null },
+    technical_effect: { finding_id: "finding/id", status: "UNAVAILABLE", effects: [], missing_requirements: ["applicable_technical_effect"], completeness_status: "no_data", source_type: "finding_technical_effect", source_reference: "finding-technical-effect:unavailable:finding/id" },
+    business_impact_classification_readiness: { finding_id: "finding/id", status: "UNAVAILABLE", reason: "Missing authority.", business_facts: [], service_impact_facts: [], technical_effects: [], missing_requirements: ["service_impact_profile"], source_references: [], completeness_status: "no_data", source_type: "business_impact_classification_readiness", source_reference: "business-impact-classification-readiness:unavailable:finding/id" },
     business_impact: null,
     decision: null, recommendations: [],
 };
@@ -79,6 +82,15 @@ describe("getFindingRiskContext", () => {
 
         await expect(getFindingRiskContext("finding/id")).resolves.toEqual(riskContextPayload);
         expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/api/findings/finding%2Fid/risk-context");
+    });
+
+    it.each([
+        ["invalid CIA importance", { service_impact_profile: { ...riskContextPayload.service_impact_profile, status: "RESOLVED", canonical_asset_id: "asset-1", business_service: "Payments", confidentiality_importance: "SEVERE", integrity_importance: "HIGH", availability_importance: "LOW", source_reference: "bia:1" } }],
+        ["technical effect without provenance", { technical_effect: { ...riskContextPayload.technical_effect, status: "AVAILABLE", missing_requirements: [], completeness_status: "available", effects: [{ finding_id: "finding/id", cve_identifier: "CVE-2024-1234", cvss_vector: "CVSS:3.1/C:H/I:L/A:N", confidentiality: "HIGH", integrity: "LOW", availability: "NONE", source_reference: "", observed_at: null }] } }],
+        ["classification readiness with missing requirements", { business_impact_classification_readiness: { ...riskContextPayload.business_impact_classification_readiness, status: "READY", missing_requirements: ["service_impact_profile"], completeness_status: "available", source_reference: "business-impact-classification-readiness:ready:finding/id" } }],
+    ])("rejects %s", async (_label, change) => {
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...riskContextPayload, ...change }), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
     });
 
     it("rejects contradictory insufficient-context values", async () => {

@@ -22,8 +22,11 @@ from application import (
     AssetContextQueryService,
     AssetBusinessContextQueryService,
     BusinessImpactReadinessService,
+    BusinessImpactClassificationReadinessService,
     FindingAssetContextUseCase,
     FindingAssetBusinessContextUseCase,
+    FindingServiceImpactProfileUseCase,
+    FindingTechnicalEffectService,
     FindingExplanationModelOutput,
     FindingExplanationResult,
     FindingExplanationStatement,
@@ -84,6 +87,7 @@ from application import (
     LocalOperatorSessionStore,
     RiskReadinessService,
     RiskAssessmentReadinessService,
+    ServiceImpactProfileQueryService,
     SecurityObservationCorrelationApplicationService,
     FileAIModelSelectionAuditSink,
     FileAIModelSelectionStore,
@@ -146,6 +150,7 @@ from settings import (
     AI_MODEL_SELECTION_STATE_PATH,
     ASSET_CONTEXT_PATH,
     ASSET_BUSINESS_CONTEXT_PATH,
+    SERVICE_IMPACT_PROFILE_PATH,
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
     HUNT_HYPOTHESIS_REPOSITORY_PATH,
@@ -527,6 +532,51 @@ class FindingBusinessImpactReadinessResponse(BaseModel):
     source_reference: str
 
 
+class FindingServiceImpactProfileResponse(BaseModel):
+    status: str
+    canonical_asset_id: str | None
+    business_service: str | None
+    confidentiality_importance: str | None
+    integrity_importance: str | None
+    availability_importance: str | None
+    source_reference: str | None
+
+
+class FindingTechnicalEffectItemResponse(BaseModel):
+    finding_id: str
+    cve_identifier: str
+    cvss_vector: str
+    confidentiality: str
+    integrity: str
+    availability: str
+    source_reference: str
+    observed_at: datetime | None
+
+
+class FindingTechnicalEffectResponse(BaseModel):
+    finding_id: str
+    status: str
+    effects: list[FindingTechnicalEffectItemResponse]
+    missing_requirements: list[str]
+    completeness_status: str
+    source_type: str
+    source_reference: str
+
+
+class FindingBusinessImpactClassificationReadinessResponse(BaseModel):
+    finding_id: str
+    status: str
+    reason: str
+    business_facts: list[FindingBusinessContextFactResponse]
+    service_impact_facts: list[FindingBusinessContextFactResponse]
+    technical_effects: list[FindingTechnicalEffectItemResponse]
+    missing_requirements: list[str]
+    source_references: list[str]
+    completeness_status: str
+    source_type: str
+    source_reference: str
+
+
 class FindingRiskContextResponse(BaseModel):
     finding_id: str
     source_facts: list[FindingRiskSourceFactResponse]
@@ -541,6 +591,9 @@ class FindingRiskContextResponse(BaseModel):
     priority: FindingRiskPriorityResponse
     business_context: FindingAssetBusinessContextResponse
     business_impact_readiness: FindingBusinessImpactReadinessResponse
+    service_impact_profile: FindingServiceImpactProfileResponse
+    technical_effect: FindingTechnicalEffectResponse
+    business_impact_classification_readiness: FindingBusinessImpactClassificationReadinessResponse
     business_impact: None
     decision: None
     recommendations: list[None]
@@ -1171,6 +1224,11 @@ def get_finding_risk_context_use_case() -> FindingRiskContextUseCase:
             AssetBusinessContextQueryService(ASSET_BUSINESS_CONTEXT_PATH)
         ),
         business_impact_readiness=BusinessImpactReadinessService(),
+        service_impact_profile=FindingServiceImpactProfileUseCase(
+            ServiceImpactProfileQueryService(SERVICE_IMPACT_PROFILE_PATH)
+        ),
+        technical_effect=FindingTechnicalEffectService(),
+        classification_readiness=BusinessImpactClassificationReadinessService(),
     )
 
 
@@ -1539,6 +1597,22 @@ def _finding_risk_context_response(
     completeness = context.correlation.completeness
     business_context = context.business_context.context
     impact_readiness = context.business_impact_readiness
+    profile_resolution = context.service_impact_profile
+    profile = profile_resolution.profile
+    technical_effect = context.technical_effect
+    classification_readiness = context.business_impact_classification_readiness
+
+    def technical_effect_response(item):
+        return FindingTechnicalEffectItemResponse(
+            finding_id=item.finding_id,
+            cve_identifier=item.cve_identifier,
+            cvss_vector=item.cvss_vector,
+            confidentiality=item.confidentiality.value,
+            integrity=item.integrity.value,
+            availability=item.availability.value,
+            source_reference=item.source_reference,
+            observed_at=item.observed_at,
+        )
     return FindingRiskContextResponse(
         finding_id=context.finding_id,
         source_facts=[
@@ -1690,6 +1764,37 @@ def _finding_risk_context_response(
             source_reference=(
                 impact_readiness.completeness.provenance.source_reference
             ),
+        ),
+        service_impact_profile=FindingServiceImpactProfileResponse(
+            status=profile_resolution.status.value,
+            canonical_asset_id=profile.canonical_asset_id if profile else None,
+            business_service=profile.business_service if profile else None,
+            confidentiality_importance=profile.confidentiality_importance.value if profile else None,
+            integrity_importance=profile.integrity_importance.value if profile else None,
+            availability_importance=profile.availability_importance.value if profile else None,
+            source_reference=profile.source_reference if profile else None,
+        ),
+        technical_effect=FindingTechnicalEffectResponse(
+            finding_id=technical_effect.finding_id,
+            status=technical_effect.status.value,
+            effects=[technical_effect_response(item) for item in technical_effect.effects],
+            missing_requirements=list(technical_effect.missing_requirements),
+            completeness_status=technical_effect.completeness.status.value,
+            source_type=technical_effect.completeness.provenance.source_type,
+            source_reference=technical_effect.completeness.provenance.source_reference,
+        ),
+        business_impact_classification_readiness=FindingBusinessImpactClassificationReadinessResponse(
+            finding_id=classification_readiness.finding_id,
+            status=classification_readiness.status.value,
+            reason=classification_readiness.reason,
+            business_facts=[FindingBusinessContextFactResponse(name=f.name, value=f.value, source_reference=f.source_reference) for f in classification_readiness.business_facts],
+            service_impact_facts=[FindingBusinessContextFactResponse(name=f.name, value=f.value, source_reference=f.source_reference) for f in classification_readiness.service_impact_facts],
+            technical_effects=[technical_effect_response(item) for item in classification_readiness.technical_effects],
+            missing_requirements=list(classification_readiness.missing_requirements),
+            source_references=list(classification_readiness.source_references),
+            completeness_status=classification_readiness.completeness.status.value,
+            source_type=classification_readiness.completeness.provenance.source_type,
+            source_reference=classification_readiness.completeness.provenance.source_reference,
         ),
         business_impact=None,
         decision=None,

@@ -14,6 +14,28 @@ from application.business_impact_readiness import (
     BusinessImpactReadinessService,
     BusinessImpactReadinessStatus,
 )
+from application.business_impact_classification_readiness import (
+    BusinessImpactClassificationReadiness,
+    BusinessImpactClassificationReadinessService,
+    BusinessImpactClassificationReadinessStatus,
+)
+from application.service_impact_profile import (
+    ServiceImpactProfileDataError,
+    ServiceImpactProfileQueryService,
+)
+from application.finding_service_impact_profile import (
+    FindingServiceImpactProfileIntegrityError,
+    FindingServiceImpactProfileResolution,
+    FindingServiceImpactProfileResolutionStatus,
+    FindingServiceImpactProfileUseCase,
+)
+from application.finding_technical_effect import (
+    FindingTechnicalEffect,
+    FindingTechnicalEffectProjection,
+    FindingTechnicalEffectService,
+    FindingTechnicalEffectStatus,
+    TechnicalEffectLevel,
+)
 from application.ai_model_governance import (
     AI_MODEL_SELECTION_STATE_CONTRACT_VERSION,
     AIModelAdapterBinding,
@@ -262,6 +284,20 @@ __all__ = [
     "BusinessImpactReadiness",
     "BusinessImpactReadinessService",
     "BusinessImpactReadinessStatus",
+    "BusinessImpactClassificationReadiness",
+    "BusinessImpactClassificationReadinessService",
+    "BusinessImpactClassificationReadinessStatus",
+    "ServiceImpactProfileDataError",
+    "ServiceImpactProfileQueryService",
+    "FindingServiceImpactProfileIntegrityError",
+    "FindingServiceImpactProfileResolution",
+    "FindingServiceImpactProfileResolutionStatus",
+    "FindingServiceImpactProfileUseCase",
+    "FindingTechnicalEffect",
+    "FindingTechnicalEffectProjection",
+    "FindingTechnicalEffectService",
+    "FindingTechnicalEffectStatus",
+    "TechnicalEffectLevel",
     "classify_observed_asset_identifier",
     "AssetCriticality",
     "AvailableRiskInput",

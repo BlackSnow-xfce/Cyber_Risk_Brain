@@ -15,6 +15,19 @@ from application.finding_asset_business_context import (
     FindingAssetBusinessContextResolutionStatus,
     FindingAssetBusinessContextUseCase,
 )
+from application.finding_service_impact_profile import (
+    FindingServiceImpactProfileResolution,
+    FindingServiceImpactProfileResolutionStatus,
+    FindingServiceImpactProfileUseCase,
+)
+from application.finding_technical_effect import (
+    FindingTechnicalEffectProjection,
+    FindingTechnicalEffectService,
+)
+from application.business_impact_classification_readiness import (
+    BusinessImpactClassificationReadiness,
+    BusinessImpactClassificationReadinessService,
+)
 from application.finding_explanation_use_case import (
     FindingNotFoundError,
     FindingSelectionError,
@@ -65,6 +78,9 @@ class FindingRiskContext:
     priority: FindingRiskPriority
     business_context: FindingAssetBusinessContextResolution
     business_impact_readiness: BusinessImpactReadiness
+    service_impact_profile: FindingServiceImpactProfileResolution
+    technical_effect: FindingTechnicalEffectProjection
+    business_impact_classification_readiness: BusinessImpactClassificationReadiness
     business_impact: None = None
     decision: None = None
     recommendations: tuple[None, ...] = ()
@@ -97,6 +113,9 @@ class FindingRiskContextUseCase:
         risk_priority: FindingRiskPriorityService | None = None,
         business_context: FindingAssetBusinessContextUseCase | None = None,
         business_impact_readiness: BusinessImpactReadinessService | None = None,
+        service_impact_profile: FindingServiceImpactProfileUseCase | None = None,
+        technical_effect: FindingTechnicalEffectService | None = None,
+        classification_readiness: BusinessImpactClassificationReadinessService | None = None,
     ) -> None:
         self._findings = findings
         self._asset_context = asset_context
@@ -109,6 +128,9 @@ class FindingRiskContextUseCase:
         self._business_impact_readiness = (
             business_impact_readiness or BusinessImpactReadinessService()
         )
+        self._service_impact_profile = service_impact_profile
+        self._technical_effect = technical_effect or FindingTechnicalEffectService()
+        self._classification_readiness = classification_readiness or BusinessImpactClassificationReadinessService()
 
     def project(self, finding_id: str) -> FindingRiskContext:
         finding = self._select_finding(finding_id)
@@ -144,6 +166,24 @@ class FindingRiskContextUseCase:
         business_impact_readiness = self._business_impact_readiness.evaluate(
             business_context
         )
+        service_impact_profile = (
+            self._service_impact_profile.resolve(business_context)
+            if self._service_impact_profile is not None
+            else FindingServiceImpactProfileResolution(
+                finding.id,
+                (
+                    FindingServiceImpactProfileResolutionStatus.MISSING_CANONICAL_ASSET
+                    if business_context.status is FindingAssetBusinessContextResolutionStatus.MISSING_CANONICAL_ASSET
+                    else FindingServiceImpactProfileResolutionStatus.NOT_FOUND
+                ),
+            )
+        )
+        technical_effect = self._technical_effect.project(threat_intelligence)
+        classification_readiness = self._classification_readiness.evaluate(
+            business_impact_readiness,
+            service_impact_profile,
+            technical_effect,
+        )
         refusal_parts = [
             f"{item.name}:{item.state.value}"
             for item in assessment.missing_inputs
@@ -169,6 +209,9 @@ class FindingRiskContextUseCase:
             priority=priority,
             business_context=business_context,
             business_impact_readiness=business_impact_readiness,
+            service_impact_profile=service_impact_profile,
+            technical_effect=technical_effect,
+            business_impact_classification_readiness=classification_readiness,
         )
     def _select_finding(self, finding_id: str) -> UniversalFinding:
         matches = [

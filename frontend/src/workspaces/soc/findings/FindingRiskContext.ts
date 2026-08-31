@@ -87,8 +87,50 @@ export interface FindingRiskContext {
         source_type: string;
         source_reference: string;
     };
+    service_impact_profile?: {
+        status: "RESOLVED" | "NOT_FOUND" | "MISSING_CANONICAL_ASSET";
+        canonical_asset_id: string | null;
+        business_service: string | null;
+        confidentiality_importance: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+        integrity_importance: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+        availability_importance: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+        source_reference: string | null;
+    };
+    technical_effect?: {
+        finding_id: string;
+        status: "AVAILABLE" | "UNAVAILABLE";
+        effects: readonly TechnicalEffect[];
+        missing_requirements: readonly string[];
+        completeness_status: string;
+        source_type: "finding_technical_effect";
+        source_reference: string;
+    };
+    business_impact_classification_readiness?: {
+        finding_id: string;
+        status: "READY" | "UNAVAILABLE";
+        reason: string;
+        business_facts: readonly { name: string; value: string; source_reference: string }[];
+        service_impact_facts: readonly { name: string; value: string; source_reference: string }[];
+        technical_effects: readonly TechnicalEffect[];
+        missing_requirements: readonly string[];
+        source_references: readonly string[];
+        completeness_status: string;
+        source_type: "business_impact_classification_readiness";
+        source_reference: string;
+    };
     business_impact: null;
     decision: null;
     recommendations: readonly never[];
+}
+
+export interface TechnicalEffect {
+    finding_id: string;
+    cve_identifier: string;
+    cvss_vector: string;
+    confidentiality: "NONE" | "LOW" | "HIGH";
+    integrity: "NONE" | "LOW" | "HIGH";
+    availability: "NONE" | "LOW" | "HIGH";
+    source_reference: string;
+    observed_at: string | null;
 }
 import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";

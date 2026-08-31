@@ -182,7 +182,10 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         !isRecord(value.threat_intelligence) || !isRecord(value.correlation) ||
         !isRecord(value.assessment) || !isRecord(value.evidence_readiness) ||
         !isRecord(value.business_context) ||
-        !isRecord(value.business_impact_readiness)) {
+        !isRecord(value.business_impact_readiness) ||
+        !isRecord(value.service_impact_profile) ||
+        !isRecord(value.technical_effect) ||
+        !isRecord(value.business_impact_classification_readiness)) {
         return false;
     }
     const asset = value.asset_context;
@@ -190,6 +193,9 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
     const readiness = value.evidence_readiness;
     const business = value.business_context;
     const impactReadiness = value.business_impact_readiness;
+    const profile = value.service_impact_profile;
+    const technicalEffect = value.technical_effect;
+    const classificationReadiness = value.business_impact_classification_readiness;
     const resolved = asset.status === "resolved";
     const assetFieldsValid = resolved
         ? [asset.observed_identifier_type, asset.observed_identifier_value, asset.canonical_asset_id, asset.criticality, asset.source_reference]
@@ -237,6 +243,9 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         impactReadiness.source_reference ===
             `business-impact-readiness:${String(impactReadiness.status).toLowerCase()}:${value.finding_id}` &&
         isBusinessSnapshotConsistent(business, impactReadiness) &&
+        isServiceImpactProfile(profile, business) &&
+        isTechnicalEffectProjection(technicalEffect, value.finding_id) &&
+        isClassificationReadiness(classificationReadiness, value.finding_id, impactReadiness, profile, technicalEffect) &&
         (impactReadiness.status !== "READY" ||
             (business.status === "RESOLVED" && impactReadiness.missing_requirements.length === 0 &&
                 impactReadiness.completeness_status === "available" &&
@@ -248,6 +257,89 @@ function isFindingRiskContext(value: unknown): value is FindingRiskContext {
         Array.isArray(value.recommendations) && value.recommendations.length === 0 &&
         (!insufficient || (assessment.score === null && value.refusal_reason !== null &&
             assessment.missing_inputs.length > 0));
+}
+
+const BUSINESS_IMPORTANCE = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+const TECHNICAL_EFFECT_LEVEL = ["NONE", "LOW", "HIGH"];
+
+function isServiceImpactProfile(profile: Record<string, unknown>, business: Record<string, unknown>): boolean {
+    const fields = [profile.canonical_asset_id, profile.business_service,
+        profile.confidentiality_importance, profile.integrity_importance,
+        profile.availability_importance, profile.source_reference];
+    if (!["RESOLVED", "NOT_FOUND", "MISSING_CANONICAL_ASSET"].includes(String(profile.status))) return false;
+    if (profile.status !== "RESOLVED") return fields.every((item) => item === null);
+    return typeof profile.canonical_asset_id === "string" && profile.canonical_asset_id === business.canonical_asset_id &&
+        typeof profile.business_service === "string" && profile.business_service === business.business_service &&
+        [profile.confidentiality_importance, profile.integrity_importance, profile.availability_importance]
+            .every((item) => BUSINESS_IMPORTANCE.includes(String(item))) &&
+        typeof profile.source_reference === "string" && profile.source_reference.length > 0;
+}
+
+function isTechnicalEffect(value: unknown, findingId: unknown): boolean {
+    return isRecord(value) && value.finding_id === findingId && typeof value.cve_identifier === "string" &&
+        /^CVE-\d{4}-\d{4,}$/.test(value.cve_identifier) && typeof value.cvss_vector === "string" &&
+        (value.cvss_vector.startsWith("CVSS:3.0/") || value.cvss_vector.startsWith("CVSS:3.1/")) &&
+        [value.confidentiality, value.integrity, value.availability]
+            .every((item) => TECHNICAL_EFFECT_LEVEL.includes(String(item))) &&
+        typeof value.source_reference === "string" && value.source_reference.length > 0 &&
+        (value.observed_at === null || (typeof value.observed_at === "string" && !Number.isNaN(Date.parse(value.observed_at))));
+}
+
+function isTechnicalEffectProjection(value: Record<string, unknown>, findingId: unknown): boolean {
+    if (value.finding_id !== findingId || !["AVAILABLE", "UNAVAILABLE"].includes(String(value.status)) ||
+        !Array.isArray(value.effects) || !value.effects.every((effect) => isTechnicalEffect(effect, findingId)) ||
+        !isStringArray(value.missing_requirements) || value.source_type !== "finding_technical_effect" ||
+        value.source_reference !== `finding-technical-effect:${String(value.status).toLowerCase()}:${String(findingId)}`) return false;
+    return value.status === "AVAILABLE"
+        ? value.effects.length > 0 && value.missing_requirements.length === 0 && value.completeness_status === "available"
+        : value.effects.length === 0 && value.missing_requirements.length > 0 && value.completeness_status !== "available";
+}
+
+function isClassificationReadiness(
+    value: Record<string, unknown>, findingId: unknown, businessReadiness: Record<string, unknown>,
+    profile: Record<string, unknown>, technical: Record<string, unknown>,
+): boolean {
+    if (value.finding_id !== findingId || !["READY", "UNAVAILABLE"].includes(String(value.status)) ||
+        typeof value.reason !== "string" || !Array.isArray(value.business_facts) ||
+        !value.business_facts.every(isSourceFact) || !Array.isArray(value.service_impact_facts) ||
+        !value.service_impact_facts.every(isSourceFact) || !Array.isArray(value.technical_effects) ||
+        !value.technical_effects.every((effect) => isTechnicalEffect(effect, findingId)) ||
+        !isStringArray(value.missing_requirements) || !isStringArray(value.source_references) ||
+        value.source_type !== "business_impact_classification_readiness" ||
+        value.source_reference !== `business-impact-classification-readiness:${String(value.status).toLowerCase()}:${String(findingId)}`) return false;
+    const exactTransportMatches = JSON.stringify(value.business_facts) === JSON.stringify(businessReadiness.facts) &&
+        JSON.stringify(value.technical_effects) === JSON.stringify(technical.effects);
+    const partialTransportMatches = value.business_facts.every((fact) =>
+        Array.isArray(businessReadiness.facts) && businessReadiness.facts.some((candidate) =>
+            JSON.stringify(candidate) === JSON.stringify(fact))) &&
+        value.technical_effects.every((effect) => Array.isArray(technical.effects) &&
+            technical.effects.some((candidate) => JSON.stringify(candidate) === JSON.stringify(effect)));
+    const profileSources = value.service_impact_facts.every((fact) => isRecord(fact) && fact.source_reference === profile.source_reference);
+    const sourceReferences = value.source_references as readonly string[];
+    const allSourcesKnown = [...value.business_facts, ...value.service_impact_facts, ...value.technical_effects]
+        .every((fact) => isRecord(fact) && typeof fact.source_reference === "string" && sourceReferences.includes(fact.source_reference));
+    const serviceFactsMatch = value.status !== "READY" || hasExactServiceImpactFacts(profile, value.service_impact_facts);
+    if (!(value.status === "READY" ? exactTransportMatches : partialTransportMatches) || !profileSources || !allSourcesKnown || !serviceFactsMatch) return false;
+    return value.status === "READY"
+        ? profile.status === "RESOLVED" && technical.status === "AVAILABLE" && businessReadiness.status === "READY" &&
+            value.service_impact_facts.length === 5 && value.missing_requirements.length === 0 && value.completeness_status === "available"
+        : value.missing_requirements.length > 0 && value.completeness_status !== "available";
+}
+
+function hasExactServiceImpactFacts(profile: Record<string, unknown>, facts: unknown[]): boolean {
+    const expected = {
+        canonical_asset_id: profile.canonical_asset_id,
+        business_service: profile.business_service,
+        confidentiality_importance: profile.confidentiality_importance,
+        integrity_importance: profile.integrity_importance,
+        availability_importance: profile.availability_importance,
+    };
+    if (facts.length !== Object.keys(expected).length) return false;
+    return Object.entries(expected).every(([name, value]) => {
+        const matches = facts.filter((fact) => isRecord(fact) && fact.name === name);
+        const fact = matches[0];
+        return matches.length === 1 && isRecord(fact) && fact.value === value && fact.source_reference === profile.source_reference;
+    });
 }
 
 function isBusinessContextStateValid(value: Record<string, unknown>): boolean {

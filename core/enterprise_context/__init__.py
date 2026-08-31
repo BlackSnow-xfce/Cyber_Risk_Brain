@@ -9,6 +9,10 @@ from core.enterprise_context.asset_business_context import (
     BusinessEnvironment,
     ServiceCriticality,
 )
+from core.enterprise_context.service_impact_profile import (
+    BusinessImportance,
+    ServiceImpactProfile,
+)
 
 __all__ = [
     "AssetContext",
@@ -18,4 +22,6 @@ __all__ = [
     "AssetBusinessContext",
     "BusinessEnvironment",
     "ServiceCriticality",
+    "BusinessImportance",
+    "ServiceImpactProfile",
 ]

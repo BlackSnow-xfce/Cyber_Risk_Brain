@@ -49,6 +49,24 @@ const context: FindingRiskContext = {
         completeness_status: "no_data", source_type: "business_impact_readiness",
         source_reference: "business-impact-readiness:unavailable:finding-001",
     },
+    service_impact_profile: {
+        status: "NOT_FOUND", canonical_asset_id: null, business_service: null,
+        confidentiality_importance: null, integrity_importance: null,
+        availability_importance: null, source_reference: null,
+    },
+    technical_effect: {
+        finding_id: "finding-001", status: "UNAVAILABLE", effects: [],
+        missing_requirements: ["applicable_technical_effect"], completeness_status: "no_data",
+        source_type: "finding_technical_effect",
+        source_reference: "finding-technical-effect:unavailable:finding-001",
+    },
+    business_impact_classification_readiness: {
+        finding_id: "finding-001", status: "UNAVAILABLE", reason: "Service profile is missing.",
+        business_facts: [], service_impact_facts: [], technical_effects: [],
+        missing_requirements: ["service_impact_profile"], source_references: [],
+        completeness_status: "no_data", source_type: "business_impact_classification_readiness",
+        source_reference: "business-impact-classification-readiness:unavailable:finding-001",
+    },
     business_impact: null, decision: null, recommendations: [],
 };
 
@@ -83,6 +101,9 @@ describe("FindingRiskContextSection", () => {
         );
         expect(screen.getByText(/Business context NOT_FOUND/)).toBeInTheDocument();
         expect(screen.getByText("Business-impact requirement: business_service")).toBeInTheDocument();
+        expect(screen.getByText(/Service Impact Profile NOT_FOUND/)).toBeInTheDocument();
+        expect(screen.getByText(/Technical Effect/)).toBeInTheDocument();
+        expect(screen.getByText(/Readiness is not a Business Impact result/)).toBeInTheDocument();
     });
 
     it("renders resolved business facts with provenance without inferring impact", () => {

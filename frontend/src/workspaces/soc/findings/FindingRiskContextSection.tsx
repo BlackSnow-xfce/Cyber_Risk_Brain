@@ -78,6 +78,31 @@ export default function FindingRiskContextSection({
                         </Typography>
                     ))}
                     </>}
+                    {context.service_impact_profile && <>
+                        <h4>Service Impact Profile</h4>
+                        {context.service_impact_profile.status === "RESOLVED" ? (
+                            <p>
+                                CIA business importance: C {context.service_impact_profile.confidentiality_importance}, I {context.service_impact_profile.integrity_importance}, A {context.service_impact_profile.availability_importance}. Source: {context.service_impact_profile.source_reference}
+                            </p>
+                        ) : <p>Service Impact Profile {context.service_impact_profile.status}. No CIA business importance was inferred.</p>}
+                    </>}
+                    {context.technical_effect && <>
+                        <h4>Technical Effect</h4>
+                        <p>{context.technical_effect.status}. This technical projection is not Business Impact.</p>
+                        {context.technical_effect.effects.map((effect) => (
+                            <p key={`${effect.cve_identifier}:${effect.source_reference}`}>
+                                {effect.cve_identifier}: C {effect.confidentiality}, I {effect.integrity}, A {effect.availability}; {effect.cvss_vector}; source {effect.source_reference}
+                            </p>
+                        ))}
+                    </>}
+                    {context.business_impact_classification_readiness && <>
+                        <h4>Business-Impact Classification Readiness</h4>
+                        <p>{context.business_impact_classification_readiness.status}: {context.business_impact_classification_readiness.reason}</p>
+                        <p>Readiness is not a Business Impact result.</p>
+                        {context.business_impact_classification_readiness.missing_requirements.map((requirement) => (
+                            <p key={requirement}>Missing: {requirement}</p>
+                        ))}
+                    </>}
                     <Typography variant="subtitle2">Threat intelligence</Typography>
                     {context.threat_intelligence.relationships.map((relationship, index) => (
                         <Stack
