@@ -228,6 +228,7 @@ class ReworkContract:
     created_at: datetime
 
     def __post_init__(self) -> None:
+        validate_task_id(self.task_id)
         for name in ("task_id", "expected_head"):
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must not be empty")
@@ -313,7 +314,7 @@ class ArchitectReviewRequest:
             _single_line(getattr(self, name), name)
         if self.review_iteration < 0 or self.review_iteration > 3:
             raise ValueError("review_iteration must be between 0 and 3")
-        _authorized_task_id(self.task_id)
+        validate_task_id(self.task_id)
         for name in ("review_request_id", "authority_contract_digest", "review_envelope_digest"):
             _sha256(getattr(self, name), name)
         for name in ("start_commit", "resulting_commit", "review_envelope_commit", "expected_current_head", "current_head", "reviewed_head", "reviewed_tree_hash"):
@@ -394,7 +395,7 @@ class ArchitectReviewResult:
             _single_line(getattr(self, name), name)
         if self.review_iteration < 0 or self.review_iteration > 3:
             raise ValueError("review_iteration must be between 0 and 3")
-        _authorized_task_id(self.task_id)
+        validate_task_id(self.task_id)
         _sha256(self.review_result_id, "review_result_id")
         _sha256(self.review_request_id, "review_request_id")
         for name in ("reviewed_head", "expected_head", "reviewed_tree_hash"):
@@ -509,8 +510,7 @@ class ArchitectTaskContract:
     created_at: datetime
 
     def __post_init__(self) -> None:
-        if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:WRITER|TRIGGER)-\d{4})|AIDP-INFRA-\d{4})", self.task_id) is None:
-            raise ValueError("task_id must match an authorized task identifier")
+        validate_task_id(self.task_id)
         for name in ("title", "phase", "expected_head"):
             value = getattr(self, name)
             if not value.strip() or "\n" in value or "\r" in value:
@@ -721,6 +721,8 @@ def ensure_non_empty(values: Sequence[str], field_name: str) -> tuple[str, ...]:
 
 
 def canonical_digest(value: object) -> str:
+    if isinstance(value, bytes):
+        return hashlib.sha256(value).hexdigest()
     return _digest(value)
 
 
@@ -762,6 +764,6 @@ def _git_identity(value: str, name: str) -> None:
         raise ValueError(f"{name} must be an exact Git object identity")
 
 
-def _authorized_task_id(value: str) -> None:
-    if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:WRITER|TRIGGER)-\d{4})|AIDP-INFRA-\d{4})", value) is None:
+def validate_task_id(value: str) -> None:
+    if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:(?:WRITER|TRIGGER)-)?\d{4})|AIDP-INFRA-\d{4})", value) is None:
         raise ValueError("task_id is not authorized")

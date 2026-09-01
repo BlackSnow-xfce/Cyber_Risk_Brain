@@ -50,7 +50,14 @@ _VISIBLE_ERROR_CODES = frozenset({
 class SubprocessRunner:
     """Small adapter around subprocess; callers can inject a deterministic fake."""
 
+    def __init__(self, *, max_capture_bytes: int | None = None) -> None:
+        if max_capture_bytes is not None and max_capture_bytes < 1:
+            raise ValueError("max_capture_bytes must be positive")
+        self.max_capture_bytes = max_capture_bytes
+
     def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
+        if self.max_capture_bytes is not None:
+            return self._run_bounded(args, cwd=cwd, timeout_seconds=timeout_seconds)
         try:
             completed = subprocess.run(
                 tuple(args),
@@ -78,6 +85,73 @@ class SubprocessRunner:
             stdout,
             stderr,
             error=stdout_error or stderr_error,
+        )
+
+    def _run_bounded(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
+        started_ns = time.time_ns()
+        try:
+            process = subprocess.Popen(
+                tuple(args), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL, shell=False,
+            )
+        except OSError as exc:
+            return ProcessOutcome(None, "", "", error=f"process error: {exc.__class__.__name__}")
+        identity = f"pid:{process.pid}:started_ns:{started_ns}"
+        limit = self.max_capture_bytes or 1
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        overflow = threading.Event()
+
+        def drain(name: str, stream) -> None:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk:
+                    return
+                remaining = limit - len(buffers[name])
+                if remaining > 0:
+                    buffers[name].extend(chunk[:remaining])
+                if len(chunk) > remaining:
+                    overflow.set()
+                    return
+
+        readers = [
+            threading.Thread(target=drain, args=("stdout", process.stdout), daemon=True),
+            threading.Thread(target=drain, args=("stderr", process.stderr), daemon=True),
+        ]
+        for reader in readers:
+            reader.start()
+        deadline = time.monotonic() + timeout_seconds
+        timed_out = False
+        while process.poll() is None and not overflow.is_set():
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            time.sleep(0.01)
+        if overflow.is_set() or timed_out:
+            process.terminate()
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        else:
+            process.wait()
+        for reader in readers:
+            reader.join(timeout=1.0)
+        stdout, stdout_error = _decode_process_output(bytes(buffers["stdout"]), "stdout")
+        stderr, stderr_error = _decode_process_output(bytes(buffers["stderr"]), "stderr")
+        if overflow.is_set():
+            return ProcessOutcome(
+                process.returncode, "", "", error="process output limit exceeded",
+                process_identity=identity, output_limit_exceeded=True,
+            )
+        if timed_out:
+            return ProcessOutcome(
+                None, stdout, stderr, timed_out=True,
+                error=stdout_error or stderr_error or "timeout", process_identity=identity,
+            )
+        return ProcessOutcome(
+            process.returncode, stdout, stderr, error=stdout_error or stderr_error,
+            process_identity=identity,
         )
 
 
@@ -353,12 +427,21 @@ class CodexExecutionService:
                 return self._result(request, start_commit, ExecutionStatus.SCOPE_VIOLATION, "changed files exceed the declared scope", scope, changed, resulting_commit)
 
             try:
+                external_requirements = tuple(
+                    value for value in request.validation_requirements
+                    if value.strip().lower() != "exact rework-2 scope guard"
+                )
                 validations = self.validator_registry.run(
-                    request.validation_requirements,
+                    external_requirements,
                     root=root,
                     runner=self.runner,
                     timeout_seconds=self.timeout_seconds,
                 )
+                if len(external_requirements) != len(request.validation_requirements):
+                    validations = (*validations, ValidationResult(
+                        "Exact REWORK-2 Scope Guard", True,
+                        "changed paths comply with the authorized ReworkContract scope",
+                    ))
             except Exception as exc:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"validation execution failed: {exc.__class__.__name__}", scope, changed, resulting_commit)
             if not all(item.passed for item in validations):

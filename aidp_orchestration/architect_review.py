@@ -120,7 +120,7 @@ class ArchitectReviewCoordinator:
             raise ValueError("max_capture_bytes must be positive")
         self.product_root = product_root.resolve()
         self.identity_guard = identity_guard
-        self.runner = runner or SubprocessRunner()
+        self.runner = runner or SubprocessRunner(max_capture_bytes=max_capture_bytes)
         self.launcher = launcher
         self.timeout_seconds = timeout_seconds
         self.max_capture_bytes = max_capture_bytes
@@ -156,16 +156,18 @@ class ArchitectReviewCoordinator:
         )
         outcome = self.runner.run(command, cwd=self.product_root, timeout_seconds=self.timeout_seconds)
         if outcome.timed_out:
-            return self._blocked(request, started, "Architect process timed out", launcher)
+            return self._blocked(request, started, "Architect process timed out", launcher, outcome.process_identity)
         if outcome.error:
-            return self._blocked(request, started, outcome.error, launcher)
+            return self._blocked(request, started, outcome.error, launcher, outcome.process_identity)
         if outcome.returncode != 0:
-            return self._blocked(request, started, f"Architect exited with code {outcome.returncode}", launcher)
+            return self._blocked(request, started, f"Architect exited with code {outcome.returncode}", launcher, outcome.process_identity)
         if len(outcome.stdout.encode("utf-8")) > self.max_capture_bytes or len(outcome.stderr.encode("utf-8")) > self.max_capture_bytes:
             return self._blocked(request, started, "Architect process output exceeded capture limit", launcher)
         try:
             payload = json.loads(_last_message_payload(outcome.stdout))
-            result = self._result_from_decision(request, payload, started, launcher)
+            if outcome.process_identity is None:
+                raise ValueError("Architect process identity is unavailable")
+            result = self._result_from_decision(request, payload, started, launcher, outcome.process_identity)
             validate_review_result(request, result)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             return self._blocked(request, started, f"Architect result is invalid: {exc.__class__.__name__}", launcher)
@@ -177,6 +179,7 @@ class ArchitectReviewCoordinator:
         payload: dict[str, object],
         started: datetime,
         launcher: CodexLauncher,
+        process_identity: str,
     ) -> ArchitectReviewResult:
         if set(payload) != {
             "disposition", "findings", "allowed_rework_scope", "required_validations",
@@ -195,7 +198,7 @@ class ArchitectReviewCoordinator:
         ) for item in finding_values)
         created = self.clock()
         provenance = ArchitectReviewProvenance(
-            process_identity=request.review_request_id,
+            process_identity=process_identity,
             launcher_identity=" ".join(launcher.argv_prefix), model=self.model,
             invocation_started_at=started, invocation_completed_at=created,
             output_schema_version=ARCHITECT_OUTPUT_SCHEMA_VERSION,
@@ -213,15 +216,28 @@ class ArchitectReviewCoordinator:
         )
         return create_review_result(**values)
 
+    def revalidate(self, request: ArchitectReviewRequest) -> None:
+        identity = self.identity_guard.validate(expected_head=request.expected_current_head)
+        expected = {
+            "repository": request.repository,
+            "git_common_dir": request.git_common_dir,
+            "branch": request.branch,
+            "remote_url": request.remote_url,
+            "head": request.expected_current_head,
+        }
+        if identity != expected:
+            raise ValueError("Product repository identity changed during Architect review")
+
     def _blocked(
         self,
         request: ArchitectReviewRequest,
         started: datetime,
         reason: str,
         launcher: CodexLauncher | None = None,
+        process_identity: str | None = None,
     ) -> ArchitectReviewResult:
         provenance = ArchitectReviewProvenance(
-            process_identity=request.review_request_id,
+            process_identity=process_identity or "unavailable",
             launcher_identity="unavailable" if launcher is None else " ".join(launcher.argv_prefix),
             model=self.model,
             invocation_started_at=started,

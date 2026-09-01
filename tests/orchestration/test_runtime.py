@@ -6,7 +6,7 @@ import pytest
 
 from aidp_orchestration.architect_review import create_review_request, create_review_result
 from aidp_orchestration.contracts import (
-    ArchitectReviewDisposition, ArchitectReviewProvenance, ExecutionStatus, ScopeCompliance,
+    ArchitectReviewDisposition, ArchitectReviewProvenance, ExecutionStatus, ReworkContract, ScopeCompliance,
     ValidationResult,
 )
 from aidp_orchestration.runtime import LocalRuntimeStore
@@ -54,3 +54,17 @@ def test_architect_runtime_records_are_immutable_and_idempotent(tmp_path):
     assert store.architect_attempt_exists(request.review_request_id)
     with pytest.raises(RuntimeError, match="collision"):
         store.persist_architect_attempt(request.review_request_id, {"state": "DIFFERENT"})
+
+
+def test_rework_contract_lineage_is_exact_and_iteration_safe(tmp_path):
+    store = LocalRuntimeStore(tmp_path)
+    for iteration, contract_id in ((1, "rework-one"), (2, "rework-two")):
+        contract = ReworkContract(
+            "AIDP-INFRA-0001", iteration, "a" * 40, ("a.py",),
+            (f"finding-{iteration}",), ("pytest",), NOW,
+        )
+        store.persist_rework_contract(contract_id, contract)
+    assert store.rework_contract_id("AIDP-INFRA-0001", 1) == "rework-one"
+    assert store.rework_contract_id("AIDP-INFRA-0001", 2) == "rework-two"
+    with pytest.raises(ValueError, match="missing or ambiguous"):
+        store.rework_contract_id("AIDP-INFRA-0001", 3)

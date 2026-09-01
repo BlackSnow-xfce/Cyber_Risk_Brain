@@ -64,6 +64,7 @@ class Repository:
 class Architect:
     def __init__(self, results): self.results = iter(results); self.calls = 0
     def review(self, _request, *, schema_path): self.calls += 1; return next(self.results)
+    def revalidate(self, _request): return None
 
 
 class Projection:

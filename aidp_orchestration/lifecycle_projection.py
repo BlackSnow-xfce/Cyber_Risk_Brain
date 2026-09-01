@@ -131,6 +131,34 @@ class LifecycleProjection:
             raise RuntimeError("lifecycle projection push did not synchronize upstream")
         return local
 
+    def verify_result_projection_commit(self, result: ArchitectReviewResult, commit: str) -> None:
+        if self.git.head() != commit:
+            raise RuntimeError("pending lifecycle projection is not repository HEAD")
+        parent = subprocess.check_output(
+            ("git", "rev-parse", f"{commit}^"), cwd=self.root, text=True, stderr=subprocess.STDOUT,
+        ).strip()
+        if parent != result.expected_head:
+            raise RuntimeError("pending lifecycle projection parent is not the reviewed HEAD")
+        relative = (
+            ".ai/orchestration/architect-review-results/"
+            f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
+        )
+        expected = tuple(sorted((
+            f".ai/tasks/review/{result.task_id}.md", ".ai/handoff/TO-CODEX.md",
+            ".ai/handoff/TO-ARCHITECT.md", relative,
+        )))
+        changed = _nul(self.root, "diff", "--name-only", "--no-renames", "-z", f"{commit}^", commit)
+        if tuple(sorted(changed)) != expected:
+            raise RuntimeError("pending lifecycle projection paths differ from authority")
+        expected_result = json.dumps(
+            {"architect_review_result": asdict(result)}, default=_json_default,
+            sort_keys=True, separators=(",", ":"),
+        ) + "\n"
+        if (self.root / relative).read_text(encoding="utf-8") != expected_result:
+            raise RuntimeError("pending lifecycle projection result content is invalid")
+        if self.git.changed_files():
+            raise RuntimeError("pending lifecycle projection worktree is dirty")
+
     def _commit_exact(self, expected: tuple[str, ...], message: str) -> str:
         changed = self.git.changed_files()
         if changed != expected:

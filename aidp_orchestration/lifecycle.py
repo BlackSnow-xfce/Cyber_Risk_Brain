@@ -32,6 +32,7 @@ class CodexBoundary(Protocol):
 
 class ArchitectBoundary(Protocol):
     def review(self, request: ArchitectReviewRequest, *, schema_path: Path) -> ArchitectReviewResult: ...
+    def revalidate(self, request: ArchitectReviewRequest) -> None: ...
 
 
 class AIDPLifecycleOnce:
@@ -59,6 +60,16 @@ class AIDPLifecycleOnce:
             decision = self.repository.inspect()
         except Exception as exc:
             return self._blocked(None, AIDPState.BLOCKED, f"lifecycle inspection failed: {exc.__class__.__name__}")
+        if decision.task_id is not None:
+            try:
+                recovered = self._recover_projection(decision.task_id, decision.state)
+            except Exception as exc:
+                return LifecycleResult(
+                    LifecycleStatus.ESCALATION_REQUIRED, decision.task_id, decision.state,
+                    f"lifecycle projection recovery failed closed: {exc.__class__.__name__}: {exc}",
+                )
+            if recovered is not None:
+                return recovered
         if decision.state is AIDPState.WAITING_FOR_PRODUCT_OWNER:
             return LifecycleResult(LifecycleStatus.NO_ACTION, decision.task_id, decision.state, "Product Owner hard gate")
         if decision.state in {AIDPState.READY_FOR_CODEX, AIDPState.REWORK_REQUIRED}:
@@ -133,6 +144,9 @@ class AIDPLifecycleOnce:
                 f"Architect review failed closed: {exc.__class__.__name__}: {exc}",
             )
         if result.disposition is ArchitectReviewDisposition.BLOCKED:
+            revalidation = self._revalidate_before_mutation(request)
+            if revalidation is not None:
+                return revalidation
             self.projection.publish_result_only(result)
             self.projection.push(request.branch)
             return LifecycleResult(
@@ -142,14 +156,37 @@ class AIDPLifecycleOnce:
             )
         escalation = self._loop_guard(request, result, previous)
         if escalation is not None:
+            revalidation = self._revalidate_before_mutation(request)
+            if revalidation is not None:
+                return revalidation
             self.projection.publish_result_only(result)
             self.projection.push(request.branch)
             return LifecycleResult(
                 LifecycleStatus.ESCALATION_REQUIRED, task_id, AIDPState.READY_FOR_ARCHITECT,
                 escalation, request.execution_id, request.review_request_id, result.review_result_id,
             )
+        revalidation = self._revalidate_before_mutation(request)
+        if revalidation is not None:
+            return revalidation
+        self.runtime.append_projection_event(result.review_result_id, {
+            "task_id": task_id, "review_result_id": result.review_result_id,
+            "branch": request.branch, "expected_parent": result.expected_head,
+            "disposition": result.disposition, "state": "INTENT", "timestamp": self.clock(),
+        })
         projected_head = self.projection.project_architect_result(result)
+        self.runtime.append_projection_event(result.review_result_id, {
+            "task_id": task_id, "review_result_id": result.review_result_id,
+            "branch": request.branch, "expected_parent": result.expected_head,
+            "projection_commit": projected_head, "disposition": result.disposition,
+            "state": "COMMITTED", "timestamp": self.clock(),
+        })
         self.projection.push(request.branch)
+        self.runtime.append_projection_event(result.review_result_id, {
+            "task_id": task_id, "review_result_id": result.review_result_id,
+            "branch": request.branch, "expected_parent": result.expected_head,
+            "projection_commit": projected_head, "disposition": result.disposition,
+            "state": "PUBLISHED", "timestamp": self.clock(),
+        })
         if result.disposition is ArchitectReviewDisposition.PASS:
             state = self.repository.inspect().state
             if state is not AIDPState.WAITING_FOR_PRODUCT_OWNER:
@@ -164,6 +201,63 @@ class AIDPLifecycleOnce:
             f"Architect requires authorized rework {result.review_iteration + 1}", request.execution_id,
             request.review_request_id, result.review_result_id,
         )
+
+    def _recover_projection(self, task_id: str, state: AIDPState) -> LifecycleResult | None:
+        pending = self.runtime.pending_projection(task_id)
+        if pending is None:
+            return None
+        result_id = str(pending.get("review_result_id", ""))
+        result = self._result_by_id(result_id)
+        expected_parent = str(pending.get("expected_parent", ""))
+        if result.expected_head != expected_parent:
+            raise ValueError("pending projection result binding mismatch")
+        head = self.repository.head
+        if head == expected_parent:
+            if state is not AIDPState.READY_FOR_ARCHITECT:
+                raise ValueError("projection intent exists in an incompatible lifecycle state")
+            return None
+        commit = str(pending.get("projection_commit") or head)
+        self.projection.verify_result_projection_commit(result, commit)
+        branch = str(pending.get("branch", ""))
+        self.projection.push(branch)
+        self.runtime.append_projection_event(result.review_result_id, {
+            "task_id": task_id, "review_result_id": result.review_result_id,
+            "branch": branch, "expected_parent": expected_parent,
+            "projection_commit": commit, "disposition": result.disposition,
+            "state": "PUBLISHED", "timestamp": self.clock(),
+        })
+        target = (
+            AIDPState.WAITING_FOR_PRODUCT_OWNER
+            if result.disposition is ArchitectReviewDisposition.PASS else AIDPState.REWORK_REQUIRED
+        )
+        return LifecycleResult(
+            LifecycleStatus.ADVANCED, task_id, target,
+            "existing lifecycle projection commit published during recovery",
+            result.execution_id, result.review_request_id, result.review_result_id,
+        )
+
+    def _revalidate_before_mutation(self, request: ArchitectReviewRequest) -> LifecycleResult | None:
+        try:
+            if self.architect is None:
+                raise ValueError("Architect boundary is unavailable")
+            self.architect.revalidate(request)
+        except Exception as exc:
+            return LifecycleResult(
+                LifecycleStatus.ESCALATION_REQUIRED, request.task_id, AIDPState.READY_FOR_ARCHITECT,
+                f"Product identity changed before lifecycle mutation: {exc.__class__.__name__}: {exc}",
+                request.execution_id, request.review_request_id,
+            )
+        return None
+
+    def _result_by_id(self, result_id: str) -> ArchitectReviewResult:
+        path = self.runtime.root / "architect-review-results" / f"{result_id}.json"
+        if not path.is_file():
+            raise ValueError("pending projection has no persisted Architect result")
+        wrapper = json.loads(path.read_text(encoding="utf-8"))
+        value = wrapper.get("architect_review_result") if isinstance(wrapper, dict) else None
+        if not isinstance(value, dict):
+            raise ValueError("pending projection Architect result is malformed")
+        return parse_architect_review_result(json.dumps(value))
 
     def _ensure_rework_authority(self, task_id: str) -> None:
         previous = self._previous_results(task_id)
@@ -237,7 +331,9 @@ class AIDPLifecycleOnce:
             validation_results=validations, scope_compliance=ScopeCompliance(str(envelope["scope_compliance"])),
             expected_current_head=head, current_head=head, reviewed_head=reviewed_head, reviewed_tree_hash=tree,
             previous_review_result_id=previous[-1].review_result_id if previous else None,
-            previous_rework_contract_id=None,
+            previous_rework_contract_id=(
+                self.runtime.rework_contract_id(task_id, iteration) if iteration > 0 else None
+            ),
             previous_finding_fingerprints=tuple(finding.fingerprint for finding in previous[-1].findings) if previous else (),
             created_at=datetime.fromisoformat(str(envelope["published_at"])),
         )

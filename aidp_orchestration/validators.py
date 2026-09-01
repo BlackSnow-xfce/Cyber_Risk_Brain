@@ -42,7 +42,9 @@ def resolve_validator_command(
 
 
 class ValidatorRegistry:
+    _internal_validators = frozenset({"exact rework-2 scope guard"})
     _commands: dict[str, tuple[str, ...]] = {
+        "python -m pytest tests/orchestration": ("python", "-m", "pytest", "tests/orchestration"),
         "python tests": ("python", "-m", "pytest"),
         "pytest": ("python", "-m", "pytest"),
         "frontend tests": ("npm", "test", "--", "--run"),
@@ -51,6 +53,7 @@ class ValidatorRegistry:
         "git diff --check": ("git", "diff", "--check"),
     }
     _working_directories: dict[str, str] = {
+        "python -m pytest tests/orchestration": ".",
         "python tests": ".",
         "pytest": ".",
         "frontend tests": "frontend",
@@ -69,7 +72,11 @@ class ValidatorRegistry:
         self.which = which
 
     def unknown(self, requirements: Sequence[str]) -> tuple[str, ...]:
-        return tuple(requirement for requirement in requirements if requirement.strip().lower() not in self._commands)
+        return tuple(
+            requirement for requirement in requirements
+            if requirement.strip().lower() not in self._commands
+            and requirement.strip().lower() not in self._internal_validators
+        )
 
     def run(self, requirements: Sequence[str], *, root: Path, runner: ProcessRunner, timeout_seconds: float) -> tuple[ValidationResult, ...]:
         results: list[ValidationResult] = []

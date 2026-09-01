@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from aidp_orchestration.architect_review import create_review_request, create_review_result
 from aidp_orchestration.contracts import (
-    AIDPState, ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance,
+    AIDPState, ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, ArchitectTaskContract,
+    ContractInboxItem, ReworkContract,
     ExecutionStatus, LifecycleStatus, OrchestrationDecision, ScopeCompliance, ValidationResult,
 )
 from aidp_orchestration.lifecycle import AIDPLifecycleOnce
 from aidp_orchestration.runtime import LocalRuntimeStore
+from aidp_orchestration.trigger_publisher import LocalContractInbox
 
 
 NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
@@ -50,6 +55,7 @@ def _result(request, disposition):
 
 class Repo:
     root = Path(".").resolve()
+    head = "5" * 40
 
     def __init__(self, states):
         self.states = iter(states)
@@ -60,13 +66,18 @@ class Repo:
 
 
 class Architect:
-    def __init__(self, result):
+    def __init__(self, result, revalidation_error=None):
         self.result = result
         self.calls = 0
+        self.revalidation_error = revalidation_error
 
     def review(self, request, *, schema_path):
         self.calls += 1
         return self.result
+
+    def revalidate(self, request):
+        if self.revalidation_error:
+            raise ValueError(self.revalidation_error)
 
 
 class Projection:
@@ -74,6 +85,7 @@ class Projection:
     def project_architect_result(self, result): self.calls.append(result.disposition); return "5" * 40
     def publish_result_only(self, result): self.calls.append(("only", result.disposition)); return "5" * 40
     def push(self, branch): self.calls.append(("push", branch)); return "5" * 40
+    def verify_result_projection_commit(self, result, commit): self.calls.append(("verify", commit))
 
 
 def test_product_owner_gate_is_absolute_no_action(tmp_path):
@@ -162,3 +174,94 @@ def test_iteration_jump_and_duplicate_execution_are_rejected():
         assert "iteration" in str(exc)
     else:
         raise AssertionError("iteration jump was accepted")
+
+
+@pytest.mark.parametrize("change", ("HEAD", "branch", "dirty worktree", "upstream divergence"))
+def test_post_review_identity_change_blocks_before_projection(tmp_path, change):
+    request = _request()
+    projection = Projection()
+    lifecycle = AIDPLifecycleOnce(
+        Repo([AIDPState.READY_FOR_ARCHITECT]),
+        architect=Architect(_result(request, ArchitectReviewDisposition.PASS), change),
+        runtime_store=LocalRuntimeStore(tmp_path), projection=projection,
+        request_factory=lambda _task: request, clock=lambda: NOW,
+    )
+    result = lifecycle.run_once()
+    assert result.status is LifecycleStatus.ESCALATION_REQUIRED
+    assert change in result.reason
+    assert projection.calls == []
+
+
+@pytest.mark.parametrize(
+    ("disposition", "local_state", "target"),
+    (
+        (ArchitectReviewDisposition.PASS, AIDPState.WAITING_FOR_PRODUCT_OWNER, AIDPState.WAITING_FOR_PRODUCT_OWNER),
+        (ArchitectReviewDisposition.FAIL, AIDPState.REWORK_REQUIRED, AIDPState.REWORK_REQUIRED),
+    ),
+)
+def test_restart_pushes_existing_projection_commit_without_recommit(tmp_path, disposition, local_state, target):
+    request = _request()
+    result = _result(request, disposition)
+    store = LocalRuntimeStore(tmp_path)
+    store.persist_architect_result(result)
+    store.append_projection_event(result.review_result_id, {
+        "task_id": request.task_id, "review_result_id": result.review_result_id,
+        "branch": request.branch, "expected_parent": result.expected_head,
+        "projection_commit": "5" * 40, "disposition": disposition,
+        "state": "COMMITTED", "timestamp": NOW,
+    })
+    projection = Projection()
+    architect = Architect(result)
+    lifecycle = AIDPLifecycleOnce(
+        Repo([local_state]), architect=architect, runtime_store=store,
+        projection=projection, clock=lambda: NOW,
+    )
+    recovered = lifecycle.run_once()
+    assert recovered.state is target
+    assert projection.calls == [("verify", "5" * 40), ("push", "branch")]
+    assert architect.calls == 0
+
+
+def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path):
+    class RequestRepo:
+        root = tmp_path
+        ai_root = tmp_path / ".ai"
+        head = "3" * 40
+
+        def _git(self, *args):
+            if args[0] == "rev-parse" and args[1].endswith("^{tree}"):
+                return "5" * 40
+            if args == ("rev-parse", "--git-common-dir"):
+                return ".git"
+            if args == ("remote", "get-url", "origin"):
+                return "origin"
+            raise AssertionError(args)
+
+    store = LocalRuntimeStore(tmp_path / "runtime")
+    authority = ArchitectTaskContract(
+        "TASK-9000", "title", "phase", "1" * 40, ("a.py",), ("no product",),
+        ("pytest",), ("pass",), True, NOW,
+    )
+    LocalContractInbox(store.root).persist(ContractInboxItem("authority", authority, NOW))
+    prior_request = _request()
+    prior_result = _result(prior_request, ArchitectReviewDisposition.FAIL)
+    store.persist_architect_result(prior_result)
+    rework = ReworkContract("TASK-9000", 1, "3" * 40, ("a.py",), ("finding",), ("pytest",), NOW)
+    store.persist_rework_contract("exact-rework-one", rework)
+    envelope = RequestRepo.ai_root / "orchestration/review-inbox/TASK-9000-rework.json"
+    envelope.parent.mkdir(parents=True)
+    envelope.write_text(json.dumps({"architect_review_envelope": {
+        "task_id": "TASK-9000", "execution_id": "exec-1", "branch": "branch",
+        "start_commit": "1" * 40, "resulting_commit": "2" * 40,
+        "execution_status": "SUCCESS", "changed_files": ["a.py"],
+        "scope_compliance": "COMPLIANT",
+        "validation_results": [{"name": "pytest", "passed": True, "detail": "passed"}],
+        "published_at": NOW.isoformat(),
+    }}), encoding="utf-8")
+    lifecycle = AIDPLifecycleOnce(
+        RequestRepo(), codex=object(), architect=Architect(prior_result), runtime_store=store,
+        projection=Projection(), clock=lambda: NOW,
+    )
+    built = lifecycle._build_request("TASK-9000")
+    assert built.review_iteration == 1
+    assert built.previous_rework_contract_id == "exact-rework-one"

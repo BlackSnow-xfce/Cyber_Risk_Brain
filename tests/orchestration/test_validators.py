@@ -89,6 +89,7 @@ def test_registry_preserves_arguments_and_never_requests_a_shell(tmp_path: Path)
         ("git diff --check", "."),
         ("pytest", "."),
         ("python tests", "."),
+        ("python -m pytest tests/orchestration", "."),
     ),
 )
 def test_validator_working_directory_policy(
@@ -145,3 +146,17 @@ def test_missing_executable_diagnostic_is_deterministic(tmp_path: Path) -> None:
     )[0]
     assert result.detail == "validator executable could not be resolved: npm"
     assert runner.commands == []
+
+
+def test_rework_two_validator_authority_is_exact_and_scope_guard_is_internal(tmp_path: Path) -> None:
+    runner = RecordingRunner(ProcessOutcome(0, "", ""))
+    registry = ValidatorRegistry(platform="posix")
+    assert registry.unknown((
+        "python -m pytest tests/orchestration", "git diff --check", "Exact REWORK-2 Scope Guard",
+    )) == ()
+    result = registry.run(
+        ("python -m pytest tests/orchestration",), root=tmp_path,
+        runner=runner, timeout_seconds=10,
+    )
+    assert result[0].passed
+    assert runner.commands == [("python", "-m", "pytest", "tests/orchestration")]

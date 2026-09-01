@@ -14,7 +14,7 @@ from aidp_orchestration.architect_review import (
 )
 from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance,
-    ExecutionStatus, ScopeCompliance, ValidationResult,
+    ExecutionStatus, ReworkContract, ScopeCompliance, ValidationResult,
 )
 from aidp_orchestration.executor_types import ProcessOutcome
 from aidp_orchestration.launcher import CodexLauncher
@@ -83,6 +83,23 @@ def test_pass_fail_and_blocked_authority_is_strict():
         validate_review_result(req, result(req, ArchitectReviewDisposition.FAIL, allowed_rework_scope=("other.py",)))
 
 
+@pytest.mark.parametrize("task_id", (
+    "UNAUTHORIZED-ID", "", "TASK-1", "TASK-00001", "AIDP-INFRA-1",
+    "AIDP-INFRA-00001", "AIDP_INFRA-0001",
+))
+def test_rework_contract_rejects_unauthorized_task_identifiers(task_id: str):
+    with pytest.raises(ValueError, match="task_id"):
+        ReworkContract(task_id, 1, "a" * 40, ("a.py",), ("finding",), ("pytest",), NOW)
+
+
+@pytest.mark.parametrize("task_id", (
+    "TASK-0001", "TASK-E2E-0001", "TASK-E2E-WRITER-0001",
+    "TASK-E2E-TRIGGER-0001", "AIDP-INFRA-0001",
+))
+def test_rework_contract_accepts_exact_authorized_task_identifiers(task_id: str):
+    assert ReworkContract(task_id, 1, "a" * 40, ("a.py",), ("finding",), ("pytest",), NOW).task_id == task_id
+
+
 class FakeGuard:
     def __init__(self, root: Path):
         self.root = root.resolve()
@@ -105,7 +122,7 @@ class FakeRunner:
         if self.timeout:
             return ProcessOutcome(None, "", "", timed_out=True, error="timeout")
         event = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(self.decision)}})
-        return ProcessOutcome(self.returncode, event, "")
+        return ProcessOutcome(self.returncode, event, "", process_identity="pid:42:started_ns:1")
 
 
 def test_coordinator_is_headless_read_only_and_orchestrator_binds_result(tmp_path: Path):
@@ -126,6 +143,8 @@ def test_coordinator_is_headless_read_only_and_orchestrator_binds_result(tmp_pat
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert "--ephemeral" in command and "--output-schema" in command
     assert reviewed.review_request_id == req.review_request_id
+    assert reviewed.provenance.process_identity == "pid:42:started_ns:1"
+    assert reviewed.provenance.process_identity != req.review_request_id
 
 
 def test_timeout_and_malformed_output_are_blocked(tmp_path: Path):
@@ -137,6 +156,18 @@ def test_timeout_and_malformed_output_are_blocked(tmp_path: Path):
         launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
     )
     assert coordinator.review(req, schema_path=schema).disposition is ArchitectReviewDisposition.BLOCKED
+    coordinator = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path),
+        runner=FakeRunner({"disposition": "PASS"}),
+        launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
+    )
+    assert coordinator.review(req, schema_path=schema).disposition is ArchitectReviewDisposition.BLOCKED
+    coordinator = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path),
+        runner=FakeRunner({}, returncode=7),
+        launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
+    )
+    assert coordinator.review(req, schema_path=schema).failure_reason == "Architect exited with code 7"
 
 
 def _git(root: Path, *args: str) -> str:

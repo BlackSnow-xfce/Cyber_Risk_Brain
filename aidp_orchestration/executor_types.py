@@ -14,6 +14,8 @@ class ProcessOutcome:
     stderr: str
     timed_out: bool = False
     error: str | None = None
+    process_identity: str | None = None
+    output_limit_exceeded: bool = False
 
 
 class ProcessRunner(Protocol):

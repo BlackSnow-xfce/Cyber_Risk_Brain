@@ -115,6 +115,22 @@ def test_subprocess_runner_rejects_non_utf8_output_with_safe_diagnostic(
     assert "�" in result.stdout
 
 
+@pytest.mark.parametrize("stream", ("stdout", "stderr"))
+def test_subprocess_runner_bounds_output_while_child_is_running(tmp_path: Path, stream: str) -> None:
+    script = (
+        "import sys,time; target=getattr(sys," + repr(stream) + "); "
+        "target.write('x'*200000); target.flush(); time.sleep(30)"
+    )
+    result = SubprocessRunner(max_capture_bytes=1024).run(
+        (sys.executable, "-c", script), cwd=tmp_path, timeout_seconds=10,
+    )
+    assert result.output_limit_exceeded
+    assert result.error == "process output limit exceeded"
+    assert result.stdout == result.stderr == ""
+    assert result.process_identity and result.process_identity.startswith("pid:")
+    assert result.returncode is not None
+
+
 class FakeVisibleProcess:
     def __init__(self, *, output=(b'{"type":"completed"}\n', b"diagnostic"), error=None):
         self.output = output

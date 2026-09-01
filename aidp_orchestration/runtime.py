@@ -69,12 +69,45 @@ class LocalRuntimeStore:
         path = self.root / "rework-contracts" / contract.task_id / f"{contract.review_iteration}-{contract_id}.json"
         return self._persist_immutable(path, _json({"contract_id": contract_id, "rework_contract": contract}), contract_id)
 
+    def rework_contract_id(self, task_id: str, iteration: int) -> str:
+        root = self.root / "rework-contracts" / task_id
+        candidates = tuple(sorted(root.glob(f"{iteration}-*.json"))) if root.exists() else ()
+        if len(candidates) != 1:
+            raise ValueError("preceding ReworkContract identity is missing or ambiguous")
+        value = json.loads(candidates[0].read_text(encoding="utf-8"))
+        contract_id = value.get("contract_id") if isinstance(value, dict) else None
+        if not isinstance(contract_id, str) or candidates[0].name != f"{iteration}-{contract_id}.json":
+            raise ValueError("persisted ReworkContract identity is malformed")
+        return contract_id
+
     def append_lifecycle(self, payload: dict[str, object]) -> Path:
         path = self.root / "lifecycle-events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
             stream.write(_json({"lifecycle_event": payload}) + "\n")
         return path
+
+    def append_projection_event(self, result_id: str, payload: dict[str, object]) -> Path:
+        path = self.root / "lifecycle-projections" / f"{result_id}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(_json({"projection_event": payload}) + "\n")
+        return path
+
+    def pending_projection(self, task_id: str) -> dict[str, object] | None:
+        root = self.root / "lifecycle-projections"
+        candidates: list[dict[str, object]] = []
+        if root.exists():
+            for path in sorted(root.glob("*.jsonl")):
+                events = [json.loads(line).get("projection_event") for line in path.read_text(encoding="utf-8").splitlines()]
+                if not events or any(not isinstance(event, dict) for event in events):
+                    raise ValueError("malformed lifecycle projection ledger")
+                latest = events[-1]
+                if latest.get("task_id") == task_id and latest.get("state") != "PUBLISHED":
+                    candidates.append(latest)
+        if len(candidates) > 1:
+            raise ValueError("multiple pending lifecycle projections")
+        return candidates[0] if candidates else None
 
     @staticmethod
     def _persist_immutable(path: Path, serialized: str, identity: str) -> Path:
