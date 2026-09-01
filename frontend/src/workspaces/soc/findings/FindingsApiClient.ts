@@ -277,8 +277,9 @@ function isServiceImpactProfile(profile: Record<string, unknown>, business: Reco
 
 function isTechnicalEffect(value: unknown, findingId: unknown): boolean {
     return isRecord(value) && value.finding_id === findingId && typeof value.cve_identifier === "string" &&
-        /^CVE-\d{4}-\d{4,}$/.test(value.cve_identifier) && ["3.0", "3.1"].includes(String(value.cvss_version)) &&
-        typeof value.cvss_vector === "string" && value.cvss_vector.startsWith(`CVSS:${String(value.cvss_version)}/`) &&
+        /^CVE-\d{4}-\d{4,}$/.test(value.cve_identifier) && typeof value.cvss_version === "string" &&
+        ["3.0", "3.1"].includes(value.cvss_version) && typeof value.cvss_vector === "string" &&
+        value.cvss_vector.startsWith(`CVSS:${value.cvss_version}/`) &&
         [value.confidentiality, value.integrity, value.availability]
             .every((item) => TECHNICAL_EFFECT_LEVEL.includes(String(item))) &&
         value.source_type === "nvd" &&
@@ -312,8 +313,8 @@ const CVSS_VALUES: Readonly<Record<string, readonly string[]>> = {
 };
 
 function technicalLevels(version: unknown, vector: unknown): readonly string[] | null {
-    if (!["3.0", "3.1"].includes(String(version)) || typeof vector !== "string" ||
-        !vector.startsWith(`CVSS:${String(version)}/`)) return null;
+    if (typeof version !== "string" || !["3.0", "3.1"].includes(version) || typeof vector !== "string" ||
+        !vector.startsWith(`CVSS:${version}/`)) return null;
     const metrics: Record<string, string> = {};
     for (const token of vector.split("/").slice(1)) {
         const parts = token.split(":");

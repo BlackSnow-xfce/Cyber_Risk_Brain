@@ -408,6 +408,39 @@ describe("getFindingRiskContext", () => {
         await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
     });
 
+    it("accepts exact string CVSS 3.0 authority", async () => {
+        const payload = sourceBoundTechnicalPayload();
+        const vector = "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N";
+        payload.threat_intelligence.relationships[0].intelligence.cvss.value.version = "3.0";
+        payload.threat_intelligence.relationships[0].intelligence.cvss.value.vector = vector;
+        payload.technical_effect.effects[0].cvss_version = "3.0";
+        payload.technical_effect.effects[0].cvss_vector = vector;
+        payload.business_impact_classification_readiness.technical_effects = [
+            { ...payload.technical_effect.effects[0] },
+        ];
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).resolves.toEqual(payload);
+    });
+
+    it.each([3.1, 3, true, null, {}, []])(
+        "rejects non-string Technical Effect CVSS version %j",
+        async (version) => {
+        const payload = sourceBoundTechnicalPayload();
+        payload.technical_effect.effects[0].cvss_version = version as unknown as string;
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+        },
+    );
+
+    it("rejects a jointly numeric CVSS version across source and effect snapshots", async () => {
+        const payload = sourceBoundTechnicalPayload();
+        payload.threat_intelligence.relationships[0].intelligence.cvss.value.version = 3.1 as unknown as string;
+        payload.technical_effect.effects[0].cvss_version = 3.1 as unknown as string;
+        payload.business_impact_classification_readiness.technical_effects[0].cvss_version = 3.1 as unknown as string;
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+        await expect(getFindingRiskContext("finding/id")).rejects.toMatchObject({ status: 200 });
+    });
+
     it("accepts multiple exact CVE bindings without cross-source mixing", async () => {
         const payload = sourceBoundTechnicalPayload();
         const secondEffect = {

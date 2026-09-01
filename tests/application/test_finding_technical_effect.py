@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from application.finding_technical_effect import FindingTechnicalEffectService, FindingTechnicalEffectStatus, TechnicalEffectLevel
+from application.finding_technical_effect import FindingTechnicalEffect, FindingTechnicalEffectService, FindingTechnicalEffectStatus, TechnicalEffectLevel
 from application.finding_threat_intelligence import FindingThreatIntelligenceEnrichment
 from core.explainability import CompletenessStatus, ExplanationCompleteness, ExplanationProvenance
 from core.threat_intelligence import (CisaKevInformation, CveIdentifier, CvssInformation,
@@ -40,6 +40,39 @@ def test_cvss_v3_maps_cia_and_preserves_provenance_and_time():
     assert result.effects[0].source_type == "nvd"
     assert result.effects[0].cvss_version == "3.1"
     assert result.effects[0].observed_at == datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(("confidentiality", "integrity", "availability"), [
+    (TechnicalEffectLevel.HIGH, TechnicalEffectLevel.LOW, TechnicalEffectLevel.HIGH),
+    (TechnicalEffectLevel.NONE, TechnicalEffectLevel.HIGH, TechnicalEffectLevel.HIGH),
+    (TechnicalEffectLevel.NONE, TechnicalEffectLevel.LOW, TechnicalEffectLevel.LOW),
+    (TechnicalEffectLevel.HIGH, TechnicalEffectLevel.HIGH, TechnicalEffectLevel.NONE),
+    (TechnicalEffectLevel.LOW, TechnicalEffectLevel.NONE, TechnicalEffectLevel.NONE),
+])
+def test_direct_construction_rejects_cia_levels_that_do_not_match_vector(
+    confidentiality, integrity, availability,
+):
+    with pytest.raises(ValueError, match="CIA levels do not match"):
+        FindingTechnicalEffect(
+            finding_id="finding-1", cve_identifier="CVE-2024-1234", cvss_version="3.1",
+            cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H",
+            confidentiality=confidentiality, integrity=integrity, availability=availability,
+            provenance=ExplanationProvenance("nvd", "nvd:record"),
+            observed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_direct_construction_accepts_cia_levels_derived_from_vector():
+    effect = FindingTechnicalEffect(
+        finding_id="finding-1", cve_identifier="CVE-2024-1234", cvss_version="3.1",
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H",
+        confidentiality=TechnicalEffectLevel.NONE, integrity=TechnicalEffectLevel.LOW,
+        availability=TechnicalEffectLevel.HIGH,
+        provenance=ExplanationProvenance("nvd", "nvd:record"),
+        observed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert (effect.confidentiality, effect.integrity, effect.availability) == (
+        TechnicalEffectLevel.NONE, TechnicalEffectLevel.LOW, TechnicalEffectLevel.HIGH)
 
 
 @pytest.mark.parametrize(("version", "vector"), [

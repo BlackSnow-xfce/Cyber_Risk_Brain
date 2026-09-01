@@ -40,8 +40,11 @@ class FindingTechnicalEffect:
         for name in ("confidentiality", "integrity", "availability"):
             if not isinstance(getattr(self, name), TechnicalEffectLevel):
                 raise ValueError(f"Technical effect {name} is invalid.")
-        if self.cvss_version not in {"3.0", "3.1"} or not self.cvss_vector.startswith(f"CVSS:{self.cvss_version}/"):
+        derived_levels = FindingTechnicalEffectService._parse_vector(self.cvss_version, self.cvss_vector)
+        if derived_levels is None:
             raise ValueError("Technical effect CVSS version and vector are inconsistent.")
+        if derived_levels != (self.confidentiality, self.integrity, self.availability):
+            raise ValueError("Technical effect CIA levels do not match the CVSS vector.")
         if not isinstance(self.provenance, ExplanationProvenance) or self.provenance.source_type != "nvd":
             raise ValueError("Technical effect provenance is invalid.")
         if not isinstance(self.observed_at, datetime) or self.observed_at.utcoffset() is None:
