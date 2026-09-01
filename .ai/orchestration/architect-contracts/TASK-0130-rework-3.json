@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-3",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 3,
+      "expected_head": "fe5a7681ddfad753ba4c611c0388265abb1f1c08",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Restructure every authoritative Finding Risk Context datum into maintainable MUI label/value blocks: label on its own line, value and exact provenance/reference beneath it, and clear Stack spacing before the next unit. Do not use br elements prose punctuation whitespace tricks negative offsets clipping or transforms as layout.",
+        "Apply the hierarchy consistently to source and Asset Context, Business Context facts, Business-Impact Readiness, Service Impact Profile, Technical Effect, Classification Readiness, Threat Intelligence, Correlation, Evidence, grouped Inputs, missing requirements, Finding Risk Priority, provenance and evidence/reference groups. Repeated authoritative records require stable domain keys and separated children.",
+        "Long source evidence and input references must wrap within their own value block using responsive wrapping-safe layout without overflow or clipping. Preserve typography/color hierarchy, semantic section order, lifecycle and button behavior.",
+        "Add focused structural rendering tests proving representative labels and values occupy distinct blocks, repeated Inputs are grouped and spaced, long references are wrapping-safe, dense concatenated forms are absent, and no br elements are introduced.",
+        "Preserve every transported value exactly, DistCC and fail-closed states, business_impact null decision null recommendations empty, TASK-0127/0128/0129 and TASK-0130 REWORK-1/2 authority, all backend API parser and frozen legacy/AI boundaries. Product Owner acceptance remains PENDING and TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T07:47:56.666121Z"
+    },
+    "received_at": "2026-09-01T07:47:56.666121Z"
+  }
+}
