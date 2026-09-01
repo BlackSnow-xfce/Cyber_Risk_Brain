@@ -156,14 +156,19 @@ def _pump(
     render_lock: threading.Lock | None = None,
 ) -> None:
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    while chunk := source.read(4096):
-        capture.write(chunk)
-        capture.flush()
-        rendered = decoder.decode(chunk)
-        if rendered:
-            with render_lock or _NullLock():
-                console.write(rendered)
-                console.flush()
+    try:
+        while chunk := source.read(4096):
+            capture.write(chunk)
+            capture.flush()
+            rendered = decoder.decode(chunk)
+            if rendered:
+                with render_lock or _NullLock():
+                    console.write(rendered)
+                    console.flush()
+    except (OSError, ValueError):
+        # The relay closes inherited Windows pipe handles after the delegated
+        # process exits so a grandchild cannot keep the visible run hung.
+        pass
     remainder = decoder.decode(b"", final=True)
     if remainder:
         with render_lock or _NullLock():
@@ -426,8 +431,14 @@ def relay(
                     break
                 except subprocess.TimeoutExpired:
                     continue
-            stdout_thread.join()
-            stderr_thread.join()
+            stdout_thread.join(timeout=2.0)
+            stderr_thread.join(timeout=2.0)
+            if stdout_thread.is_alive():
+                child.stdout.close()
+            if stderr_thread.is_alive():
+                child.stderr.close()
+            stdout_thread.join(timeout=1.0)
+            stderr_thread.join(timeout=1.0)
             update = getattr(console, "update", None)
             if update is not None:
                 update()
