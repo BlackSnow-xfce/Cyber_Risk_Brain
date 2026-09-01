@@ -109,6 +109,79 @@ describe("FindingRiskContextSection", () => {
         expect(container.querySelector("br")).toBeNull();
     });
 
+    it("uses restrained semantic theme tokens without changing authoritative values", () => {
+        const semanticContext: FindingRiskContext = {
+            ...context,
+            business_context: {
+                status: "RESOLVED",
+                canonical_asset_id: "asset-1",
+                business_service: "Payments",
+                environment: "PRODUCTION",
+                service_criticality: "CRITICAL",
+                source_reference: "cmdb:1",
+                facts: [],
+            },
+            business_impact_readiness: {
+                ...context.business_impact_readiness!,
+                status: "READY",
+                reason: "Authoritative facts are available.",
+                missing_requirements: [],
+                completeness_status: "available",
+            },
+            service_impact_profile: {
+                status: "RESOLVED",
+                canonical_asset_id: "asset-1",
+                business_service: "Payments",
+                confidentiality_importance: "HIGH",
+                integrity_importance: "CRITICAL",
+                availability_importance: "HIGH",
+                source_reference: "service-profile:1",
+            },
+            threat_intelligence: {
+                ...context.threat_intelligence,
+                relationships: [{
+                    applicability: "applicable",
+                    cve_identifier: "CVE-2004-2687",
+                    intelligence: {
+                        contract_version: "1.0",
+                        cve_identifier: "CVE-2004-2687",
+                        nvd: fact("AVAILABLE", "nvd", "nvd:CVE-2004-2687"),
+                        cvss: fact("UNKNOWN", "nvd", "nvd:CVE-2004-2687#cvss"),
+                        epss: fact("NOT_EVALUATED", "epss", "epss:CVE-2004-2687"),
+                        cisa_kev: fact("available", "cisa_kev", "cisa-kev:CVE-2004-2687"),
+                        exploitation_evidence: fact("not_evaluated", "nvd", "nvd:CVE-2004-2687#exploitation"),
+                    },
+                }],
+            },
+        };
+
+        render(<FindingRiskContextSection context={semanticContext} error={null} loading={false} onLoad={vi.fn()} />);
+
+        const sourceField = screen.getAllByText("Source")[0].closest("[data-authority-field]");
+        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-color-token", "info.main");
+        expect(within(sourceField as HTMLElement).getByText("greenbone")).toHaveAttribute("data-color-token", "text.secondary");
+        expect(within(screen.getByLabelText("Business-Impact Readiness")).getByText("READY")).toHaveAttribute("data-color-token", "success.main");
+        expect(within(screen.getByLabelText("Service Impact Profile")).getByText("RESOLVED")).toHaveAttribute("data-color-token", "success.main");
+        expect(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE")).toHaveAttribute("data-color-token", "warning.main");
+        expect(screen.getByText("AVAILABLE")).toHaveAttribute("data-color-token", "success.main");
+        expect(screen.getByText("UNKNOWN")).toHaveAttribute("data-color-token", "warning.main");
+        expect(screen.getAllByText("NOT_EVALUATED")[0]).toHaveAttribute("data-color-token", "warning.main");
+        screen.getAllByText("HIGH").forEach((value) => {
+            expect(value).toHaveAttribute("data-color-token", "text.primary");
+        });
+        expect(screen.getByText("service-profile:1")).toHaveAttribute("data-color-token", "text.secondary");
+        expect(semanticContext.business_impact).toBeNull();
+        expect(semanticContext.decision).toBeNull();
+        expect(semanticContext.recommendations).toEqual([]);
+    });
+
+    it("retains existing error semantics without using color as the error text", () => {
+        render(<FindingRiskContextSection context={null} error="Controlled source failure." loading={false} onLoad={vi.fn()} />);
+        const error = screen.getByRole("alert");
+        expect(error).toHaveClass("MuiAlert-colorError");
+        expect(error).toHaveTextContent("Controlled source failure.");
+    });
+
     it("renders resolved business facts with provenance without inferring impact", () => {
         render(<FindingRiskContextSection context={{
             ...context,
