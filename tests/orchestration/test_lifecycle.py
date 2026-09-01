@@ -246,7 +246,20 @@ def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path)
     prior_request = _request()
     prior_result = _result(prior_request, ArchitectReviewDisposition.FAIL)
     store.persist_architect_result(prior_result)
-    rework = ReworkContract("TASK-9000", 1, "1" * 40, ("a.py",), ("finding",), ("pytest",), NOW)
+    store.append_projection_event(prior_result.review_result_id, {
+        "task_id": "TASK-9000", "review_result_id": prior_result.review_result_id,
+        "branch": "branch", "expected_parent": prior_result.expected_head,
+        "projection_commit": "1" * 40, "disposition": ArchitectReviewDisposition.FAIL,
+        "state": "PUBLISHED", "timestamp": NOW,
+    })
+    rework = ReworkContract(
+        "TASK-9000", 1, "1" * 40, prior_result.allowed_rework_scope,
+        tuple(
+            f"{finding.fingerprint}:{finding.rule_id}:{finding.action_id}"
+            for finding in prior_result.findings
+        ),
+        prior_result.required_validations, prior_result.created_at,
+    )
     exact_rework_id = rework.canonical_id(prior_result.review_result_id)
     store.persist_rework_contract(exact_rework_id, rework, prior_result.review_result_id)
     envelope = RequestRepo.ai_root / "orchestration/review-inbox/TASK-9000-rework.json"

@@ -10,8 +10,8 @@ from enum import Enum
 from pathlib import Path
 
 from .contracts import (
-    ArchitectReviewRequest, ArchitectReviewResult, AuditEvent, CodexExecutionResult,
-    ReworkContract, canonical_digest, utc_now,
+    ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult, AuditEvent,
+    CodexExecutionResult, ReworkContract, canonical_digest, utc_now,
 )
 
 
@@ -112,7 +112,93 @@ class LocalRuntimeStore:
             raise ValueError("persisted ReworkContract content identity mismatch")
         if candidates[0].name != f"{iteration}-{contract_id}.json":
             raise ValueError("persisted ReworkContract filename identity mismatch")
+        result = self._authorizing_fail_result(authorizing)
+        expected_findings = tuple(
+            f"{finding.fingerprint}:{finding.rule_id}:{finding.action_id}"
+            for finding in result.findings
+        )
+        if (
+            contract.task_id != result.task_id
+            or contract.review_iteration != result.review_iteration + 1
+            or contract.findings != expected_findings
+            or contract.allowed_rework_scope != result.allowed_rework_scope
+            or contract.required_validations != result.required_validations
+            or contract.created_at != result.created_at
+        ):
+            raise ValueError("persisted ReworkContract does not match authorizing FAIL result")
+        self._validate_published_fail_projection(result, contract)
         return contract_id
+
+    def _authorizing_fail_result(self, result_id: str) -> ArchitectReviewResult:
+        from .architect_review import parse_architect_review_result
+
+        path = self.root / "architect-review-results" / f"{result_id}.json"
+        if not path.is_file():
+            raise ValueError("authorizing ArchitectReviewResult is missing")
+        try:
+            envelope = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(envelope, dict) or set(envelope) != {"architect_review_result"}:
+                raise ValueError("result envelope fields do not match authority")
+            payload = envelope["architect_review_result"]
+            if not isinstance(payload, dict):
+                raise ValueError("result payload is not an object")
+            result = parse_architect_review_result(json.dumps(payload))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("authorizing ArchitectReviewResult is malformed") from exc
+        values = asdict(result)
+        values.pop("review_result_id")
+        canonical_id = canonical_digest({"schema": "architect-review-result-v1", **values})
+        if result.review_result_id != result_id or canonical_id != result_id:
+            raise ValueError("authorizing ArchitectReviewResult identity mismatch")
+        if result.disposition is not ArchitectReviewDisposition.FAIL:
+            raise ValueError("only ArchitectReviewResult.FAIL may authorize rework")
+        return result
+
+    def _validate_published_fail_projection(
+        self, result: ArchitectReviewResult, contract: ReworkContract,
+    ) -> None:
+        path = self.root / "lifecycle-projections" / f"{result.review_result_id}.jsonl"
+        if not path.is_file():
+            raise ValueError("authorizing FAIL projection evidence is missing")
+        published: list[dict[str, object]] = []
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                wrapper = json.loads(line)
+                if not isinstance(wrapper, dict) or set(wrapper) != {"projection_event"}:
+                    raise ValueError("projection event envelope is malformed")
+                event = wrapper["projection_event"]
+                if not isinstance(event, dict):
+                    raise ValueError("projection event is not an object")
+                if event.get("state") == "PUBLISHED":
+                    published.append(event)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("authorizing FAIL projection evidence is malformed") from exc
+        if len(published) != 1:
+            raise ValueError("authorizing FAIL projection is missing or ambiguous")
+        event = published[0]
+        required = {
+            "task_id", "review_result_id", "branch", "expected_parent",
+            "projection_commit", "disposition", "state", "timestamp",
+        }
+        if set(event) != required:
+            raise ValueError("published FAIL projection fields do not match authority")
+        try:
+            timestamp = datetime.fromisoformat(str(event["timestamp"]))
+        except ValueError as exc:
+            raise ValueError("published FAIL projection timestamp is malformed") from exc
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("published FAIL projection timestamp must be timezone-aware")
+        if (
+            event["task_id"] != result.task_id
+            or event["review_result_id"] != result.review_result_id
+            or event["disposition"] != ArchitectReviewDisposition.FAIL.value
+            or event["state"] != "PUBLISHED"
+            or event["expected_parent"] != result.expected_head
+            or event["projection_commit"] != contract.expected_head
+            or not isinstance(event["branch"], str)
+            or not event["branch"].strip()
+        ):
+            raise ValueError("published FAIL projection does not match rework authority")
 
     def append_lifecycle(self, payload: dict[str, object]) -> Path:
         path = self.root / "lifecycle-events.jsonl"
