@@ -7,6 +7,22 @@ export interface FindingRiskInput {
     source: string | null;
 }
 
+export interface FindingContextProjection {
+    status: "CURRENT" | "STALE" | "CONFLICTED" | "SUPERSEDED" | "REVOKED" | "UNKNOWN";
+    value: string | boolean | null;
+    observation_ids: readonly string[];
+    evidence_ids: readonly string[];
+    source_references: readonly string[];
+    authority_references: readonly string[];
+    observed_at: readonly string[];
+    ingested_at: readonly string[];
+    valid_until: readonly string[];
+    schema_versions: readonly string[];
+    digests: readonly string[];
+    missing_requirements: readonly string[];
+    conflict_references: readonly string[];
+}
+
 export interface FindingRiskContext {
     finding_id: string;
     source_facts: readonly {
@@ -121,6 +137,11 @@ export interface FindingRiskContext {
     business_impact: null;
     decision: null;
     recommendations: readonly never[];
+    context_supply?: {
+        exposure: FindingContextProjection;
+        detection_available: FindingContextProjection;
+        mitre_tactic: FindingContextProjection;
+    } | null;
 }
 
 export interface TechnicalEffect {

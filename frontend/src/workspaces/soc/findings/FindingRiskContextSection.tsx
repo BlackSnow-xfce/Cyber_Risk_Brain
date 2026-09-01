@@ -42,6 +42,9 @@ const incompleteStatusValues = new Set([
     "unknown",
     "NO_DATA",
     "no_data",
+    "STALE",
+    "CONFLICTED",
+    "REVOKED",
 ]);
 
 function statusColor(value: ReactNode): "success" | "warning" | undefined {
@@ -157,6 +160,25 @@ export default function FindingRiskContextSection({ context, error, loading, onL
             {error && <Alert severity="error">{error}</Alert>}
             {context && (
                 <Stack spacing={2}>
+                    {context.context_supply && (
+                        <AuthorityGroup label="Operational Context Supply" authorityTone={context.assessment.status === "ASSESSED" ? "success" : "warning"}>
+                            <Stack spacing={1.5} data-layout-spacing="records">
+                                {Object.entries(context.context_supply).map(([name, projection]) => (
+                                    <Stack key={name} spacing={1.25} aria-label={`Context projection ${name}`} data-layout-spacing="units">
+                                        <AuthorityField label="Input" value={presentationLabel(name)} />
+                                        <AuthorityField label="Status" value={projection.status} semanticStatus authorityTone={authorityTone(projection.status)} />
+                                        <AuthorityField label="Value" value={projection.value === null ? "Not available" : String(projection.value)} />
+                                        {projection.observation_ids.map((identifier) => <AuthorityField key={identifier} label="Observation" value={identifier} valueTone="secondary" />)}
+                                        {projection.source_references.map((reference) => <AuthorityField key={reference} label="Source" value={reference} valueTone="secondary" />)}
+                                        {projection.authority_references.map((reference) => <AuthorityField key={reference} label="Authority" value={reference} valueTone="secondary" />)}
+                                        {projection.valid_until.map((timestamp) => <AuthorityField key={timestamp} label="Valid until" value={timestamp} />)}
+                                        {projection.missing_requirements.map((requirement) => <AuthorityField key={requirement} label="Missing requirement" value={presentationLabel(requirement)} authorityTone="warning" />)}
+                                        {projection.conflict_references.map((reference) => <AuthorityField key={reference} label="Conflict" value={reference} authorityTone="warning" />)}
+                                    </Stack>
+                                ))}
+                            </Stack>
+                        </AuthorityGroup>
+                    )}
                     <AuthorityGroup label="What PredatorAI knows" authorityTone="success">
                         <Stack spacing={1.25}>
                             {context.source_facts.map((fact) => (

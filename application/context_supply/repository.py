@@ -1,0 +1,9 @@
+from typing import Protocol
+
+from core.context_supply import ContextObservation, ContextType
+
+
+class ContextObservationRepository(Protocol):
+    def add(self, observation: ContextObservation) -> ContextObservation: ...
+    def get(self, observation_id: str) -> ContextObservation | None: ...
+    def list(self, *, organization_id: str, context_type: ContextType | None = None, asset_id: str | None = None, finding_id: str | None = None) -> tuple[ContextObservation, ...]: ...

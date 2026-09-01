@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
+from application.context_supply import ContextSupplyRiskInputService, FileContextObservationRepository
 
 from application import (
     AIModelAdapterBinding,
@@ -151,6 +152,8 @@ from settings import (
     ASSET_CONTEXT_PATH,
     ASSET_BUSINESS_CONTEXT_PATH,
     SERVICE_IMPACT_PROFILE_PATH,
+    CONTEXT_SUPPLY_PATH,
+    CONTEXT_SUPPLY_ORGANIZATION_ID,
     GREENBONE_REPORT_PATH,
     INCIDENT_CONTEXT_PATH,
     HUNT_HYPOTHESIS_REPOSITORY_PATH,
@@ -599,6 +602,7 @@ class FindingRiskContextResponse(BaseModel):
     business_impact: None
     decision: None
     recommendations: list[None]
+    context_supply: dict[str, object] | None = None
 
 
 class IncidentPrincipalResponse(BaseModel):
@@ -1231,6 +1235,14 @@ def get_finding_risk_context_use_case() -> FindingRiskContextUseCase:
         ),
         technical_effect=FindingTechnicalEffectService(),
         classification_readiness=BusinessImpactClassificationReadinessService(),
+        context_supply=(
+            ContextSupplyRiskInputService(
+                FileContextObservationRepository(CONTEXT_SUPPLY_PATH),
+                CONTEXT_SUPPLY_ORGANIZATION_ID,
+            )
+            if CONTEXT_SUPPLY_PATH and CONTEXT_SUPPLY_ORGANIZATION_ID
+            else None
+        ),
     )
 
 
@@ -1617,6 +1629,22 @@ def _finding_risk_context_response(
             source_reference=item.source_reference,
             observed_at=item.observed_at,
         )
+    def projection_response(projection):
+        return {
+            "status": projection.status.value,
+            "value": projection.value,
+            "observation_ids": [item.observation_id for item in projection.observations],
+            "evidence_ids": [reference for item in projection.observations for reference in item.provenance.evidence_references],
+            "source_references": [item.provenance.source_reference for item in projection.observations],
+            "authority_references": [item.authority_reference for item in projection.observations],
+            "observed_at": [item.observed_at.isoformat() for item in projection.observations],
+            "ingested_at": [item.ingested_at.isoformat() for item in projection.observations],
+            "valid_until": [item.valid_until.isoformat() for item in projection.observations],
+            "schema_versions": [item.schema_version for item in projection.observations],
+            "digests": [item.digest for item in projection.observations],
+            "missing_requirements": list(projection.missing_requirements),
+            "conflict_references": list(projection.conflict_references),
+        }
     return FindingRiskContextResponse(
         finding_id=context.finding_id,
         source_facts=[
@@ -1803,6 +1831,15 @@ def _finding_risk_context_response(
         business_impact=None,
         decision=None,
         recommendations=[],
+        context_supply=(
+            {
+                "exposure": projection_response(context.context_supply.exposure),
+                "detection_available": projection_response(context.context_supply.detection),
+                "mitre_tactic": projection_response(context.context_supply.mitre),
+            }
+            if context.context_supply is not None
+            else None
+        ),
     )
 
 

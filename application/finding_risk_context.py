@@ -48,6 +48,11 @@ from application.risk_readiness import (
     RiskAssessmentResult,
     RiskReadinessService,
 )
+from application.context_supply import (
+    ContextSupplyRiskInputService,
+    RiskInputPromotionResult,
+    ThreatIntelligencePromoter,
+)
 from application.security_observation_correlation import (
     SecurityObservationCorrelationApplicationService,
     SecurityObservationCorrelationResult,
@@ -81,6 +86,7 @@ class FindingRiskContext:
     service_impact_profile: FindingServiceImpactProfileResolution
     technical_effect: FindingTechnicalEffectProjection
     business_impact_classification_readiness: BusinessImpactClassificationReadiness
+    context_supply: RiskInputPromotionResult | None = None
     business_impact: None = None
     decision: None = None
     recommendations: tuple[None, ...] = ()
@@ -116,6 +122,7 @@ class FindingRiskContextUseCase:
         service_impact_profile: FindingServiceImpactProfileUseCase | None = None,
         technical_effect: FindingTechnicalEffectService | None = None,
         classification_readiness: BusinessImpactClassificationReadinessService | None = None,
+        context_supply: ContextSupplyRiskInputService | None = None,
     ) -> None:
         self._findings = findings
         self._asset_context = asset_context
@@ -131,6 +138,7 @@ class FindingRiskContextUseCase:
         self._service_impact_profile = service_impact_profile
         self._technical_effect = technical_effect or FindingTechnicalEffectService()
         self._classification_readiness = classification_readiness or BusinessImpactClassificationReadinessService()
+        self._context_supply = context_supply
 
     def project(self, finding_id: str) -> FindingRiskContext:
         finding = self._select_finding(finding_id)
@@ -151,6 +159,26 @@ class FindingRiskContextUseCase:
         risk_inputs = RiskAssessmentInput.from_universal_finding(
             finding
         ).with_asset_context(asset_context.asset_context)
+        context_supply = None
+        if self._context_supply is not None:
+            canonical_asset = asset_context.asset_context
+            asset_reference = (
+                f"asset-context:{canonical_asset.canonical_asset_id}:"
+                f"{canonical_asset.source_reference}"
+                if canonical_asset is not None
+                else ""
+            )
+            threat_match = ThreatIntelligencePromoter().promote(
+                threat_intelligence,
+                correlation,
+                finding_id=finding.id,
+                asset_reference=asset_reference,
+            )
+            context_supply = self._context_supply.promote(
+                risk_inputs,
+                threat_intelligence_match=threat_match,
+            )
+            risk_inputs = context_supply.risk_input
         assessment = self._risk_readiness.assess(risk_inputs)
         evidence_readiness = self._evidence_readiness.evaluate(correlation)
         priority = self._risk_priority.prioritize(
@@ -212,6 +240,7 @@ class FindingRiskContextUseCase:
             service_impact_profile=service_impact_profile,
             technical_effect=technical_effect,
             business_impact_classification_readiness=classification_readiness,
+            context_supply=context_supply,
         )
     def _select_finding(self, finding_id: str) -> UniversalFinding:
         matches = [
