@@ -1,5 +1,6 @@
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
@@ -39,10 +40,10 @@ const incompleteStatusValues = new Set([
     "no_data",
 ]);
 
-function statusColor(value: ReactNode) {
+function statusColor(value: ReactNode): "success" | "warning" | undefined {
     if (typeof value !== "string") return undefined;
-    if (positiveStatusValues.has(value)) return "success.main";
-    if (incompleteStatusValues.has(value)) return "warning.main";
+    if (positiveStatusValues.has(value)) return "success";
+    if (incompleteStatusValues.has(value)) return "warning";
     return undefined;
 }
 
@@ -50,17 +51,37 @@ function AuthorityField({ label, value, detail, semanticStatus = false, valueTon
     const valueColor = semanticStatus ? statusColor(value) : undefined;
     const neutralValueColor = valueTone === "secondary" ? "text.secondary" : "text.primary";
     return (
-        <Stack spacing={0.25} sx={{ minWidth: 0 }} data-authority-field={label}>
-            <Typography variant="caption" color="info.main" sx={{ fontWeight: 600 }} data-color-token="info.main">{label}</Typography>
+        <Stack spacing={0.125} sx={{ minWidth: 0 }} data-authority-field={label} data-layout-spacing="compact">
             <Typography
-                component="div"
-                variant="body2"
-                color={valueColor ?? neutralValueColor}
-                sx={wrappingValueSx}
-                data-color-token={valueColor ?? neutralValueColor}
+                variant="caption"
+                color="info.main"
+                sx={{ fontWeight: 700, lineHeight: 1.2, letterSpacing: "0.06em", textTransform: "uppercase" }}
+                data-color-token="info.main"
+                data-structural-label="true"
             >
-                {value}
+                {label}
             </Typography>
+            {valueColor ? (
+                <Chip
+                    label={value}
+                    size="small"
+                    variant="outlined"
+                    color={valueColor}
+                    sx={{ alignSelf: "flex-start", fontWeight: 700 }}
+                    data-status-semantic={valueColor}
+                    data-color-token={`${valueColor}.main`}
+                />
+            ) : (
+                <Typography
+                    component="div"
+                    variant="body2"
+                    color={neutralValueColor}
+                    sx={wrappingValueSx}
+                    data-color-token={neutralValueColor}
+                >
+                    {value}
+                </Typography>
+            )}
             {detail !== undefined && (
                 <Typography component="div" variant="caption" color="text.secondary" sx={wrappingValueSx} data-color-token="text.secondary">{detail}</Typography>
             )}
@@ -70,7 +91,7 @@ function AuthorityField({ label, value, detail, semanticStatus = false, valueTon
 
 function AuthorityGroup({ label, children, structural = false }: { label: string; children: ReactNode; structural?: boolean }) {
     return (
-        <Stack spacing={1} aria-label={label} sx={{ minWidth: 0 }}>
+        <Stack spacing={1.25} aria-label={label} sx={{ minWidth: 0 }} data-layout-spacing={structural ? "group" : "section"}>
             <Typography
                 variant="subtitle2"
                 color={structural ? "info.main" : undefined}
@@ -117,13 +138,13 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                     <AuthorityGroup label="What PredatorAI knows">
                         <Stack spacing={1.25}>
                             {context.source_facts.map((fact) => (
-                                <Stack key={fact.name} spacing={0.75}>
+                                <Stack key={fact.name} spacing={1.25} data-layout-spacing="units">
                                     <AuthorityField label={presentationLabel(fact.name)} value={fact.value} />
                                     <AuthorityField label="Source" value={fact.source_reference} valueTone="secondary" />
                                 </Stack>
                             ))}
                             {context.asset_context.status === "resolved" && (
-                                <Stack spacing={0.75} aria-label="Canonical asset context">
+                                <Stack spacing={1.25} aria-label="Canonical asset context" data-layout-spacing="units">
                                     <AuthorityField label="Canonical asset" value={context.asset_context.canonical_asset_id} />
                                     <AuthorityField label="Asset criticality" value={context.asset_context.criticality} />
                                     <AuthorityField label="Source" value={context.asset_context.source_reference} valueTone="secondary" />
@@ -136,9 +157,9 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                         <>
                             <AuthorityGroup label="Authoritative Business Context">
                                 {context.business_context.status === "RESOLVED" ? (
-                                    <Stack spacing={1.25}>
+                                    <Stack spacing={1.5} data-layout-spacing="records">
                                         {context.business_impact_readiness.facts.map((fact) => (
-                                            <Stack key={fact.name} spacing={0.75}>
+                                            <Stack key={fact.name} spacing={1.25} data-layout-spacing="units">
                                                 <AuthorityField label={presentationLabel(fact.name)} value={fact.value} />
                                                 <AuthorityField label="Source" value={fact.source_reference} valueTone="secondary" />
                                             </Stack>
@@ -146,7 +167,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                     </Stack>
                                 ) : (
                                     <Alert severity="warning">
-                                        <Stack spacing={1}>
+                                        <Stack spacing={1.25} data-layout-spacing="units">
                                             <AuthorityField label="Status" value={context.business_context.status} semanticStatus />
                                             <AuthorityField label="Reason" value="No organizational facts were inferred." />
                                         </Stack>
@@ -161,7 +182,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                     <AuthorityField label="Completeness" value={context.business_impact_readiness.completeness_status} semanticStatus />
                                     {context.business_impact_readiness.missing_requirements.length > 0 && (
                                         <AuthorityGroup label="Missing requirements" structural>
-                                            <Stack spacing={1}>
+                                            <Stack spacing={1.5} data-layout-spacing="records">
                                                 {context.business_impact_readiness.missing_requirements.map((requirement) => (
                                                     <AuthorityField key={requirement} label="Requirement" value={presentationLabel(requirement)} detail={requirement} />
                                                 ))}
@@ -200,7 +221,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                 <AuthorityField label="Status" value={context.technical_effect.status} semanticStatus />
                                 <AuthorityField label="Reason" value="This technical projection is not Business Impact." />
                                 {context.technical_effect.effects.map((effect) => (
-                                    <Stack key={`${effect.cve_identifier}:${effect.source_reference}`} spacing={1} aria-label={`Technical effect ${effect.cve_identifier}`}>
+                                    <Stack key={`${effect.cve_identifier}:${effect.source_reference}`} spacing={1.5} aria-label={`Technical effect ${effect.cve_identifier}`} data-layout-spacing="records">
                                         <AuthorityField label="CVE" value={effect.cve_identifier} />
                                         <AuthorityField label="CVSS version" value={effect.cvss_version} />
                                         <AuthorityField label="CVSS vector" value={effect.cvss_vector} />
@@ -225,7 +246,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                 <Typography variant="body2">Readiness is not a Business Impact result.</Typography>
                                 {context.business_impact_classification_readiness.missing_requirements.length > 0 && (
                                     <AuthorityGroup label="Missing requirements" structural>
-                                        <Stack spacing={1}>
+                                        <Stack spacing={1.5} data-layout-spacing="records">
                                             {context.business_impact_classification_readiness.missing_requirements.map((requirement) => (
                                                 <AuthorityField key={requirement} label="Requirement" value={presentationLabel(requirement)} detail={requirement} />
                                             ))}
@@ -239,7 +260,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                     <AuthorityGroup label="Threat Intelligence">
                         <Stack spacing={1.5}>
                             {context.threat_intelligence.relationships.map((relationship, index) => (
-                                <Stack key={relationship.cve_identifier ?? `not-applicable-${index}`} spacing={1}>
+                                <Stack key={relationship.cve_identifier ?? `not-applicable-${index}`} spacing={1.5} data-layout-spacing="records">
                                     <AuthorityField label="CVE" value={relationship.cve_identifier ?? "No applicable CVE"} />
                                     <AuthorityField label="Applicability" value={relationship.applicability} semanticStatus />
                                     {relationship.intelligence && Object.entries({
@@ -249,7 +270,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                         cisa_kev: relationship.intelligence.cisa_kev,
                                         exploitation_evidence: relationship.intelligence.exploitation_evidence,
                                     }).map(([name, fact]) => (
-                                        <Stack key={name} spacing={0.75} aria-label={presentationLabel(name)}>
+                                        <Stack key={name} spacing={1.25} aria-label={presentationLabel(name)} data-layout-spacing="units">
                                             <AuthorityField label="Authority" value={presentationLabel(name)} />
                                             <AuthorityField label="Status" value={fact.status} semanticStatus />
                                             <AuthorityField label="Source" value={fact.provenance.source_type} detail={fact.provenance.source_reference} />
@@ -263,14 +284,14 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                     <AuthorityGroup label="Correlation / Evidence">
                         <Stack spacing={1.5}>
                             <AuthorityGroup label="Correlation" structural>
-                                <Stack spacing={1}>
+                                <Stack spacing={1.25} data-layout-spacing="units">
                                     <AuthorityField label="Status" value={context.correlation.completeness_status} semanticStatus />
                                     <AuthorityField label="Source" value={context.correlation.source_type} detail={context.correlation.source_reference} />
                                 </Stack>
                             </AuthorityGroup>
                             {context.evidence.map((evidence) => (
                                 <AuthorityGroup key={evidence.identifier} label="Evidence" structural>
-                                    <Stack spacing={1}>
+                                    <Stack spacing={1.25} data-layout-spacing="units">
                                         <AuthorityField label="Reference" value={evidence.identifier} valueTone="secondary" />
                                         <AuthorityField label="Kind" value={evidence.kind} />
                                         <AuthorityField label="Evidence type" value={evidence.evidence_type} />
@@ -278,7 +299,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                         <AuthorityField label="Source" value={evidence.source_type} detail={evidence.source_reference} />
                                         {evidence.input_references.length > 0 && (
                                             <AuthorityGroup label="Inputs" structural>
-                                                <Stack spacing={1}>
+                                                <Stack spacing={1.5} data-layout-spacing="records">
                                                     {evidence.input_references.map((reference) => (
                                                         <AuthorityField key={reference} label={inputLabel(reference)} value={reference} valueTone="secondary" />
                                                     ))}
@@ -292,12 +313,12 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                     </AuthorityGroup>
 
                     <AuthorityGroup label="Information still missing">
-                        <Stack spacing={1}>
+                        <Stack spacing={1.25} data-layout-spacing="units">
                             {context.assessment.missing_inputs.map((input) => (
                                 <AuthorityField key={input.name} label={presentationLabel(input.name)} value={input.state} semanticStatus />
                             ))}
                             {context.evidence_readiness.missing_requirements.map((requirement) => (
-                                <Stack key={requirement} spacing={0.25}>
+                                <Stack key={requirement} spacing={1.25} data-layout-spacing="units">
                                     <span hidden>{`Evidence requirement: ${requirement}`}</span>
                                     <AuthorityField label="Evidence requirement" value={presentationLabel(requirement)} detail={requirement} />
                                 </Stack>
@@ -315,7 +336,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                 <AuthorityField label="Source" value={context.priority.source_type} detail={context.priority.source_reference} />
                                 {context.priority.considered_evidence_ids.length > 0 && (
                                     <AuthorityGroup label="Evidence" structural>
-                                        <Stack spacing={1}>
+                                        <Stack spacing={1.5} data-layout-spacing="records">
                                             {context.priority.considered_evidence_ids.map((identifier) => (
                                                 <AuthorityField key={identifier} label="Reference" value={identifier} valueTone="secondary" />
                                             ))}
@@ -324,7 +345,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                 )}
                                 {context.priority.referenced_input_references.length > 0 && (
                                     <AuthorityGroup label="Inputs" structural>
-                                        <Stack spacing={1}>
+                                        <Stack spacing={1.5} data-layout-spacing="records">
                                             {context.priority.referenced_input_references.map((reference) => (
                                                 <AuthorityField key={reference} label={inputLabel(reference)} value={reference} valueTone="secondary" />
                                             ))}
@@ -334,7 +355,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                             </Stack>
                         ) : (
                             <Alert severity="warning">
-                                <Stack spacing={1}>
+                                <Stack spacing={1.25} data-layout-spacing="units">
                                     <AuthorityField label="Status" value={context.priority?.status ?? "UNAVAILABLE"} semanticStatus />
                                     <AuthorityField label="Reason" value={context.priority?.reason ?? "Priority is unavailable."} />
                                     {context.priority?.missing_requirements.map((requirement) => (

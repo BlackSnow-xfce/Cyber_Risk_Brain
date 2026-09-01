@@ -102,7 +102,9 @@ describe("FindingRiskContextSection", () => {
         expect(screen.getByText(/refuses to calculate risk, priority, business impact/)).toBeInTheDocument();
         expect(screen.getByText(/Score, priority, business impact, decision, and recommendations are not available/)).toBeInTheDocument();
         expect(within(screen.getByLabelText("Authoritative Business Context")).getByText("NOT_FOUND")).toBeInTheDocument();
-        expect(screen.getByText("Business service")).toBeInTheDocument();
+        const missingBusinessService = screen.getByText("Business service");
+        expect(missingBusinessService).toHaveAttribute("data-color-token", "text.primary");
+        expect(missingBusinessService.closest(".MuiChip-root")).toBeNull();
         expect(within(screen.getByLabelText("Service Impact Profile")).getByText("NOT_FOUND")).toBeInTheDocument();
         expect(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE")).toBeInTheDocument();
         expect(screen.getByText(/Readiness is not a Business Impact result/)).toBeInTheDocument();
@@ -159,17 +161,24 @@ describe("FindingRiskContextSection", () => {
 
         const sourceField = screen.getAllByText("Source")[0].closest("[data-authority-field]");
         expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-color-token", "info.main");
+        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-structural-label", "true");
+        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveStyle({ textTransform: "uppercase", fontWeight: "700" });
+        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveTextContent("Source");
         expect(within(sourceField as HTMLElement).getByText("greenbone")).toHaveAttribute("data-color-token", "text.secondary");
-        expect(within(screen.getByLabelText("Business-Impact Readiness")).getByText("READY")).toHaveAttribute("data-color-token", "success.main");
-        expect(within(screen.getByLabelText("Service Impact Profile")).getByText("RESOLVED")).toHaveAttribute("data-color-token", "success.main");
-        expect(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE")).toHaveAttribute("data-color-token", "warning.main");
-        expect(screen.getByText("AVAILABLE")).toHaveAttribute("data-color-token", "success.main");
-        expect(screen.getByText("UNKNOWN")).toHaveAttribute("data-color-token", "warning.main");
-        expect(screen.getAllByText("NOT_EVALUATED")[0]).toHaveAttribute("data-color-token", "warning.main");
+        expect(sourceField).toHaveAttribute("data-layout-spacing", "compact");
+        expect(sourceField?.parentElement).toHaveAttribute("data-layout-spacing", "units");
+        expectStatusChip(within(screen.getByLabelText("Business-Impact Readiness")).getByText("READY"), "success");
+        expectStatusChip(within(screen.getByLabelText("Service Impact Profile")).getByText("RESOLVED"), "success");
+        expectStatusChip(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE"), "warning");
+        expectStatusChip(screen.getByText("AVAILABLE"), "success");
+        expectStatusChip(screen.getByText("UNKNOWN"), "warning");
+        expectStatusChip(screen.getAllByText("NOT_EVALUATED")[0], "warning");
         screen.getAllByText("HIGH").forEach((value) => {
             expect(value).toHaveAttribute("data-color-token", "text.primary");
+            expect(value.closest(".MuiChip-root")).toBeNull();
         });
         expect(screen.getByText("service-profile:1")).toHaveAttribute("data-color-token", "text.secondary");
+        expect(screen.getByLabelText("Nvd")).toHaveAttribute("data-layout-spacing", "units");
         expect(semanticContext.business_impact).toBeNull();
         expect(semanticContext.decision).toBeNull();
         expect(semanticContext.recommendations).toEqual([]);
@@ -324,6 +333,8 @@ describe("FindingRiskContextSection", () => {
         expect(within(evidence).getByText("correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
         expect(within(evidence).getByText("derived")).toBeInTheDocument();
         const inputs = within(evidence).getByLabelText("Inputs");
+        expect(inputs).toHaveAttribute("data-layout-spacing", "group");
+        expect(inputs.querySelector('[data-layout-spacing="records"]')).not.toBeNull();
         expect(within(inputs).getByText("Finding")).toBeInTheDocument();
         expect(within(inputs).getByText("finding:greenbone:finding-001")).toBeInTheDocument();
         expect(within(inputs).getByText("Asset context")).toBeInTheDocument();
@@ -362,4 +373,13 @@ function fact(status: string, sourceType: string, sourceReference: string) {
         observed_at: null,
         value: null,
     };
+}
+
+function expectStatusChip(text: HTMLElement, semantic: "success" | "warning") {
+    const chip = text.closest(".MuiChip-root");
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveClass("MuiChip-sizeSmall", "MuiChip-outlined", `MuiChip-color${semantic === "success" ? "Success" : "Warning"}`);
+    expect(chip).toHaveAttribute("data-status-semantic", semantic);
+    expect(chip).toHaveAttribute("data-color-token", `${semantic}.main`);
+    expect(chip).toHaveTextContent(text.textContent ?? "");
 }
