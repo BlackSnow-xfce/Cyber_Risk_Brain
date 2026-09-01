@@ -142,6 +142,7 @@ class FakeVisibleProcess:
         self.killed = False
         self.waited = False
         self.stderr = BytesIO(b"AIDP_VISIBLE_CONSOLE_READY_V2\n")
+        self.pid = 42
 
     def communicate(self, timeout=None):
         if self.error is not None and not self.killed:
@@ -177,6 +178,11 @@ def test_visible_windows_runner_uses_trusted_relay_and_separate_argv(tmp_path: P
     assert outcome.returncode == 0
     assert outcome.stdout == '{"type":"completed"}\n'
     assert outcome.stderr == "diagnostic"
+    assert outcome.process_identity is not None
+    assert outcome.process_identity.startswith("pid:42:started_ns:")
+    assert outcome.process_started_at is not None
+    assert outcome.process_completed_at is not None
+    assert outcome.process_started_at <= outcome.process_completed_at
 
 
 def test_visible_windows_runner_product_package_cannot_shadow_relay(tmp_path: Path) -> None:

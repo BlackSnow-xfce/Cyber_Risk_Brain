@@ -191,6 +191,7 @@ class WindowsVisibleCodexRunner:
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+        started_ns = time.time_ns()
         try:
             process = self.popen(
                 relay,
@@ -201,6 +202,8 @@ class WindowsVisibleCodexRunner:
                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010),
                 startupinfo=startupinfo,
             )
+            process_started_at = datetime.now(timezone.utc)
+            process_identity = f"pid:{process.pid}:started_ns:{started_ns}"
             if process.stderr is None:
                 process.kill()
                 process.wait()
@@ -242,6 +245,9 @@ class WindowsVisibleCodexRunner:
                 return ProcessOutcome(
                     None, stdout, stderr, timed_out=True,
                     error=stdout_error or stderr_error or "timeout",
+                    process_identity=process_identity,
+                    process_started_at=process_started_at,
+                    process_completed_at=datetime.now(timezone.utc),
                 )
             except KeyboardInterrupt:
                 process.kill()
@@ -253,6 +259,9 @@ class WindowsVisibleCodexRunner:
         stderr, stderr_error = _decode_process_output(stderr_value, "stderr")
         return ProcessOutcome(
             process.returncode, stdout, stderr, error=stdout_error or stderr_error,
+            process_identity=process_identity,
+            process_started_at=process_started_at,
+            process_completed_at=datetime.now(timezone.utc),
         )
 
 
