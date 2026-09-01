@@ -42,18 +42,25 @@ try {
 
     while ($true) {
         Write-Host ("[{0}] Starting authoritative watcher" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) -ForegroundColor Green
-        & $python -u -m aidp_orchestration `
-            --watch `
-            --root $productRoot `
-            --watch-interval 10 `
-            --timeout 14400 `
-            --architect-contract-branch $contractBranch `
-            --autonomous-architect `
-            --product-branch $productBranch `
-            --infrastructure-root $orchestrationRoot `
-            --architect-contract-root $architectRoot 2>&1 |
-            Tee-Object -FilePath $activityLog -Append
-        $exitCode = $LASTEXITCODE
+        $savedErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            & $python -u -m aidp_orchestration `
+                --watch `
+                --root $productRoot `
+                --watch-interval 10 `
+                --timeout 14400 `
+                --architect-contract-branch $contractBranch `
+                --autonomous-architect `
+                --product-branch $productBranch `
+                --infrastructure-root $orchestrationRoot `
+                --architect-contract-root $architectRoot 2>&1 |
+                Tee-Object -FilePath $activityLog -Append
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+        }
         Write-Host ("[{0}] Watcher exited with code {1}; restarting in 10 seconds" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"), $exitCode) -ForegroundColor Red
         Start-Sleep -Seconds 10
     }
