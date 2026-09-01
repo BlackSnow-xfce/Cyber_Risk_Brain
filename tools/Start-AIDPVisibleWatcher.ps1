@@ -56,7 +56,13 @@ try {
                 --product-branch $productBranch `
                 --infrastructure-root $orchestrationRoot `
                 --architect-contract-root $architectRoot 2>&1 |
-                Tee-Object -FilePath $activityLog -Append
+                ForEach-Object {
+                    $line = [string]$_
+                    $line | Tee-Object -FilePath $activityLog -Append
+                    if ($line -like '*"failure_reason":"Product Owner hard gate"*') {
+                        Write-Host 'WAITING FOR PRODUCT OWNER LIVE ACCEPTANCE' -ForegroundColor Yellow
+                    }
+                }
             $exitCode = $LASTEXITCODE
         }
         finally {
