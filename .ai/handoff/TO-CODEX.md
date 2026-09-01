@@ -2,8 +2,8 @@
 
 Status: WAITING
 Current AIDP Task: TASK-0130
-Current Phase: READY_FOR_ARCHITECT
-Task Status: REVIEW / ARCHITECT PENDING
+Current Phase: REWORK_REQUIRED
+Task Status: REVIEW / REWORK REQUIRED
 Contract-ID: architect-task-0130-rework-11
 Product Owner Live Acceptance: PENDING / NOT READY
-Architect Implementation Review: PENDING
+Architect Implementation Review: FAIL / REWORK REQUIRED
