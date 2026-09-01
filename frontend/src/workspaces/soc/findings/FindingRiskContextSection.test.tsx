@@ -191,6 +191,83 @@ describe("FindingRiskContextSection", () => {
         expect(error).toHaveTextContent("Controlled source failure.");
     });
 
+    it("separates repeated Technical Effect records without mixing their authority", () => {
+        const multiEffectContext: FindingRiskContext = {
+            ...context,
+            technical_effect: {
+                finding_id: "finding-001",
+                status: "AVAILABLE",
+                effects: [
+                    {
+                        finding_id: "finding-001",
+                        cve_identifier: "CVE-2004-2687",
+                        cvss_version: "3.1",
+                        cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+                        confidentiality: "HIGH",
+                        integrity: "LOW",
+                        availability: "NONE",
+                        source_type: "nvd",
+                        source_reference: "nvd:CVE-2004-2687#cvss-v3.1-authoritative-reference",
+                        observed_at: "2026-09-01T08:00:00Z",
+                    },
+                    {
+                        finding_id: "finding-001",
+                        cve_identifier: "CVE-2021-44228",
+                        cvss_version: "3.0",
+                        cvss_vector: "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:H/A:L",
+                        confidentiality: "NONE",
+                        integrity: "HIGH",
+                        availability: "LOW",
+                        source_type: "nvd",
+                        source_reference: "nvd:CVE-2021-44228#cvss-v3.0-authoritative-reference",
+                        observed_at: "2026-09-01T08:05:00Z",
+                    },
+                ],
+                missing_requirements: [],
+                completeness_status: "available",
+                source_type: "finding_technical_effect",
+                source_reference: "finding-technical-effect:available:finding-001",
+            },
+        };
+
+        render(<FindingRiskContextSection context={multiEffectContext} error={null} loading={false} onLoad={vi.fn()} />);
+
+        const technicalEffect = screen.getByLabelText("Technical Effect");
+        expectStatusChip(within(technicalEffect).getByText("AVAILABLE"), "success");
+        const records = within(technicalEffect).getByLabelText("Technical effect records");
+        expect(records).toHaveAttribute("data-layout-spacing", "records");
+        expect(within(records).queryByText("This technical projection is not Business Impact.")).not.toBeInTheDocument();
+
+        const first = within(records).getByLabelText("Technical effect CVE-2004-2687");
+        const second = within(records).getByLabelText("Technical effect CVE-2021-44228");
+        expect(first).toHaveAttribute("data-layout-spacing", "units");
+        expect(second).toHaveAttribute("data-layout-spacing", "units");
+        expect(first.querySelector('[data-layout-spacing="compact"]')).not.toBeNull();
+        expect(second.querySelector('[data-layout-spacing="compact"]')).not.toBeNull();
+
+        expect(within(first).getByText("CVE-2004-2687")).toBeInTheDocument();
+        expect(within(first).getByText("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N")).toBeInTheDocument();
+        expect(within(first).getByText("nvd:CVE-2004-2687#cvss-v3.1-authoritative-reference")).toHaveStyle({ overflowWrap: "anywhere" });
+        expect(within(first).getByText("2026-09-01T08:00:00Z")).toBeInTheDocument();
+        expect(within(first).queryByText("CVE-2021-44228")).not.toBeInTheDocument();
+        expect(within(first).queryByText("nvd:CVE-2021-44228#cvss-v3.0-authoritative-reference")).not.toBeInTheDocument();
+
+        expect(within(second).getByText("CVE-2021-44228")).toBeInTheDocument();
+        expect(within(second).getByText("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:H/A:L")).toBeInTheDocument();
+        expect(within(second).getByText("nvd:CVE-2021-44228#cvss-v3.0-authoritative-reference")).toHaveStyle({ overflowWrap: "anywhere" });
+        expect(within(second).getByText("2026-09-01T08:05:00Z")).toBeInTheDocument();
+        expect(within(second).queryByText("CVE-2004-2687")).not.toBeInTheDocument();
+        expect(within(second).queryByText("nvd:CVE-2004-2687#cvss-v3.1-authoritative-reference")).not.toBeInTheDocument();
+
+        [...within(first).getAllByText(/^(HIGH|LOW|NONE)$/), ...within(second).getAllByText(/^(HIGH|LOW|NONE)$/)].forEach((value) => {
+            expect(value).toHaveAttribute("data-color-token", "text.primary");
+            expect(value.closest(".MuiChip-root")).toBeNull();
+        });
+        expect(multiEffectContext.business_impact).toBeNull();
+        expect(multiEffectContext.decision).toBeNull();
+        expect(multiEffectContext.recommendations).toEqual([]);
+    });
+
     it("renders resolved business facts with provenance without inferring impact", () => {
         render(<FindingRiskContextSection context={{
             ...context,

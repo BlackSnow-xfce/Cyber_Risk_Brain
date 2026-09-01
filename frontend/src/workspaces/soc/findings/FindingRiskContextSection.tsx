@@ -220,18 +220,22 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                             <Stack spacing={1.25}>
                                 <AuthorityField label="Status" value={context.technical_effect.status} semanticStatus />
                                 <AuthorityField label="Reason" value="This technical projection is not Business Impact." />
-                                {context.technical_effect.effects.map((effect) => (
-                                    <Stack key={`${effect.cve_identifier}:${effect.source_reference}`} spacing={1.5} aria-label={`Technical effect ${effect.cve_identifier}`} data-layout-spacing="records">
-                                        <AuthorityField label="CVE" value={effect.cve_identifier} />
-                                        <AuthorityField label="CVSS version" value={effect.cvss_version} />
-                                        <AuthorityField label="CVSS vector" value={effect.cvss_vector} />
-                                        <AuthorityField label="Confidentiality" value={effect.confidentiality} />
-                                        <AuthorityField label="Integrity" value={effect.integrity} />
-                                        <AuthorityField label="Availability" value={effect.availability} />
-                                        <AuthorityField label="Source" value={effect.source_type} detail={effect.source_reference} />
-                                        <AuthorityField label="Observed" value={effect.observed_at} />
+                                {context.technical_effect.effects.length > 0 && (
+                                    <Stack spacing={1.5} data-layout-spacing="records" aria-label="Technical effect records">
+                                        {context.technical_effect.effects.map((effect) => (
+                                            <Stack key={`${effect.cve_identifier}:${effect.source_reference}`} spacing={1.25} aria-label={`Technical effect ${effect.cve_identifier}`} data-layout-spacing="units">
+                                                <AuthorityField label="CVE" value={effect.cve_identifier} />
+                                                <AuthorityField label="CVSS version" value={effect.cvss_version} />
+                                                <AuthorityField label="CVSS vector" value={effect.cvss_vector} />
+                                                <AuthorityField label="Confidentiality" value={effect.confidentiality} />
+                                                <AuthorityField label="Integrity" value={effect.integrity} />
+                                                <AuthorityField label="Availability" value={effect.availability} />
+                                                <AuthorityField label="Source" value={effect.source_type} detail={effect.source_reference} />
+                                                <AuthorityField label="Observed" value={effect.observed_at} />
+                                            </Stack>
+                                        ))}
                                     </Stack>
-                                ))}
+                                )}
                             </Stack>
                         </AuthorityGroup>
                     )}
