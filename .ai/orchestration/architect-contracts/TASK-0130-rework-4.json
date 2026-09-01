@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-4",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 4,
+      "expected_head": "1f47189d22a6025fd6ba587d41035547c80efbac",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Add a restrained theme-token semantic color hierarchy to the accepted REWORK-3 label/value presentation. Structural and data labels use MUI info.main; ordinary values references and provenance remain text.primary or text.secondary. Do not hard-code colors or modify the global theme.",
+        "Color only exact positive status values READY AVAILABLE and RESOLVED with success.main. Color only exact incomplete authority states UNAVAILABLE NOT_FOUND NOT_EVALUATED and UNKNOWN with warning.main. Reserve error.main or existing MUI error semantics for genuine surfaced failures. Never infer status from technical severity presence or another value and never normalize or coerce status strings.",
+        "Preserve explicit visible status text and every REWORK-3 Stack spacing label/value block grouped input/fact/effect structure long-reference wrapping semantic section order and section-heading hierarchy. Color supplements structure and must not become the sole state signal.",
+        "Add focused rendering tests for semantic theme-token intent without brittle pixel or raw computed-color assertions: structural labels declare info.main; positive and incomplete statuses declare success.main and warning.main; neutral references have no status semantic; genuine surfaced error presentation remains error semantic; exact values and REWORK-3 structure remain unchanged.",
+        "Preserve business_impact null decision null recommendations empty all TASK-0127/0128/0129 and TASK-0130 authority and frozen backend API parser CVSS readiness priority provenance global UI legacy and AI boundaries. Product Owner acceptance remains PENDING and TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T08:15:00Z"
+    },
+    "received_at": "2026-09-01T08:15:00Z"
+  }
+}
