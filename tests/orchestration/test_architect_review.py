@@ -218,6 +218,13 @@ def test_invalid_architect_result_preserves_bounded_diagnostic(tmp_path: Path):
     assert result.failure_reason == (
         "Architect result is invalid: ValueError: Architect result may not assert Product Owner, DONE or next-task authority"
     )
+    assert result.provenance.process_identity == "pid:42:started_ns:1"
+
+
+def test_architect_jsonl_uses_schema_constrained_final_agent_message() -> None:
+    first = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"draft":true}'}})
+    final = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"disposition":"PASS"}'}})
+    assert architect_review._last_message_payload(f"{first}\n{final}\n") == '{"disposition":"PASS"}'
 
 
 def _git(root: Path, *args: str) -> str:

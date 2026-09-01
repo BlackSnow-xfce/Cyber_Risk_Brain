@@ -191,7 +191,10 @@ class ArchitectReviewCoordinator:
             reason = f"Architect result is invalid: {exc.__class__.__name__}"
             if diagnostic:
                 reason = f"{reason}: {diagnostic}"
-            return self._blocked(request, started, reason, launcher)
+            return self._blocked(
+                request, started, reason, launcher, outcome.process_identity,
+                outcome.process_started_at, outcome.process_completed_at,
+            )
         return result
 
     def _result_from_decision(
@@ -437,9 +440,9 @@ def _last_message_payload(output: str) -> str:
             item = value.get("item")
             if isinstance(item, dict) and item.get("type") == "agent_message" and isinstance(item.get("text"), str):
                 messages.append(item["text"])
-    if len(messages) != 1:
-        raise ValueError("Architect JSONL contains no unique final message")
-    return messages[0]
+    if not messages:
+        raise ValueError("Architect JSONL contains no final message")
+    return messages[-1]
 
 
 def _json_default(value: object) -> object:
