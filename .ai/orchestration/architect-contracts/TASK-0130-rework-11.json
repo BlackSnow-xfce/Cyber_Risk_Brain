@@ -1,0 +1,35 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-11",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 11,
+      "expected_head": "f93157deb8e95772c62e69bbf02032ad7900de72",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingThreatIntelligenceSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingThreatIntelligenceSection.test.tsx",
+        "frontend/src/workspaces/threat-intelligence/pages/ThreatIntelligenceResult.tsx"
+      ],
+      "findings": [
+        "Close only the nested TI density gap. FindingsPresentationDensity values are frozen and must not be modified. FindingThreatIntelligenceSection must supply the existing local role styles to the nested ThreatIntelligenceResult without global theme changes or duplicated sizes.",
+        "ThreatIntelligenceResult may accept the smallest optional presentation-density input. Omitted input must preserve the standalone Threat Intelligence workspace. Do not import Findings modules into the Threat Intelligence workspace and do not use brittle global or descendant class-selector overrides as semantic role mapping.",
+        "Map vulnerability overline to fieldLabel; CVE and NVD CVSS EPSS CISA KEV exploitation headings to subsectionHeading; fact names to fieldLabel; ordinary CVE fact and evidence values to primaryValue; empty-state and evidence description prose to helpText; source reference observed-at evidence source and provenance to reference with exact wrapping; and nested Chips to chip. The Finding TI title remains sectionHeading.",
+        "Preserve hierarchy, exact TI values, long-reference wrapping, neutral CVE vector score severity and ordinary values, all traffic-light semantics, mixed TI independence, status text, REWORK-6 through REWORK-10 spacing grouping order and presentation, business_impact null, decision null, and recommendations empty.",
+        "Replace constant-only TI acceptance with a production-path rendered test containing representative nested CVE NVD CVSS EPSS CISA KEV exploitation content, mixed states where supported, long provenance and a Chip. Verify actual role intent on heading label value help reference and Chip, no covered content governed by oversized global h5 h6 body caption or overline sizing, exact wrapping and values, and unchanged semantics. Run focused TI and Findings tests, full frontend and controlled Python regressions, TypeScript, build, git diff --check, and exact three-path Scope Guard. Do not create TASK-0131."
+      ],
+      "required_validations": [
+        "focused rendered TI density test",
+        "focused Findings rendering/workspace tests",
+        "full frontend regression",
+        "full python regression with controlled Local Operator isolation",
+        "typescript",
+        "production build",
+        "git diff --check",
+        "exact three-path scope guard"
+      ],
+      "created_at": "2026-09-01T12:25:00Z"
+    },
+    "received_at": "2026-09-01T12:25:00Z"
+  }
+}
