@@ -26,6 +26,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $orchestrationRoot "aidp_orchestrati
 
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $transcript = Join-Path $logRoot ("visible-watcher-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+$activityLog = Join-Path $logRoot "visible-watcher-activity.jsonl"
 Start-Transcript -LiteralPath $transcript -Append | Out-Null
 
 try {
@@ -37,6 +38,7 @@ try {
     Write-Host "Lifecycle:     autonomous Codex + visible Architect review"
     Write-Host "Product gate:  watcher remains active and stops advancement at Product Owner acceptance"
     Write-Host "Transcript:    $transcript"
+    Write-Host "Activity log:  $activityLog"
 
     while ($true) {
         Write-Host ("[{0}] Starting authoritative watcher" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) -ForegroundColor Green
@@ -49,7 +51,8 @@ try {
             --autonomous-architect `
             --product-branch $productBranch `
             --infrastructure-root $orchestrationRoot `
-            --architect-contract-root $architectRoot
+            --architect-contract-root $architectRoot 2>&1 |
+            Tee-Object -LiteralPath $activityLog -Append
         $exitCode = $LASTEXITCODE
         Write-Host ("[{0}] Watcher exited with code {1}; restarting in 10 seconds" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"), $exitCode) -ForegroundColor Red
         Start-Sleep -Seconds 10
