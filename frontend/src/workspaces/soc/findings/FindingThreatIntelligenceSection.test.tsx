@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -242,13 +242,28 @@ function deferred<Value>() {
 describe("Finding TI density contract", () => {
     it("applies the shared density to the rendered nested production path", async () => {
         const longReference = "nvd:https://example.invalid/authoritative/source/reference/that-must-remain-exact-and-wrap";
+        const longEvidenceReference = "cisa-kev:https://example.invalid/authoritative/exploitation-evidence/reference/that-must-remain-exact-and-wrap";
+        const evidenceDescription = "CISA KEV records authoritative exploitation evidence for this vulnerability.";
+        const evidenceObservedAt = "2026-08-17T12:54:42Z";
         const denseIntelligence: VulnerabilityThreatIntelligence = {
             ...intelligence,
             nvd: {
                 ...intelligence.nvd,
                 provenance: { ...intelligence.nvd.provenance, source_reference: longReference },
             },
+            exploitation_evidence: fact([
+                {
+                    evidence_type: "cisa_kev_catalog",
+                    description: evidenceDescription,
+                    provenance: {
+                        source_type: "cisa_kev",
+                        source_reference: longEvidenceReference,
+                    },
+                    observed_at: evidenceObservedAt,
+                },
+            ], "cisa_kev"),
         };
+        expect(denseIntelligence.exploitation_evidence.value).toHaveLength(1);
         renderWorkspace(vi.fn().mockResolvedValue({
             ...enrichment,
             relationships: [{ ...enrichment.relationships[0], intelligence: denseIntelligence }],
@@ -266,7 +281,19 @@ describe("Finding TI density contract", () => {
         expect(result.querySelector(".MuiTypography-h5, .MuiTypography-h6")).toBeNull();
         expect(screen.getByText(`Source reference: ${longReference}`)).toBeInTheDocument();
         expect(screen.getByText("HIGH")).toHaveAttribute("data-ti-density-role", "primary-value");
-        expect(screen.getByText("Status: not_evaluated").closest(".MuiChip-root")).toHaveAttribute("data-ti-density-role", "chip");
+        const evidencePanel = screen.getByText("Exploitation Evidence").closest("section");
+        expect(evidencePanel).not.toBeNull();
+        const evidence = within(evidencePanel as HTMLElement);
+        expect(evidence.getByText("cisa_kev_catalog")).toHaveAttribute("data-ti-density-role", "primary-value");
+        expect(evidence.getByText("cisa_kev_catalog")).not.toHaveClass("MuiTypography-colorSuccess", "MuiTypography-colorWarning", "MuiTypography-colorError");
+        expect(evidence.getByText(evidenceDescription)).toHaveAttribute("data-ti-density-role", "help-text");
+        expect(evidence.getByText(evidenceDescription).closest(".MuiChip-root")).toBeNull();
+        const provenance = evidence.getByText((content) => content.includes(longEvidenceReference));
+        expect(provenance).toHaveAttribute("data-ti-density-role", "reference");
+        expect(provenance).toHaveTextContent(longEvidenceReference);
+        expect(provenance.closest(".MuiChip-root")).toBeNull();
+        expect(evidence.getByText(`Observed at: ${evidenceObservedAt}`)).toHaveAttribute("data-ti-density-role", "reference");
+        expect(evidence.getByText("Status: available").closest(".MuiChip-root")).toHaveAttribute("data-ti-density-role", "chip");
         expect(findingsDensity.chip.height).toBe(20);
     });
 
