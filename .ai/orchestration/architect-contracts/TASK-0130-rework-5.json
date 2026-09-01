@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-5",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 5,
+      "expected_head": "4e139e7f3c1cb44df196ed19917bf475779227ec",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "REWORK 4 used correct theme palette tokens but caption/body text color alone lacks sufficient weight and form contrast in the live dark theme. Strengthen structural labels locally with info.main restrained overline-like Typography, CSS textTransform uppercase, fontWeight 700, compact line height and modest letter spacing while preserving exact underlying and accessible label text.",
+        "Render only explicit positive READY AVAILABLE RESOLVED and incomplete UNAVAILABLE NOT_FOUND NOT_EVALUATED UNKNOWN or approved incomplete completeness states as small outlined MUI Chips with success or warning semantics and exact visible text. Genuine failures retain error Alerts. Ordinary values technical-effect levels severities sources references and missing requirement names must never become status Chips.",
+        "Establish two-level vertical rhythm with MUI Stack only: compact 1-2px-equivalent spacing inside a label/value/reference AuthorityField; at least 10px-equivalent spacing between sibling authority fields; at least 12px-equivalent spacing between repeated authority records/subgroups. Preserve REWORK-3 section spacing order grouped Inputs and wrapping-safe exact references without breaks transforms clipping negative offsets or prose layout.",
+        "Add focused non-pixel rendering tests proving label role/treatment, explicit success/warning status Chips, unchanged textual status accessibility, neutral non-status values, error Alert semantics, compact field association versus larger unit/group separation, exact wrapped references, section order and unchanged values. Use stable semantic markers instead of screenshots or raw computed color assertions.",
+        "Preserve business_impact null decision null recommendations empty all TASK-0127/0128/0129 and TASK-0130 authority backend API parser CVSS readiness priority provenance global UI global theme legacy and AI boundaries. Product Owner acceptance remains FAIL / REWORK REQUIRED until live acceptance and TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T09:02:00Z"
+    },
+    "received_at": "2026-09-01T09:02:00Z"
+  }
+}
