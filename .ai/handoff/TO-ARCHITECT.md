@@ -1,6 +1,6 @@
 # Handoff - Architecture Review TASK-0131
 
-Status: WAITING
+Status: OPEN
 Task: TASK-0131
-Task Status: READY
+Task Status: REVIEW
 Reviewer: Architect
