@@ -1,0 +1,79 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0001-v1",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "AIDP-INFRA-0001",
+      "title": "Autonomous Architect Review & Rework Lifecycle",
+      "phase": "AIDP INFRASTRUCTURE",
+      "expected_head": "0179487d003761dc15dbdfe2bf465171bace871b",
+      "allowed_scope": [
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/architect_review.py",
+        "aidp_orchestration/lifecycle.py",
+        "aidp_orchestration/lifecycle_projection.py",
+        "aidp_orchestration/runtime.py",
+        "aidp_orchestration/repository.py",
+        "aidp_orchestration/control_plane.py",
+        "aidp_orchestration/architect_ingress.py",
+        "aidp_orchestration/architect_writer.py",
+        "aidp_orchestration/trigger_publisher.py",
+        "aidp_orchestration/watcher_runtime.py",
+        "aidp_orchestration/executor.py",
+        "aidp_orchestration/__main__.py",
+        "aidp_orchestration/__init__.py",
+        "tests/orchestration/test_architect_review.py",
+        "tests/orchestration/test_lifecycle.py",
+        "tests/orchestration/test_lifecycle_projection.py",
+        "tests/orchestration/test_lifecycle_acceptance.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_architect_ingress.py",
+        "tests/orchestration/test_architect_writer.py",
+        "tests/orchestration/test_repository.py",
+        "tests/orchestration/test_control_plane.py",
+        "tests/orchestration/test_trigger_publisher.py",
+        "tests/orchestration/test_watcher_runtime.py",
+        "tests/orchestration/test_executor.py"
+      ],
+      "prohibited_actions": [
+        "Do not modify PredatorAI product code frontend backend domain application provider or product tests",
+        "Do not create consume or modify TASK-0131",
+        "Do not modify tracked historical product task or handoff artifacts",
+        "Do not weaken Codex execution Scope Guard validator registry Git ingress visible Codex execution ReworkContract validation or Product Owner gate",
+        "Do not add another long-running watcher or another generic process launcher",
+        "Do not give Architect Product Owner approval DONE task-creation or product-write authority",
+        "Do not implement automatic recovery after Codex execution but before review publication",
+        "Do not broaden task identifiers beyond existing TASK identifiers and AIDP-INFRA followed by exactly four digits"
+      ],
+      "validation_requirements": [
+        "python tests",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "ArchitectTaskContract and all exact ingress parser tests accept productive AIDP-INFRA followed by exactly four digits while preserving all existing TASK identifier behavior and rejecting every broader identifier shape.",
+        "Immutable ArchitectReviewRequest ArchitectFinding ArchitectReviewResult and disposition contracts implement the exact request result identity evidence authority HEAD tree validation provenance and timestamp rules in the approved specification.",
+        "PASS has exact request HEAD and tree binding no remediation findings and no rework authority; FAIL has at least one canonical machine-readable finding authorized non-widening scope and validators; BLOCKED grants neither approval nor rework authority.",
+        "A headless ArchitectReviewCoordinator reuses ProcessRunner and SubprocessRunner with shell-free argv read-only sandbox unattended ephemeral schema-constrained output timeout bounded capture CLI capability validation and sanitized process identity audit; WindowsVisibleCodexRunner is not its default.",
+        "The authoritative Product worktree identity guard binds configured resolved path Git common directory expected branch remote and repository identity and blocks orchestration-execution or architect-contract worktrees from serving as Product lifecycle authority.",
+        "One AIDPLifecycleOnce boundary is supervised by the existing AIDPLocalWatcherRuntime and routes READY_FOR_CODEX and REWORK_REQUIRED to the existing Codex path READY_FOR_ARCHITECT to ArchitectReviewCoordinator WAITING_FOR_PRODUCT_OWNER to hard-stop NO_ACTION and unsafe states to BLOCKED.",
+        "The existing watcher lock protects both Architect and Codex work and no competing watcher or parallel Product-worktree agent execution is introduced.",
+        "Successful Codex review publication atomically and exactly commits the READY task to REVIEW plus deterministic handoffs so no uncommitted relay state can become lifecycle truth.",
+        "A validated Architect result is exclusively persisted and read-back verified in Product Git-internal runtime before any lifecycle mutation and a sanitized structured result envelope is then committed to Product Git without stdout stderr prompts secrets or unapproved transient metadata.",
+        "Architect PASS projects only ARCHITECT_APPROVED then WAITING_FOR_PRODUCT_OWNER and repeated watcher iterations perform no Architect Codex rework task creation DONE transition or acceptance mutation.",
+        "Architect FAIL deterministically produces an iteration-addressed immutable existing ReworkContract after committed FAIL projection with exact task iteration expected HEAD scope canonical findings validators and authorized result timestamp and the existing rework Codex path executes it.",
+        "Runtime persistence provides immutable review requests results attempts iteration-safe rework contracts lifecycle events and audit records under the authoritative Product repository Git-internal orchestration runtime.",
+        "The loop ledger permits at most three autonomous Codex rework executions and four Architect reviews including initial review; a FAIL requiring Rework 4 blocks with ESCALATION_REQUIRED and cannot execute Codex.",
+        "Two consecutive post-rework FAIL results with the same deterministic canonical finding fingerprint block immediately with ESCALATION_REQUIRED without free-text similarity authority.",
+        "Unchanged reviewed tree no finding-relevant authorized file change stale HEAD duplicate execution identity review replay iteration jump changed-content duplicate result timeout non-zero exit malformed output schema mismatch scope widening validator widening dirty worktree divergence wrong reviewed commit multiple active tasks and Product Owner authority assertions all fail closed.",
+        "Deterministic persisted requests resume before launch; live or unverifiable attempts never duplicate; persisted results are reused without relaunch; committed projections resume remaining deterministic steps; FAIL before rework persistence regenerates exactly the same contract.",
+        "A detected crash after Codex execution but before review publication preserves execution evidence blocks with ESCALATION_REQUIRED emits a precise diagnostic and never duplicates Codex execution.",
+        "Isolated temporary Git acceptance tests prove PASS FAIL multiple rework limit no-progress Product Owner hard gate worktree identity all specified blocked paths and restart idempotency using Fake ProcessRunner where appropriate.",
+        "The full Python test suite and git diff check pass and Scope Guard confirms that only the exact allowed infrastructure source and orchestration test paths changed.",
+        "No PredatorAI product functionality product data TASK-0131 Product Owner inference or unrelated refactoring is introduced."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-09-01T00:00:00+02:00"
+    },
+    "received_at": "2026-09-01T00:00:00+02:00"
+  }
+}
