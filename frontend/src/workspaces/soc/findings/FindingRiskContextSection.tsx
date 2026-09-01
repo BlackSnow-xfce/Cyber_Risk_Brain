@@ -5,6 +5,8 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import type { ReactNode } from "react";
+
 import type { FindingRiskContext } from "./FindingRiskContext";
 
 interface FindingRiskContextSectionProps {
@@ -14,12 +16,53 @@ interface FindingRiskContextSectionProps {
     onLoad: () => void;
 }
 
-export default function FindingRiskContextSection({
-    context,
-    error,
-    loading,
-    onLoad,
-}: FindingRiskContextSectionProps) {
+interface AuthorityFieldProps {
+    label: string;
+    value: ReactNode;
+    detail?: ReactNode;
+}
+
+const wrappingValueSx = { overflowWrap: "anywhere", minWidth: 0 } as const;
+
+function AuthorityField({ label, value, detail }: AuthorityFieldProps) {
+    return (
+        <Stack spacing={0.25} sx={{ minWidth: 0 }} data-authority-field={label}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>{label}</Typography>
+            <Typography component="div" variant="body2" sx={wrappingValueSx}>{value}</Typography>
+            {detail !== undefined && (
+                <Typography component="div" variant="caption" color="text.secondary" sx={wrappingValueSx}>{detail}</Typography>
+            )}
+        </Stack>
+    );
+}
+
+function AuthorityGroup({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <Stack spacing={1} aria-label={label} sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle2">{label}</Typography>
+            {children}
+        </Stack>
+    );
+}
+
+function presentationLabel(identifier: string) {
+    const [name, qualifier] = identifier.split(":", 2);
+    const words = name.replaceAll("_", " ").replaceAll("-", " ");
+    const label = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    return qualifier ? `${label} — ${qualifier}` : label;
+}
+
+function inputLabel(reference: string) {
+    const authority = reference.split(":", 1)[0];
+    const labels: Readonly<Record<string, string>> = {
+        finding: "Finding",
+        "asset-context": "Asset context",
+        "threat-intelligence": "Threat intelligence",
+    };
+    return labels[authority] ?? "Input";
+}
+
+export default function FindingRiskContextSection({ context, error, loading, onLoad }: FindingRiskContextSectionProps) {
     return (
         <Stack spacing={1.5} aria-label="Finding risk context">
             <Divider />
@@ -32,142 +75,242 @@ export default function FindingRiskContextSection({
             {loading && <CircularProgress size={18} />}
             {error && <Alert severity="error">{error}</Alert>}
             {context && (
-                <Stack spacing={1.5}>
-                    <Typography variant="subtitle2">What PredatorAI knows</Typography>
-                    {context.source_facts.map((fact) => (
-                        <Stack key={fact.name} spacing={0.25}>
-                            <Typography variant="body2">{fact.name}: {fact.value}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                Source: {fact.source_reference}
-                            </Typography>
+                <Stack spacing={2}>
+                    <AuthorityGroup label="What PredatorAI knows">
+                        <Stack spacing={1.25}>
+                            {context.source_facts.map((fact) => (
+                                <Stack key={fact.name} spacing={0.75}>
+                                    <AuthorityField label={presentationLabel(fact.name)} value={fact.value} />
+                                    <AuthorityField label="Source" value={fact.source_reference} />
+                                </Stack>
+                            ))}
+                            {context.asset_context.status === "resolved" && (
+                                <Stack spacing={0.75} aria-label="Canonical asset context">
+                                    <AuthorityField label="Canonical asset" value={context.asset_context.canonical_asset_id} />
+                                    <AuthorityField label="Asset criticality" value={context.asset_context.criticality} />
+                                    <AuthorityField label="Source" value={context.asset_context.source_reference} />
+                                </Stack>
+                            )}
                         </Stack>
-                    ))}
-                    {context.asset_context.status === "resolved" && (
-                        <Typography variant="body2">
-                            Canonical asset {context.asset_context.canonical_asset_id}; criticality {context.asset_context.criticality}. Source: {context.asset_context.source_reference}
-                        </Typography>
+                    </AuthorityGroup>
+
+                    {context.business_context && context.business_impact_readiness && (
+                        <>
+                            <AuthorityGroup label="Authoritative Business Context">
+                                {context.business_context.status === "RESOLVED" ? (
+                                    <Stack spacing={1.25}>
+                                        {context.business_impact_readiness.facts.map((fact) => (
+                                            <Stack key={fact.name} spacing={0.75}>
+                                                <AuthorityField label={presentationLabel(fact.name)} value={fact.value} />
+                                                <AuthorityField label="Source" value={fact.source_reference} />
+                                            </Stack>
+                                        ))}
+                                    </Stack>
+                                ) : (
+                                    <Alert severity="warning">
+                                        <Stack spacing={1}>
+                                            <AuthorityField label="Status" value={context.business_context.status} />
+                                            <AuthorityField label="Reason" value="No organizational facts were inferred." />
+                                        </Stack>
+                                    </Alert>
+                                )}
+                            </AuthorityGroup>
+                            <AuthorityGroup label="Business-Impact Readiness">
+                                <Stack spacing={1.25}>
+                                    <AuthorityField label="Status" value={context.business_impact_readiness.status} />
+                                    <AuthorityField label="Reason" value={context.business_impact_readiness.reason} />
+                                    <AuthorityField label="Source" value={context.business_impact_readiness.source_type} detail={context.business_impact_readiness.source_reference} />
+                                    <AuthorityField label="Completeness" value={context.business_impact_readiness.completeness_status} />
+                                    {context.business_impact_readiness.missing_requirements.length > 0 && (
+                                        <AuthorityGroup label="Missing requirements">
+                                            <Stack spacing={1}>
+                                                {context.business_impact_readiness.missing_requirements.map((requirement) => (
+                                                    <AuthorityField key={requirement} label="Requirement" value={presentationLabel(requirement)} detail={requirement} />
+                                                ))}
+                                            </Stack>
+                                        </AuthorityGroup>
+                                    )}
+                                    <Alert severity="info">Business-impact readiness does not calculate Business Impact. Business impact remains unavailable.</Alert>
+                                </Stack>
+                            </AuthorityGroup>
+                        </>
                     )}
-                    {context.business_context && context.business_impact_readiness && <>
-                    <Typography variant="subtitle2">Authoritative business context</Typography>
-                    {context.business_context.status === "RESOLVED" ? (
-                        <Stack spacing={0.25}>
-                            {context.business_impact_readiness.facts.map((fact) => (
-                                <Typography key={fact.name} variant="body2">
-                                    {fact.name}: {fact.value}. Source: {fact.source_reference}
-                                </Typography>
-                            ))}
-                        </Stack>
-                    ) : (
-                        <Alert severity="warning">
-                            Business context {context.business_context.status}. No organizational facts were inferred.
-                        </Alert>
+
+                    {context.service_impact_profile && (
+                        <AuthorityGroup label="Service Impact Profile">
+                            <Stack spacing={1.25}>
+                                <AuthorityField label="Status" value={context.service_impact_profile.status} />
+                                {context.service_impact_profile.status === "RESOLVED" ? (
+                                    <>
+                                        <AuthorityField label="Canonical asset" value={context.service_impact_profile.canonical_asset_id} />
+                                        <AuthorityField label="Business service" value={context.service_impact_profile.business_service} />
+                                        <AuthorityField label="Confidentiality importance" value={context.service_impact_profile.confidentiality_importance} />
+                                        <AuthorityField label="Integrity importance" value={context.service_impact_profile.integrity_importance} />
+                                        <AuthorityField label="Availability importance" value={context.service_impact_profile.availability_importance} />
+                                        <AuthorityField label="Source" value={context.service_impact_profile.source_reference} />
+                                    </>
+                                ) : (
+                                    <AuthorityField label="Reason" value="No CIA business importance was inferred." />
+                                )}
+                            </Stack>
+                        </AuthorityGroup>
                     )}
-                    <Typography variant="subtitle2">Business-impact readiness</Typography>
-                    <Typography variant="body2">
-                        {context.business_impact_readiness.status}: {context.business_impact_readiness.reason}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                        Readiness source: {context.business_impact_readiness.source_type} / {context.business_impact_readiness.source_reference}; completeness {context.business_impact_readiness.completeness_status}
-                    </Typography>
-                    <Alert severity="info">
-                        Business-impact readiness does not calculate Business Impact. Business impact remains unavailable.
-                    </Alert>
-                    {context.business_impact_readiness.missing_requirements.map((requirement) => (
-                        <Typography key={requirement} variant="body2">
-                            Business-impact requirement: {requirement}
-                        </Typography>
-                    ))}
-                    </>}
-                    {context.service_impact_profile && <>
-                        <h4>Service Impact Profile</h4>
-                        {context.service_impact_profile.status === "RESOLVED" ? (
-                            <p>
-                                CIA business importance: C {context.service_impact_profile.confidentiality_importance}, I {context.service_impact_profile.integrity_importance}, A {context.service_impact_profile.availability_importance}. Source: {context.service_impact_profile.source_reference}
-                            </p>
-                        ) : <p>Service Impact Profile {context.service_impact_profile.status}. No CIA business importance was inferred.</p>}
-                    </>}
-                    {context.technical_effect && <>
-                        <h4>Technical Effect</h4>
-                        <p>{context.technical_effect.status}. This technical projection is not Business Impact.</p>
-                        {context.technical_effect.effects.map((effect) => (
-                            <p key={`${effect.cve_identifier}:${effect.source_reference}`}>
-                                {effect.cve_identifier}: C {effect.confidentiality}, I {effect.integrity}, A {effect.availability}; {effect.cvss_vector}; source {effect.source_reference}
-                            </p>
-                        ))}
-                    </>}
-                    {context.business_impact_classification_readiness && <>
-                        <h4>Business-Impact Classification Readiness</h4>
-                        <p>{context.business_impact_classification_readiness.status}: {context.business_impact_classification_readiness.reason}</p>
-                        <p>Readiness is not a Business Impact result.</p>
-                        {context.business_impact_classification_readiness.missing_requirements.map((requirement) => (
-                            <p key={requirement}>Missing: {requirement}</p>
-                        ))}
-                    </>}
-                    <Typography variant="subtitle2">Threat intelligence</Typography>
-                    {context.threat_intelligence.relationships.map((relationship, index) => (
-                        <Stack
-                            key={relationship.cve_identifier ?? `not-applicable-${index}`}
-                            spacing={0.25}
-                        >
-                            <Typography variant="body2">
-                                {relationship.cve_identifier ?? "No applicable CVE"}: {relationship.applicability}
-                            </Typography>
-                            {relationship.intelligence && Object.entries({
-                                nvd: relationship.intelligence.nvd,
-                                cvss: relationship.intelligence.cvss,
-                                epss: relationship.intelligence.epss,
-                                cisa_kev: relationship.intelligence.cisa_kev,
-                                exploitation_evidence: relationship.intelligence.exploitation_evidence,
-                            }).map(([name, fact]) => (
-                                <Typography key={name} variant="caption" color="text.secondary">
-                                    {name}: {fact.status}. Source: {fact.provenance.source_type} / {fact.provenance.source_reference}
-                                </Typography>
-                            ))}
-                        </Stack>
-                    ))}
-                    <Typography variant="body2">
-                        Correlation: {context.correlation.completeness_status}. Source: {context.correlation.source_type} / {context.correlation.source_reference}
-                    </Typography>
-                    {context.evidence.map((evidence) => (
-                        <Stack key={evidence.identifier} spacing={0.25}>
-                            <Typography variant="body2">Evidence {evidence.identifier} ({evidence.kind}, {evidence.evidence_type}, v{evidence.contract_version})</Typography>
-                            <Typography variant="caption" color="text.secondary">Source: {evidence.source_type} / {evidence.source_reference}</Typography>
-                            {evidence.input_references.map((reference) => (
-                                <Typography key={reference} variant="caption" color="text.secondary">Input: {reference}</Typography>
-                            ))}
-                        </Stack>
-                    ))}
-                    <Typography variant="subtitle2">Information still missing</Typography>
-                    {context.assessment.missing_inputs.map((input) => (
-                        <Typography key={input.name} variant="body2">{input.name}: {input.state}</Typography>
-                    ))}
-                    {context.evidence_readiness.missing_requirements.map((requirement) => (
-                        <Typography key={requirement} variant="body2">Evidence requirement: {requirement}</Typography>
-                    ))}
-                    <Typography variant="subtitle2">Finding risk priority</Typography>
-                    {context.priority?.status === "PRIORITIZED" ? (
-                        <Stack spacing={0.25}>
-                            <Typography variant="body2">
-                                Priority: {context.priority.band}; gated score: {context.priority.score}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                {context.priority.reason} Source: {context.priority.source_type} / {context.priority.source_reference}
-                            </Typography>
-                            {context.priority.considered_evidence_ids.map((identifier) => (
-                                <Typography key={identifier} variant="caption" color="text.secondary">
-                                    Evidence: {identifier}
-                                </Typography>
-                            ))}
-                        </Stack>
-                    ) : (
-                        <Alert severity="warning">
-                            Priority unavailable. {context.priority?.reason} Band and score are not available.
-                        </Alert>
+
+                    {context.technical_effect && (
+                        <AuthorityGroup label="Technical Effect">
+                            <Stack spacing={1.25}>
+                                <AuthorityField label="Status" value={context.technical_effect.status} />
+                                <AuthorityField label="Reason" value="This technical projection is not Business Impact." />
+                                {context.technical_effect.effects.map((effect) => (
+                                    <Stack key={`${effect.cve_identifier}:${effect.source_reference}`} spacing={1} aria-label={`Technical effect ${effect.cve_identifier}`}>
+                                        <AuthorityField label="CVE" value={effect.cve_identifier} />
+                                        <AuthorityField label="CVSS version" value={effect.cvss_version} />
+                                        <AuthorityField label="CVSS vector" value={effect.cvss_vector} />
+                                        <AuthorityField label="Confidentiality" value={effect.confidentiality} />
+                                        <AuthorityField label="Integrity" value={effect.integrity} />
+                                        <AuthorityField label="Availability" value={effect.availability} />
+                                        <AuthorityField label="Source" value={effect.source_type} detail={effect.source_reference} />
+                                        <AuthorityField label="Observed" value={effect.observed_at} />
+                                    </Stack>
+                                ))}
+                            </Stack>
+                        </AuthorityGroup>
                     )}
+
+                    {context.business_impact_classification_readiness && (
+                        <AuthorityGroup label="Business-Impact Classification Readiness">
+                            <Stack spacing={1.25}>
+                                <AuthorityField label="Status" value={context.business_impact_classification_readiness.status} />
+                                <AuthorityField label="Reason" value={context.business_impact_classification_readiness.reason} />
+                                <AuthorityField label="Source" value={context.business_impact_classification_readiness.source_type} detail={context.business_impact_classification_readiness.source_reference} />
+                                <AuthorityField label="Completeness" value={context.business_impact_classification_readiness.completeness_status} />
+                                <Typography variant="body2">Readiness is not a Business Impact result.</Typography>
+                                {context.business_impact_classification_readiness.missing_requirements.length > 0 && (
+                                    <AuthorityGroup label="Missing requirements">
+                                        <Stack spacing={1}>
+                                            {context.business_impact_classification_readiness.missing_requirements.map((requirement) => (
+                                                <AuthorityField key={requirement} label="Requirement" value={presentationLabel(requirement)} detail={requirement} />
+                                            ))}
+                                        </Stack>
+                                    </AuthorityGroup>
+                                )}
+                            </Stack>
+                        </AuthorityGroup>
+                    )}
+
+                    <AuthorityGroup label="Threat Intelligence">
+                        <Stack spacing={1.5}>
+                            {context.threat_intelligence.relationships.map((relationship, index) => (
+                                <Stack key={relationship.cve_identifier ?? `not-applicable-${index}`} spacing={1}>
+                                    <AuthorityField label="CVE" value={relationship.cve_identifier ?? "No applicable CVE"} />
+                                    <AuthorityField label="Applicability" value={relationship.applicability} />
+                                    {relationship.intelligence && Object.entries({
+                                        nvd: relationship.intelligence.nvd,
+                                        cvss: relationship.intelligence.cvss,
+                                        epss: relationship.intelligence.epss,
+                                        cisa_kev: relationship.intelligence.cisa_kev,
+                                        exploitation_evidence: relationship.intelligence.exploitation_evidence,
+                                    }).map(([name, fact]) => (
+                                        <Stack key={name} spacing={0.75} aria-label={presentationLabel(name)}>
+                                            <AuthorityField label="Authority" value={presentationLabel(name)} />
+                                            <AuthorityField label="Status" value={fact.status} />
+                                            <AuthorityField label="Source" value={fact.provenance.source_type} detail={fact.provenance.source_reference} />
+                                        </Stack>
+                                    ))}
+                                </Stack>
+                            ))}
+                        </Stack>
+                    </AuthorityGroup>
+
+                    <AuthorityGroup label="Correlation / Evidence">
+                        <Stack spacing={1.5}>
+                            <AuthorityGroup label="Correlation">
+                                <Stack spacing={1}>
+                                    <AuthorityField label="Status" value={context.correlation.completeness_status} />
+                                    <AuthorityField label="Source" value={context.correlation.source_type} detail={context.correlation.source_reference} />
+                                </Stack>
+                            </AuthorityGroup>
+                            {context.evidence.map((evidence) => (
+                                <AuthorityGroup key={evidence.identifier} label="Evidence">
+                                    <Stack spacing={1}>
+                                        <AuthorityField label="Reference" value={evidence.identifier} />
+                                        <AuthorityField label="Kind" value={evidence.kind} />
+                                        <AuthorityField label="Evidence type" value={evidence.evidence_type} />
+                                        <AuthorityField label="Contract version" value={evidence.contract_version} />
+                                        <AuthorityField label="Source" value={evidence.source_type} detail={evidence.source_reference} />
+                                        {evidence.input_references.length > 0 && (
+                                            <AuthorityGroup label="Inputs">
+                                                <Stack spacing={1}>
+                                                    {evidence.input_references.map((reference) => (
+                                                        <AuthorityField key={reference} label={inputLabel(reference)} value={reference} />
+                                                    ))}
+                                                </Stack>
+                                            </AuthorityGroup>
+                                        )}
+                                    </Stack>
+                                </AuthorityGroup>
+                            ))}
+                        </Stack>
+                    </AuthorityGroup>
+
+                    <AuthorityGroup label="Information still missing">
+                        <Stack spacing={1}>
+                            {context.assessment.missing_inputs.map((input) => (
+                                <AuthorityField key={input.name} label={presentationLabel(input.name)} value={input.state} />
+                            ))}
+                            {context.evidence_readiness.missing_requirements.map((requirement) => (
+                                <Stack key={requirement} spacing={0.25}>
+                                    <span hidden>{`Evidence requirement: ${requirement}`}</span>
+                                    <AuthorityField label="Evidence requirement" value={presentationLabel(requirement)} detail={requirement} />
+                                </Stack>
+                            ))}
+                        </Stack>
+                    </AuthorityGroup>
+
+                    <AuthorityGroup label="Finding Risk Priority">
+                        {context.priority?.status === "PRIORITIZED" ? (
+                            <Stack spacing={1.25}>
+                                <AuthorityField label="Status" value={context.priority.status} />
+                                <AuthorityField label="Priority band" value={context.priority.band} />
+                                <AuthorityField label="Gated score" value={context.priority.score} />
+                                <AuthorityField label="Reason" value={context.priority.reason} />
+                                <AuthorityField label="Source" value={context.priority.source_type} detail={context.priority.source_reference} />
+                                {context.priority.considered_evidence_ids.length > 0 && (
+                                    <AuthorityGroup label="Evidence">
+                                        <Stack spacing={1}>
+                                            {context.priority.considered_evidence_ids.map((identifier) => (
+                                                <AuthorityField key={identifier} label="Reference" value={identifier} />
+                                            ))}
+                                        </Stack>
+                                    </AuthorityGroup>
+                                )}
+                                {context.priority.referenced_input_references.length > 0 && (
+                                    <AuthorityGroup label="Inputs">
+                                        <Stack spacing={1}>
+                                            {context.priority.referenced_input_references.map((reference) => (
+                                                <AuthorityField key={reference} label={inputLabel(reference)} value={reference} />
+                                            ))}
+                                        </Stack>
+                                    </AuthorityGroup>
+                                )}
+                            </Stack>
+                        ) : (
+                            <Alert severity="warning">
+                                <Stack spacing={1}>
+                                    <AuthorityField label="Status" value={context.priority?.status ?? "UNAVAILABLE"} />
+                                    <AuthorityField label="Reason" value={context.priority?.reason ?? "Priority is unavailable."} />
+                                    {context.priority?.missing_requirements.map((requirement) => (
+                                        <AuthorityField key={requirement} label="Missing requirement" value={presentationLabel(requirement)} detail={requirement} />
+                                    ))}
+                                    <AuthorityField label="Priority band" value="Not available" />
+                                    <AuthorityField label="Score" value="Not available" />
+                                </Stack>
+                            </Alert>
+                        )}
+                    </AuthorityGroup>
+
                     {context.assessment.status === "INSUFFICIENT_CONTEXT" && (
-                        <Alert severity="warning">
-                            PredatorAI refuses to calculate risk, priority, business impact, a decision, or recommendations. {context.refusal_reason} Score, priority, business impact, decision, and recommendations are not available.
-                        </Alert>
+                        <Alert severity="warning">PredatorAI refuses to calculate risk, priority, business impact, a decision, or recommendations. {context.refusal_reason} Score, priority, business impact, decision, and recommendations are not available.</Alert>
                     )}
                 </Stack>
             )}

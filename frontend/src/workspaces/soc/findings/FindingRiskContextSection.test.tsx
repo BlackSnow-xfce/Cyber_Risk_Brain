@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FindingRiskContext } from "./FindingRiskContext";
 import FindingRiskContextSection from "./FindingRiskContextSection";
+
+afterEach(cleanup);
 
 const context: FindingRiskContext = {
     finding_id: "finding-001",
@@ -90,20 +92,21 @@ describe("FindingRiskContextSection", () => {
     });
 
     it("shows provenance, missing context, evidence requirements, and refusal", () => {
-        render(<FindingRiskContextSection context={context} error={null} loading={false} onLoad={vi.fn()} />);
-        expect(screen.getByText("Source: greenbone")).toBeInTheDocument();
-        expect(screen.getByText("exposure: NOT_EVALUATED")).toBeInTheDocument();
-        expect(screen.getByText("Evidence requirement: canonical_asset_context")).toBeInTheDocument();
+        const { container } = render(<FindingRiskContextSection context={context} error={null} loading={false} onLoad={vi.fn()} />);
+        const sourceValue = screen.getByText("greenbone");
+        expect(sourceValue.closest("[data-authority-field]")).toHaveAttribute("data-authority-field", "Source");
+        expect(sourceValue).toHaveStyle({ overflowWrap: "anywhere" });
+        expect(screen.queryByText("Source: greenbone")).not.toBeInTheDocument();
+        expect(screen.getByText("Exposure")).toBeInTheDocument();
+        expect(screen.getByText("Canonical asset context")).toBeInTheDocument();
         expect(screen.getByText(/refuses to calculate risk, priority, business impact/)).toBeInTheDocument();
         expect(screen.getByText(/Score, priority, business impact, decision, and recommendations are not available/)).toBeInTheDocument();
-        expect(screen.getByText(/Priority unavailable/)).toHaveTextContent(
-            "Band and score are not available",
-        );
-        expect(screen.getByText(/Business context NOT_FOUND/)).toBeInTheDocument();
-        expect(screen.getByText("Business-impact requirement: business_service")).toBeInTheDocument();
-        expect(screen.getByText(/Service Impact Profile NOT_FOUND/)).toBeInTheDocument();
-        expect(screen.getByText(/Technical Effect/)).toBeInTheDocument();
+        expect(within(screen.getByLabelText("Authoritative Business Context")).getByText("NOT_FOUND")).toBeInTheDocument();
+        expect(screen.getByText("Business service")).toBeInTheDocument();
+        expect(within(screen.getByLabelText("Service Impact Profile")).getByText("NOT_FOUND")).toBeInTheDocument();
+        expect(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE")).toBeInTheDocument();
         expect(screen.getByText(/Readiness is not a Business Impact result/)).toBeInTheDocument();
+        expect(container.querySelector("br")).toBeNull();
     });
 
     it("renders resolved business facts with provenance without inferring impact", () => {
@@ -133,9 +136,14 @@ describe("FindingRiskContextSection", () => {
                 source_reference: "business-impact-readiness:ready:finding-001",
             },
         }} error={null} loading={false} onLoad={vi.fn()} />);
-        expect(screen.getByText("business_service: Payments. Source: cmdb:1")).toBeInTheDocument();
-        expect(screen.getByText(/READY: Authoritative facts/)).toBeInTheDocument();
-        expect(screen.getByText(/business-impact-readiness:ready:finding-001/)).toBeInTheDocument();
+        const business = screen.getByLabelText("Authoritative Business Context");
+        expect(within(business).getByText("Business service")).toBeInTheDocument();
+        expect(within(business).getByText("Payments")).toBeInTheDocument();
+        expect(within(business).getAllByText("cmdb:1")).toHaveLength(4);
+        expect(screen.queryByText("business_service: Payments. Source: cmdb:1")).not.toBeInTheDocument();
+        const readiness = screen.getByLabelText("Business-Impact Readiness");
+        expect(within(readiness).getByText("READY")).toBeInTheDocument();
+        expect(within(readiness).getByText("business-impact-readiness:ready:finding-001")).toBeInTheDocument();
         expect(screen.getAllByText(/does not calculate Business Impact/).length).toBeGreaterThan(0);
     });
 
@@ -165,11 +173,15 @@ describe("FindingRiskContextSection", () => {
             />,
         );
 
-        expect(screen.getByText("Priority: high; gated score: 80")).toBeInTheDocument();
-        expect(screen.getByText(/Classified from the authoritative gated score/)).toHaveTextContent(
-            "finding-risk-priority:prioritized:finding-001",
-        );
-        expect(screen.getByText("Evidence: correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
+        const priority = screen.getByLabelText("Finding Risk Priority");
+        expect(within(priority).getByText("Priority band")).toBeInTheDocument();
+        expect(within(priority).getByText("high")).toBeInTheDocument();
+        expect(within(priority).getByText("Gated score")).toBeInTheDocument();
+        expect(within(priority).getByText("80")).toBeInTheDocument();
+        expect(within(priority).getByText("Classified from the authoritative gated score.")).toBeInTheDocument();
+        expect(within(priority).getByText("finding-risk-priority:prioritized:finding-001")).toBeInTheDocument();
+        expect(within(priority).getByText("correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
+        expect(screen.queryByText("Priority: high; gated score: 80")).not.toBeInTheDocument();
     });
 
     it("renders canonical asset, TI provenance, and canonical evidence metadata", () => {
@@ -219,7 +231,7 @@ describe("FindingRiskContextSection", () => {
             ],
         };
 
-        render(
+        const { container } = render(
             <FindingRiskContextSection
                 context={resolved}
                 error={null}
@@ -228,15 +240,38 @@ describe("FindingRiskContextSection", () => {
             />,
         );
 
-        expect(screen.getByText(/Canonical asset asset-lab-metasploitable2-001/)).toHaveTextContent(
-            "product-owner:metasploitable2-lab-classification",
-        );
-        expect(screen.getByText("CVE-2004-2687: applicable")).toBeInTheDocument();
-        expect(screen.getByText("nvd: available. Source: nvd / nvd:CVE-2004-2687")).toBeInTheDocument();
-        expect(screen.getByText(/Evidence correlation:finding-001:CVE-2004-2687/)).toHaveTextContent(
-            "derived, correlation, v1.0",
-        );
-        expect(screen.getByText("Input: finding:greenbone:finding-001")).toBeInTheDocument();
+        const asset = screen.getByLabelText("Canonical asset context");
+        expect(within(asset).getByText("asset-lab-metasploitable2-001")).toBeInTheDocument();
+        expect(within(asset).getByText("product-owner:metasploitable2-lab-classification")).toHaveStyle({ overflowWrap: "anywhere" });
+        const threatIntelligence = screen.getByLabelText("Threat Intelligence");
+        expect(within(threatIntelligence).getByText("CVE-2004-2687")).toBeInTheDocument();
+        expect(within(threatIntelligence).getByText("applicable")).toBeInTheDocument();
+        expect(within(threatIntelligence).getAllByText("nvd:CVE-2004-2687").length).toBeGreaterThan(0);
+        const evidence = screen.getByLabelText("Evidence");
+        expect(within(evidence).getByText("correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
+        expect(within(evidence).getByText("derived")).toBeInTheDocument();
+        const inputs = within(evidence).getByLabelText("Inputs");
+        expect(within(inputs).getByText("Finding")).toBeInTheDocument();
+        expect(within(inputs).getByText("finding:greenbone:finding-001")).toBeInTheDocument();
+        expect(within(inputs).getByText("Asset context")).toBeInTheDocument();
+        expect(within(inputs).getByText("asset-context:asset-lab-metasploitable2-001:product-owner")).toBeInTheDocument();
+        expect(screen.queryByText("Input: finding:greenbone:finding-001")).not.toBeInTheDocument();
+        expect(container.querySelector("br")).toBeNull();
+        const orderedSections = [
+            "What PredatorAI knows",
+            "Authoritative Business Context",
+            "Business-Impact Readiness",
+            "Service Impact Profile",
+            "Technical Effect",
+            "Business-Impact Classification Readiness",
+            "Threat Intelligence",
+            "Correlation / Evidence",
+            "Information still missing",
+            "Finding Risk Priority",
+        ].map((label) => screen.getByLabelText(label));
+        orderedSections.slice(1).forEach((section, index) => {
+            expect(orderedSections[index].compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
         expect(resolved.risk_inputs.map((input) => input.name)).toEqual([
             "business_criticality",
             "exposure",
