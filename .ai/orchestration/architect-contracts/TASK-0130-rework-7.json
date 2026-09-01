@@ -1,0 +1,32 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-7",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 7,
+      "expected_head": "6b75b46233f77a8e5dcddeeff609cc1f0df96961",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Replace cyan info.main as the primary label language with a restrained local traffic-light authority-state presentation. Use MUI success semantics for unambiguously available resolved ready units, warning semantics for unavailable not-found not-evaluated unknown or incomplete units, and error semantics only for surfaced integrity contradiction invalid-authority parser source or genuine failure states.",
+        "An authority-unit title or structural label inherits success warning or error only when the associated unit state is explicit and unambiguous. Mixed collections are evaluated per child record, especially Threat Intelligence authorities. State-ambiguous containers and neutral technical labels remain text.primary or text.secondary; do not paint the whole panel or section one color.",
+        "Preserve small outlined success Chips for READY AVAILABLE RESOLVED and warning Chips for UNAVAILABLE NOT_FOUND NOT_EVALUATED UNKNOWN. Preserve existing error Alerts. Severity criticality BusinessImportance TechnicalEffectLevel CVEs vectors URLs provenance timestamps and other ordinary values remain neutral because color communicates authority state rather than magnitude.",
+        "For normal analyst presentation render each missing requirement as its human-readable label only and suppress the redundant raw machine identifier when it conveys the same requirement. Preserve the underlying identifier unchanged for transport semantics mapping and stable keys.",
+        "Preserve REWORK-6 spacing exactly: AuthorityField 0.125 sibling authority units 1.25 repeated groups 1.5 repeated Technical Effect parent 1.5 and individual effect record 1.25. Preserve wrapping grouping order accessibility explicit status text null business_impact null decision empty recommendations and every TASK-0127 TASK-0128 TASK-0129 TASK-0130 frozen functional and global UI boundary.",
+        "Focused tests must prove success warning and genuine error presentation, independent mixed-state TI treatment, neutral severity effect and reference data, unchanged status Chips, human-readable missing requirements without redundant raw identifiers, unchanged authority values, preserved REWORK-6 layout and grouping, and no Business Impact fabrication. Avoid screenshots pixels computed colors and brittle geometry assertions."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T09:22:11Z"
+    },
+    "received_at": "2026-09-01T09:22:11Z"
+  }
+}
