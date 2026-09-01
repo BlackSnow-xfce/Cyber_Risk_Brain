@@ -227,6 +227,27 @@ def test_architect_jsonl_uses_schema_constrained_final_agent_message() -> None:
     assert architect_review._last_message_payload(f"{first}\n{final}\n") == '{"disposition":"PASS"}'
 
 
+def test_coordinator_canonicalizes_finding_evidence_path_order(tmp_path: Path) -> None:
+    req = request(repository=str(tmp_path), git_common_dir="C:/repo/.git")
+    decision = {
+        "disposition": "FAIL",
+        "findings": [{
+            "finding_id": "finding-1", "rule_id": "rule-1", "severity": "HIGH",
+            "summary": "controlled finding", "evidence_paths": ["allowed.py", "allowed.py"],
+            "action_id": "action-1", "required_change": "make the controlled correction",
+        }],
+        "allowed_rework_scope": ["allowed.py"], "required_validations": ["python tests"],
+        "failure_reason": None, "authority_claims": [],
+    }
+    coordinator = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path), runner=FakeRunner(decision),
+        launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
+    )
+    result = coordinator.review(req, schema_path=tmp_path / "schema.json")
+    assert result.disposition is ArchitectReviewDisposition.FAIL
+    assert result.findings[0].evidence_paths == ("allowed.py",)
+
+
 def _git(root: Path, *args: str) -> str:
     return subprocess.check_output(("git", *args), cwd=root, text=True, stderr=subprocess.STDOUT).strip()
 

@@ -218,7 +218,8 @@ class ArchitectReviewCoordinator:
         findings = tuple(ArchitectFinding(
             finding_id=_string(item, "finding_id"), rule_id=_string(item, "rule_id"),
             severity=_string(item, "severity"), summary=_string(item, "summary"),
-            evidence_paths=tuple(_strings(item, "evidence_paths")), action_id=_string(item, "action_id"),
+            evidence_paths=tuple(sorted(set(_strings(item, "evidence_paths")))),
+            action_id=_string(item, "action_id"),
             required_change=_string(item, "required_change"),
         ) for item in finding_values)
         created = self.clock()
@@ -299,7 +300,8 @@ class ArchitectReviewCoordinator:
             "allowed_rework_scope, and required_validations must be empty and failure_reason must be null. For "
             "FAIL, findings, allowed_rework_scope, and required_validations must be non-empty and failure_reason "
             "must be null. For BLOCKED, findings, allowed_rework_scope, and required_validations must be empty and "
-            "failure_reason must be a non-empty diagnostic. Return only the schema-constrained ArchitectReviewResult.\n"
+            "failure_reason must be a non-empty diagnostic. Each finding evidence_paths array must contain unique "
+            "paths in ascending lexical order. Return only the schema-constrained ArchitectReviewResult.\n"
             f"architect_review_request={evidence}"
         )
 
