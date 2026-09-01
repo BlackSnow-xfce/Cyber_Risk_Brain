@@ -16,6 +16,7 @@ $Host.UI.RawUI.WindowTitle = "PredatorAI AIDP Visible Autonomous Watcher"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $env:PYTHONUTF8 = "1"
 $env:PYTHONUNBUFFERED = "1"
+$env:LOCAL_OPERATOR_MODE_ENABLED = "false"
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "AIDP Python executable is unavailable: $python"
