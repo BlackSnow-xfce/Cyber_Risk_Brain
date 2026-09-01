@@ -21,6 +21,7 @@ from .control_plane import AIDPControlPlane
 from .executor import GitInspector
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
+from .lifecycle_projection import LifecycleProjection
 
 
 class WriterBoundary(Protocol):
@@ -54,8 +55,13 @@ class LocalContractInbox:
     def persist(self, item: ContractInboxItem) -> Path:
         path = self.root / f"{item.contract_id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("x", encoding="utf-8") as stream:
-            stream.write(serialize_contract_inbox_item(item) + "\n")
+        serialized = serialize_contract_inbox_item(item) + "\n"
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(serialized)
+        except FileExistsError:
+            if path.read_text(encoding="utf-8") != serialized:
+                raise RuntimeError("immutable contract inbox identity collision") from None
         if self._load(path) != item:
             raise RuntimeError("contract inbox persistence validation failed")
         return path
@@ -123,9 +129,10 @@ class ConsumptionStore:
 
 
 class GitReviewPublisher:
-    def __init__(self, repository: AIDPRepository):
+    def __init__(self, repository: AIDPRepository, *, projection: LifecycleProjection | None = None):
         self.repository = repository
         self.git = GitInspector(repository.root)
+        self.projection = projection or LifecycleProjection(repository.root)
 
     def commit_materialization(self, result: WriterResult) -> str:
         paths = tuple(sorted(result.materialized_paths))
@@ -173,10 +180,11 @@ class GitReviewPublisher:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("x", encoding="utf-8") as stream:
                 stream.write(serialize_review_envelope(envelope) + "\n")
-            if self.git.changed_files() != (relative,):
-                raise RuntimeError("review publication contains additional files")
-            self._commit_exact((relative,), f"aidp({execution.task_id}): publish review {execution.execution_id}")
-            envelope_commit = self.git.head()
+            envelope_commit = (
+                self.projection.project_rework_ready_for_architect(execution.task_id, relative)
+                if result.runner_result and result.runner_result.current_state is AIDPState.REWORK_REQUIRED
+                else self.projection.project_ready_for_architect(execution.task_id, relative)
+            )
             self._git("remote", "get-url", "origin")
             self._git("push", "origin", branch)
             return PublishResult(branch, execution_commit, relative, envelope_commit, "PUSHED", AIDPState.READY_FOR_ARCHITECT)

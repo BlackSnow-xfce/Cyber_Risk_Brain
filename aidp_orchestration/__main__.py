@@ -15,6 +15,7 @@ from .architect_writer import (
     serialize_writer_result,
 )
 from .architect_ingress import ArchitectGitIngress
+from .architect_review import ArchitectReviewCoordinator, ProductWorktreeIdentityGuard
 from .architect_ingress_acceptance import (
     ArchitectIngressAcceptanceHarness,
     serialize_architect_ingress_acceptance_result,
@@ -23,6 +24,7 @@ from .contracts import AcceptanceStatus
 from .control_plane import AIDPControlPlane, serialize_control_plane_result
 from .executor import CodexExecutionService, serialize_execution_result
 from .repository import AIDPRepository
+from .lifecycle import AIDPLifecycleOnce
 from .runner import AIDPRunner, serialize_runner_result
 from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
@@ -59,9 +61,17 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--watch-interval", type=float, default=10.0)
     parser.add_argument("--architect-contract-branch", help="explicit origin branch enabling Git contract ingress for --watch")
+    parser.add_argument("--autonomous-architect", action="store_true", help="enable headless Architect review for --watch")
+    parser.add_argument("--product-branch", help="authoritative Product branch for autonomous Architect review")
+    parser.add_argument("--infrastructure-root", type=Path, help="excluded infrastructure development worktree")
+    parser.add_argument("--architect-contract-root", type=Path, help="excluded Architect contract worktree")
     args = parser.parse_args()
     if args.architect_contract_branch and not args.watch:
         parser.error("--architect-contract-branch is only valid with --watch")
+    if args.autonomous_architect and not args.watch:
+        parser.error("--autonomous-architect is only valid with --watch")
+    if args.autonomous_architect and (not args.product_branch or args.infrastructure_root is None or args.architect_contract_root is None):
+        parser.error("autonomous Architect review requires product branch and both excluded worktree roots")
     if args.watch and args.watch_interval < MINIMUM_WATCH_INTERVAL_SECONDS:
         parser.error(f"--watch-interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
     repository = AIDPRepository(args.root)
@@ -75,11 +85,22 @@ def main() -> int:
         except ValueError as exc:
             parser.error(str(exc))
         watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout)
+        lifecycle = None
+        if args.autonomous_architect:
+            guard = ProductWorktreeIdentityGuard(
+                args.root, expected_branch=args.product_branch,
+                excluded_roots=(args.infrastructure_root, args.architect_contract_root),
+            )
+            architect = ArchitectReviewCoordinator(
+                product_root=args.root, identity_guard=guard, timeout_seconds=args.timeout,
+            )
+            lifecycle = AIDPLifecycleOnce(repository, codex=watcher, architect=architect)
         result = AIDPLocalWatcherRuntime(
             repository,
             watcher=watcher,
             interval_seconds=args.watch_interval,
             ingress=ingress,
+            lifecycle=lifecycle,
         ).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2

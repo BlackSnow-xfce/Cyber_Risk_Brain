@@ -320,3 +320,15 @@ def test_serialization_envelopes_are_stable_and_contract_store_round_trips(tmp_p
         (ValidationResult("pytest", True),), None, repo.branch, repo.head, repo.head, utc_now(),
     )
     assert json.loads(serialize_architect_inbox_entry(entry))["architect_inbox_entry"]["task_id"] == "TASK-9000"
+
+
+def test_iteration_safe_rework_store_selects_latest_without_overwrite(tmp_path: Path) -> None:
+    from aidp_orchestration.runtime import LocalRuntimeStore
+
+    root = tmp_path / "runtime"
+    first = ReworkContract("TASK-9000", 1, "a", ("x.py",), ("f1",), ("pytest",), utc_now())
+    second = ReworkContract("TASK-9000", 2, "b", ("x.py",), ("f2",), ("pytest",), utc_now())
+    first_path = LocalRuntimeStore(root).persist_rework_contract("first", first)
+    second_path = LocalRuntimeStore(root).persist_rework_contract("second", second)
+    assert first_path != second_path and first_path.exists() and second_path.exists()
+    assert LocalReworkContractStore(root).load("TASK-9000") == second

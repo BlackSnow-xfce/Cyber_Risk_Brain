@@ -1,0 +1,182 @@
+"""Exact Git-backed projections required by autonomous Architect review."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from dataclasses import asdict
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+
+from .contracts import ArchitectReviewDisposition, ArchitectReviewResult
+from .executor import GitInspector
+
+
+class LifecycleProjection:
+    def __init__(self, repository_root: Path) -> None:
+        self.root = repository_root.resolve()
+        self.git = GitInspector(self.root)
+
+    def project_ready_for_architect(self, task_id: str, review_envelope_path: str) -> str:
+        ready = self.root / ".ai" / "tasks" / "ready" / f"{task_id}.md"
+        review = self.root / ".ai" / "tasks" / "review" / f"{task_id}.md"
+        envelope = self.root / review_envelope_path
+        if not ready.is_file() or review.exists() or not envelope.is_file():
+            raise RuntimeError("READY-to-REVIEW projection precondition failed")
+        document = ready.read_text(encoding="utf-8")
+        if "Status: READY" not in document:
+            raise RuntimeError("READY task has no exact status marker")
+        contents = {
+            review: document.replace("Status: READY", "Status: REVIEW", 1),
+            self.root / ".ai/handoff/TO-CODEX.md": (
+                "# Handoff - Architect to Codex\n\nStatus: WAITING\n"
+                f"Current AIDP Task: {task_id}\nCurrent Phase: REVIEW / WAITING\nTask Status: REVIEW\n"
+            ),
+            self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                f"# Handoff - Architecture Review {task_id}\n\nStatus: OPEN\nTask: {task_id}\n"
+                "Task Status: REVIEW\nReviewer: Architect\n"
+            ),
+        }
+        expected = tuple(sorted((
+            ready.relative_to(self.root).as_posix(), review.relative_to(self.root).as_posix(),
+            ".ai/handoff/TO-CODEX.md", ".ai/handoff/TO-ARCHITECT.md", review_envelope_path,
+        )))
+        self._materialize(contents, deletes=(ready,))
+        return self._commit_exact(expected, f"aidp({task_id}): project ready for architect")
+
+    def project_rework_ready_for_architect(self, task_id: str, review_envelope_path: str) -> str:
+        review = self.root / ".ai" / "tasks" / "review" / f"{task_id}.md"
+        envelope = self.root / review_envelope_path
+        if not review.is_file() or not envelope.is_file():
+            raise RuntimeError("rework REVIEW projection precondition failed")
+        document = review.read_text(encoding="utf-8")
+        marker = "Status: REVIEW / REWORK REQUIRED"
+        if marker not in document:
+            raise RuntimeError("rework task has no exact status marker")
+        contents = {
+            review: document.replace(marker, "Status: REVIEW", 1),
+            self.root / ".ai/handoff/TO-CODEX.md": (
+                "# Handoff - Architect to Codex\n\nStatus: WAITING\n"
+                f"Current AIDP Task: {task_id}\nCurrent Phase: REVIEW / WAITING\nTask Status: REVIEW\n"
+            ),
+            self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                f"# Handoff - Architecture Review {task_id}\n\nStatus: OPEN\nTask: {task_id}\n"
+                "Task Status: REVIEW\nReviewer: Architect\n"
+            ),
+        }
+        expected = tuple(sorted((*[path.relative_to(self.root).as_posix() for path in contents], review_envelope_path)))
+        self._materialize(contents)
+        return self._commit_exact(expected, f"aidp({task_id}): project rework ready for architect")
+
+    def project_architect_result(self, result: ArchitectReviewResult) -> str:
+        if result.disposition not in {ArchitectReviewDisposition.PASS, ArchitectReviewDisposition.FAIL}:
+            raise RuntimeError("BLOCKED result has no lifecycle projection authority")
+        review = self.root / ".ai" / "tasks" / "review" / f"{result.task_id}.md"
+        if not review.is_file():
+            raise RuntimeError("Architect projection requires one REVIEW task")
+        document = review.read_text(encoding="utf-8")
+        if "Status: REVIEW" not in document:
+            raise RuntimeError("REVIEW task has no exact status marker")
+        passed = result.disposition is ArchitectReviewDisposition.PASS
+        status = "ARCHITECT_APPROVED" if passed else "REVIEW / REWORK REQUIRED"
+        codex_status = "WAITING" if passed else "OPEN"
+        architect_status = "CLOSED" if passed else "WAITING"
+        result_relative = (
+            ".ai/orchestration/architect-review-results/"
+            f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
+        )
+        result_path = self.root / result_relative
+        sanitized = {"architect_review_result": asdict(result)}
+        contents = {
+            review: document.replace("Status: REVIEW", f"Status: {status}", 1),
+            self.root / ".ai/handoff/TO-CODEX.md": (
+                f"# Handoff - Architect to Codex\n\nStatus: {codex_status}\n"
+                f"Current AIDP Task: {result.task_id}\nCurrent Phase: {status}\nTask Status: {status}\n"
+            ),
+            self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                f"# Handoff - Architecture Review {result.task_id}\n\nStatus: {architect_status}\n"
+                f"Task: {result.task_id}\nTask Status: {status}\nReviewer: Architect\n"
+            ),
+            result_path: json.dumps(sanitized, default=_json_default, sort_keys=True, separators=(",", ":")) + "\n",
+        }
+        expected = tuple(sorted(path.relative_to(self.root).as_posix() for path in contents))
+        self._materialize(contents)
+        return self._commit_exact(expected, f"aidp({result.task_id}): project architect {result.disposition.value.lower()} {result.review_result_id}")
+
+    def publish_result_only(self, result: ArchitectReviewResult) -> str:
+        relative = (
+            ".ai/orchestration/architect-review-results/"
+            f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
+        )
+        path = self.root / relative
+        content = json.dumps(
+            {"architect_review_result": asdict(result)}, default=_json_default,
+            sort_keys=True, separators=(",", ":"),
+        ) + "\n"
+        self._materialize({path: content})
+        return self._commit_exact((relative,), f"aidp({result.task_id}): publish blocked architect review {result.review_result_id}")
+
+    def push(self, expected_branch: str) -> str:
+        if self.git.branch() != expected_branch:
+            raise RuntimeError("lifecycle projection branch mismatch")
+        subprocess.check_output(("git", "remote", "get-url", "origin"), cwd=self.root, stderr=subprocess.STDOUT)
+        subprocess.check_output(("git", "push", "origin", expected_branch), cwd=self.root, stderr=subprocess.STDOUT)
+        local = self.git.head()
+        remote = subprocess.check_output(
+            ("git", "rev-parse", f"origin/{expected_branch}"), cwd=self.root, text=True, stderr=subprocess.STDOUT,
+        ).strip()
+        if local != remote:
+            raise RuntimeError("lifecycle projection push did not synchronize upstream")
+        return local
+
+    def _commit_exact(self, expected: tuple[str, ...], message: str) -> str:
+        changed = self.git.changed_files()
+        if changed != expected:
+            raise RuntimeError("lifecycle projection contains unexpected paths")
+        subprocess.check_output(("git", "add", "-A", "--", *expected), cwd=self.root, stderr=subprocess.STDOUT)
+        staged = _nul(self.root, "diff", "--cached", "--no-renames", "--name-only", "-z")
+        if tuple(sorted(staged)) != expected:
+            raise RuntimeError("staged lifecycle projection differs from authority")
+        subprocess.check_output(("git", "commit", "-m", message), cwd=self.root, stderr=subprocess.STDOUT)
+        return self.git.head()
+
+    @staticmethod
+    def _materialize(contents: dict[Path, str], deletes: tuple[Path, ...] = ()) -> None:
+        affected = (*contents, *deletes)
+        original = {path: path.read_bytes() if path.exists() else None for path in affected}
+        try:
+            for path, content in contents.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = path.with_name(f".{path.name}.aidp-projection.tmp")
+                try:
+                    with temporary.open("xb") as stream:
+                        stream.write(content.encode("utf-8"))
+                    os.replace(temporary, path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            for path in deletes:
+                path.unlink()
+        except OSError:
+            for path, previous in original.items():
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(previous)
+            raise
+
+
+def _nul(root: Path, *args: str) -> tuple[str, ...]:
+    output = subprocess.check_output(("git", *args), cwd=root)
+    if output and not output.endswith(b"\0"):
+        raise RuntimeError("Git returned malformed path output")
+    return tuple(output[:-1].decode("utf-8").split("\0")) if output else ()
+
+
+def _json_default(value: object) -> object:
+    if isinstance(value, datetime): return value.isoformat()
+    if isinstance(value, Enum): return value.value
+    if isinstance(value, Path): return str(value)
+    raise TypeError(type(value).__name__)

@@ -13,6 +13,17 @@ from .architect_writer import (
     serialize_writer_decision,
     serialize_writer_result,
 )
+from .architect_review import (
+    ArchitectReviewCoordinator,
+    ProductWorktreeIdentityGuard,
+    architect_result_schema,
+    create_review_request,
+    create_review_result,
+    parse_architect_review_result,
+    serialize_review_request,
+    serialize_review_result,
+    validate_review_result,
+)
 
 from .contracts import (
     AIDPState,
@@ -49,6 +60,13 @@ from .contracts import (
     IngressStatus,
     ArchitectIngressResult,
     ArchitectIngressAcceptanceResult,
+    ArchitectFinding,
+    ArchitectReviewDisposition,
+    ArchitectReviewProvenance,
+    ArchitectReviewRequest,
+    ArchitectReviewResult,
+    LifecycleResult,
+    LifecycleStatus,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -71,6 +89,8 @@ from .launcher import CodexLauncher, CodexLauncherError, resolve_codex_launcher
 from .repository import AIDPRepository
 from .runner import AIDPRunner, serialize_runner_result
 from .runtime import LocalRuntimeStore
+from .lifecycle import AIDPLifecycleOnce, MAX_AUTONOMOUS_REWORKS
+from .lifecycle_projection import LifecycleProjection
 from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
     serialize_writer_control_plane_acceptance_result,
@@ -136,6 +156,25 @@ __all__ = [
     "IngressStatus",
     "ArchitectIngressResult",
     "ArchitectIngressAcceptanceResult",
+    "ArchitectFinding",
+    "ArchitectReviewDisposition",
+    "ArchitectReviewProvenance",
+    "ArchitectReviewRequest",
+    "ArchitectReviewResult",
+    "ArchitectReviewCoordinator",
+    "ProductWorktreeIdentityGuard",
+    "LifecycleResult",
+    "LifecycleStatus",
+    "AIDPLifecycleOnce",
+    "LifecycleProjection",
+    "MAX_AUTONOMOUS_REWORKS",
+    "architect_result_schema",
+    "create_review_request",
+    "create_review_result",
+    "parse_architect_review_result",
+    "serialize_review_request",
+    "serialize_review_result",
+    "validate_review_result",
     "CodexExecutionService",
     "ExecutionLock",
     "GitInspector",

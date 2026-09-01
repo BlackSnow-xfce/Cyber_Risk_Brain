@@ -119,7 +119,18 @@ def test_valid_architect_task_contract() -> None:
     assert contract.task_id == "TASK-9001"
 
 
-@pytest.mark.parametrize("task_id", ("TASK-12", "task-9001", "TASK-ABCD", ""))
+def test_productive_infrastructure_namespace_is_exactly_authorized() -> None:
+    contract = ArchitectTaskContract(
+        "AIDP-INFRA-0001", "Title", "infrastructure", "head", ("aidp_orchestration/**",),
+        ("frontend/**",), ("python tests",), ("Acceptance is explicit",), True, utc_now(),
+    )
+    assert contract.task_id == "AIDP-INFRA-0001"
+
+
+@pytest.mark.parametrize("task_id", (
+    "TASK-12", "task-9001", "TASK-ABCD", "", "AIDP-INFRA-001", "AIDP-INFRA-00001",
+    "AIDP-INFRA-E2E-0001", "AIDP-OTHER-0001", "aidp-infra-0001",
+))
 def test_invalid_task_id_is_rejected(task_id: str) -> None:
     with pytest.raises(ValueError, match="task_id"):
         ArchitectTaskContract(

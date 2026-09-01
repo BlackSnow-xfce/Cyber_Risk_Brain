@@ -45,6 +45,14 @@ def test_fetch_is_read_only_and_valid_contract_enters_local_inbox(tmp_path: Path
     assert LocalContractInbox(runtime).pending()[0].contract == contract
 
 
+def test_infrastructure_namespace_round_trips_through_exact_ingress_parser(tmp_path: Path):
+    _repository, _remote, _architect, _runtime, contract = _setup(tmp_path)
+    infrastructure = replace(contract, task_id="AIDP-INFRA-0001", phase="AIDP INFRASTRUCTURE")
+    item = ContractInboxItem("architect-aidp-infra-0001-v1", infrastructure, datetime.now(timezone.utc))
+    parsed = LocalContractInbox.parse(serialize_contract_inbox_item(item).encode("utf-8"))
+    assert parsed.contract.task_id == "AIDP-INFRA-0001"
+
+
 def test_duplicate_is_no_action_and_mutated_blob_is_blocked(tmp_path: Path):
     repository, _remote, architect, runtime, contract = _setup(tmp_path)
     ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)

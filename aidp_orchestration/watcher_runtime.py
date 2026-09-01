@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .contracts import (
-    ArchitectIngressResult, IngressStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
+    ArchitectIngressResult, IngressStatus, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
     WatchRuntimeStatus, utc_now,
 )
 from .repository import AIDPRepository
@@ -32,6 +32,10 @@ class WatchOnceBoundary(Protocol):
 
 class IngressBoundary(Protocol):
     def run_once(self) -> ArchitectIngressResult: ...
+
+
+class LifecycleBoundary(Protocol):
+    def run_once(self) -> LifecycleResult: ...
 
 
 class WatcherRuntimeLock:
@@ -121,6 +125,7 @@ class AIDPLocalWatcherRuntime:
         event_sink: Callable[[str], None] = print,
         clock: Callable[[], datetime] = utc_now,
         ingress: IngressBoundary | None = None,
+        lifecycle: LifecycleBoundary | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
             raise ValueError(f"watch interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
@@ -131,6 +136,7 @@ class AIDPLocalWatcherRuntime:
         self.event_sink = event_sink
         self.clock = clock
         self.ingress = ingress
+        self.lifecycle = lifecycle
 
     def run(self) -> WatchRuntimeResult:
         try:
@@ -156,8 +162,13 @@ class AIDPLocalWatcherRuntime:
                             IngressStatus.ERROR, None, None, None,
                             failure_reason=f"ingress iteration failed: {exc.__class__.__name__}",
                         )
+                lifecycle_result: LifecycleResult | None = None
                 try:
-                    trigger_result = self.watcher.run_once()
+                    if self.lifecycle is not None:
+                        lifecycle_result = self.lifecycle.run_once()
+                        trigger_result = _trigger_from_lifecycle(lifecycle_result)
+                    else:
+                        trigger_result = self.watcher.run_once()
                 except KeyboardInterrupt:
                     return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration - 1)
                 except Exception as exc:  # Runtime containment must not bypass the normal retry interval.
@@ -172,6 +183,7 @@ class AIDPLocalWatcherRuntime:
                     ingress_result.contract_id if ingress_result else None,
                     ingress_result.remote_commit if ingress_result else None,
                     ingress_result.failure_reason if ingress_result else None,
+                    lifecycle_result.status if lifecycle_result else None,
                 )
                 try:
                     self.event_sink(serialize_watch_iteration_event(event))
@@ -223,6 +235,15 @@ def _parse_lock(content: bytes) -> tuple[int, str | None]:
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0 or not isinstance(identity, str) or not identity:
         raise ValueError("watcher lock identity is invalid")
     return pid, identity
+
+
+def _trigger_from_lifecycle(result: LifecycleResult) -> TriggerResult:
+    status = (
+        TriggerStatus.NO_ACTION if result.status is LifecycleStatus.NO_ACTION
+        else TriggerStatus.PUBLISHED if result.status is LifecycleStatus.ADVANCED
+        else TriggerStatus.BLOCKED
+    )
+    return TriggerResult(status, None, None, failure_reason=None if status is TriggerStatus.PUBLISHED else result.reason)
 
 
 def _process_identity(pid: int) -> str | None:

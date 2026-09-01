@@ -47,7 +47,11 @@ class AIDPRepository:
         directory = self.ai_root / "tasks" / state_dir
         if not directory.exists():
             return ()
-        return tuple(sorted(directory.glob("TASK-*.md")))
+        candidates = (*directory.glob("TASK-*.md"), *directory.glob("AIDP-INFRA-*.md"))
+        return tuple(sorted(
+            path for path in candidates
+            if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:(?:WRITER|TRIGGER)-)?\d{4})|AIDP-INFRA-\d{4})", path.stem)
+        ))
 
     def inspect(self) -> OrchestrationDecision:
         ready = self.task_paths("ready")
@@ -177,7 +181,7 @@ class AIDPRepository:
         text = path.read_text(encoding="utf-8")
         status = self._first_value(text, "Status") or ""
         task_value = self._first_value(text, "Current AIDP Task") or self._first_value(text, "Task")
-        task_match = re.search(r"TASK-\d{4}", task_value or "")
+        task_match = re.search(r"(?:TASK-\d{4}|AIDP-INFRA-\d{4})", task_value or "")
         task_id = task_match.group(0) if task_match else task_value
         task_status = self._first_value(text, "Task Status")
         return Handoff(status, task_id, task_status)

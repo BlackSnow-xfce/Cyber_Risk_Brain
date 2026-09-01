@@ -18,6 +18,7 @@ from .contracts import (
     WriterAction,
     WriterDecision,
     WriterResult,
+    canonical_digest,
 )
 from .control_plane import scope_is_subset, serialize_rework_contract
 from .executor import GitInspector
@@ -116,7 +117,17 @@ class ArchitectContractWriter:
         decision = self.decide_rework(contract)
         if decision.action is WriterAction.BLOCKED:
             return WriterResult(decision, failure_reason=decision.reason)
-        path = self.runtime_root / "rework-contracts" / f"{contract.task_id}.json"
+        directory = self.runtime_root / "rework-contracts" / contract.task_id
+        matches = tuple(directory.glob(f"{contract.review_iteration}-*.json")) if directory.exists() else ()
+        for existing in matches:
+            try:
+                value = json.loads(existing.read_text(encoding="utf-8")).get("rework_contract")
+            except (OSError, json.JSONDecodeError):
+                value = None
+            if isinstance(value, dict) and value == json.loads(serialize_rework_contract(contract))["rework_contract"]:
+                return WriterResult(decision, rework_contract_path=str(existing))
+        contract_id = canonical_digest({"schema": "rework-contract-v1", "contract": contract})
+        path = directory / f"{contract.review_iteration}-{contract_id}.json"
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("x", encoding="utf-8") as stream:

@@ -50,9 +50,22 @@ class LocalReworkContractStore:
         self.root = root
 
     def load(self, task_id: str) -> ReworkContract | None:
-        path = self.root / "rework-contracts" / f"{task_id}.json"
-        if not path.exists():
+        legacy = self.root / "rework-contracts" / f"{task_id}.json"
+        directory = self.root / "rework-contracts" / task_id
+        paths = tuple(directory.glob("*.json")) if directory.exists() else ()
+        if legacy.exists():
+            paths = (*paths, legacy)
+        if not paths:
             return None
+        contracts = tuple(self._read(path) for path in paths)
+        highest = max(contract.review_iteration for contract in contracts)
+        selected = tuple(contract for contract in contracts if contract.review_iteration == highest)
+        if len({serialize_rework_contract(contract) for contract in selected}) != 1:
+            raise ValueError("ambiguous rework contracts for active iteration")
+        return selected[0]
+
+    @staticmethod
+    def _read(path: Path) -> ReworkContract:
         payload = json.loads(path.read_text(encoding="utf-8"))
         value = payload.get("rework_contract") if isinstance(payload, dict) else None
         if not isinstance(value, dict):

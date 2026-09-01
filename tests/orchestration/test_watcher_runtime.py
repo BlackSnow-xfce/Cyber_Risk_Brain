@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from aidp_orchestration.contracts import (
-    ConsumptionState, TriggerResult, TriggerStatus, WatchIterationEvent,
+    AIDPState, ConsumptionState, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent,
     WatchRuntimeResult, WatchRuntimeStatus,
 )
 from aidp_orchestration.repository import AIDPRepository
@@ -34,11 +34,12 @@ def test_watch_cli_forwards_configured_execution_timeout(
             observed["timeout_seconds"] = timeout_seconds
 
     class Runtime:
-        def __init__(self, repository, *, watcher, interval_seconds, ingress):
+        def __init__(self, repository, *, watcher, interval_seconds, ingress, lifecycle):
             observed["runtime_repository"] = repository.root
             observed["watcher"] = watcher
             observed["interval_seconds"] = interval_seconds
             observed["ingress"] = ingress
+            observed["lifecycle"] = lifecycle
 
         def run(self):
             return type("Result", (), {"status": type("Status", (), {"value": "STOPPED"})()})()
@@ -223,3 +224,24 @@ def test_real_no_action_watcher_does_not_mutate_ai(tmp_path: Path):
     assert result.status is WatchRuntimeStatus.STOPPED
     assert before == after
     assert json.loads(events[0])["watch_iteration"]["trigger_status"] == "NO_ACTION"
+
+
+def test_single_runtime_routes_through_lifecycle_without_competing_watcher(tmp_path: Path):
+    class Lifecycle:
+        calls = 0
+        def run_once(self):
+            self.calls += 1
+            return LifecycleResult(LifecycleStatus.NO_ACTION, "TASK-9000", AIDPState.WAITING_FOR_PRODUCT_OWNER, "gate")
+
+    watcher = SequenceWatcher([AssertionError("legacy watcher must not run")])
+    lifecycle = Lifecycle()
+    events = []
+    runtime = AIDPLocalWatcherRuntime(
+        AIDPRepository(tmp_path), watcher=watcher, lifecycle=lifecycle,
+        interval_seconds=5, sleeper=StopAfter(1), event_sink=events.append,
+        lock=WatcherRuntimeLock(tmp_path / "watch.lock"),
+    )
+    assert runtime.run().status is WatchRuntimeStatus.STOPPED
+    assert lifecycle.calls == 1 and watcher.calls == 0
+    payload = json.loads(events[0])["watch_iteration"]
+    assert payload["lifecycle_status"] == "NO_ACTION"

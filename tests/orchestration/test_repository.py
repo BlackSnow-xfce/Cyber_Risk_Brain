@@ -48,6 +48,12 @@ def test_exactly_one_ready_task_is_ready_for_codex(tmp_path: Path) -> None:
     assert write_repo(tmp_path, ready=("TASK-9000",)).inspect().state is AIDPState.READY_FOR_CODEX
 
 
+def test_exact_infrastructure_namespace_is_discovered_without_broadening(tmp_path: Path) -> None:
+    assert write_repo(tmp_path, ready=("AIDP-INFRA-0001",)).inspect().state is AIDPState.READY_FOR_CODEX
+    repo = write_repo(tmp_path / "invalid", ready=("AIDP-INFRA-00001",))
+    assert repo.inspect().state is AIDPState.WAITING
+
+
 def test_review_task_is_ready_for_architect(tmp_path: Path) -> None:
     assert write_repo(tmp_path, review=("TASK-9000",)).inspect().state is AIDPState.READY_FOR_ARCHITECT
 

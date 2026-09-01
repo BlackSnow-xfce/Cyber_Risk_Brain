@@ -158,7 +158,14 @@ def test_success_commits_only_execution_and_envelope_then_pushes_origin(tmp_path
     probe = repository_root / "tests/orchestration/probe.txt"
     probe.parent.mkdir(parents=True)
     probe.write_text("before\n", encoding="utf-8")
-    _git(repository_root, "add", "--", "tests/orchestration/probe.txt")
+    ready = repository_root / ".ai/tasks/ready/TASK-E2E-WRITER-0001.md"
+    ready.parent.mkdir(parents=True)
+    ready.write_text("# Probe\n\nStatus: READY\n", encoding="utf-8")
+    handoff = repository_root / ".ai/handoff"
+    handoff.mkdir(parents=True)
+    (handoff / "TO-CODEX.md").write_text("ready\n", encoding="utf-8")
+    (handoff / "TO-ARCHITECT.md").write_text("waiting\n", encoding="utf-8")
+    _git(repository_root, "add", "--", "tests/orchestration/probe.txt", ".ai")
     _git(repository_root, "commit", "-m", "fixture")
     start = _git(repository_root, "rev-parse", "HEAD")
     subprocess.check_call(("git", "init", "--bare", str(remote)))
@@ -176,7 +183,11 @@ def test_success_commits_only_execution_and_envelope_then_pushes_origin(tmp_path
     result = GitReviewPublisher(AIDPRepository(repository_root)).publish(control, "topic")
     assert result.push_status == "PUSHED"
     assert _git(repository_root, "show", "--pretty=", "--name-only", result.execution_commit) == "tests/orchestration/probe.txt"
-    assert _git(repository_root, "show", "--pretty=", "--name-only", result.review_envelope_commit) == result.review_envelope_path
+    projected = set(_git(repository_root, "show", "--pretty=", "--name-only", result.review_envelope_commit).splitlines())
+    assert result.review_envelope_path in projected
+    assert ".ai/tasks/review/TASK-E2E-WRITER-0001.md" in projected
+    assert ".ai/tasks/ready/TASK-E2E-WRITER-0001.md" in projected
+    assert not ready.exists()
     envelope = (repository_root / result.review_envelope_path).read_text(encoding="utf-8")
     assert "READY_FOR_ARCHITECT" in envelope and "APPROVED" not in envelope and "prompt" not in envelope.lower()
     assert _git(repository_root, "rev-parse", "refs/remotes/origin/topic") == result.review_envelope_commit
