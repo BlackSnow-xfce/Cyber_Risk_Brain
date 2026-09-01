@@ -34,7 +34,7 @@ export default function FindingThreatIntelligenceSection({
         >
             <Divider />
             <Stack spacing={0.5}>
-                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading}>Threat Intelligence</Typography>
+                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading} data-ti-density-role="section-heading">Threat Intelligence</Typography>
                 <Typography variant="body2" color="text.secondary" sx={findingsDensity.helpText}>
                     Load CVE-based intelligence supplied by the PredatorAI backend
                     for this finding.
@@ -84,6 +84,7 @@ export default function FindingThreatIntelligenceSection({
                                 </Typography>
                                 <ThreatIntelligenceResult
                                     intelligence={relationship.intelligence}
+                                    presentationDensity={findingsDensity}
                                 />
                             </Stack>
                         );

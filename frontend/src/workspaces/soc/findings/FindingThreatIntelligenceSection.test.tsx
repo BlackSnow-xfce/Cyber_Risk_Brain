@@ -6,6 +6,7 @@ import type {
     VulnerabilityThreatIntelligence,
 } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 import { ThreatIntelligenceRequestError } from "@/workspaces/threat-intelligence/ThreatIntelligenceApiClient";
+import ThreatIntelligenceResult from "@/workspaces/threat-intelligence/pages/ThreatIntelligenceResult";
 
 import FindingsWorkspace from "./FindingsWorkspace";
 import { findingsDensity } from "./FindingsPresentationDensity";
@@ -239,10 +240,40 @@ function deferred<Value>() {
 }
 
 describe("Finding TI density contract", () => {
-    it("keeps TI headings, values, and compact controls on the shared scale", () => {
-        expect(findingsDensity.sectionHeading).toMatchObject({ fontSize: "0.875rem", lineHeight: 1.35 });
-        expect(findingsDensity.subsectionHeading).toMatchObject({ fontSize: "0.8125rem", lineHeight: 1.3 });
-        expect(findingsDensity.primaryValue).toMatchObject({ fontSize: "0.75rem", lineHeight: 1.35 });
-        expect(findingsDensity.toolbarButton).toMatchObject({ fontSize: "0.75rem", lineHeight: 1.25 });
+    it("applies the shared density to the rendered nested production path", async () => {
+        const longReference = "nvd:https://example.invalid/authoritative/source/reference/that-must-remain-exact-and-wrap";
+        const denseIntelligence: VulnerabilityThreatIntelligence = {
+            ...intelligence,
+            nvd: {
+                ...intelligence.nvd,
+                provenance: { ...intelligence.nvd.provenance, source_reference: longReference },
+            },
+        };
+        renderWorkspace(vi.fn().mockResolvedValue({
+            ...enrichment,
+            relationships: [{ ...enrichment.relationships[0], intelligence: denseIntelligence }],
+        }));
+
+        fireEvent.click(await screen.findByRole("button", { name: "Load Threat Intelligence" }));
+        const result = await screen.findByLabelText("Threat intelligence result");
+        expect(screen.getByText("Threat Intelligence")).toHaveAttribute("data-ti-density-role", "section-heading");
+        expect(result.querySelectorAll("[data-ti-density-role='subsection-heading']").length).toBeGreaterThanOrEqual(6);
+        expect(result.querySelectorAll("[data-ti-density-role='field-label']").length).toBeGreaterThan(0);
+        expect(result.querySelectorAll("[data-ti-density-role='primary-value']").length).toBeGreaterThan(0);
+        expect(result.querySelectorAll("[data-ti-density-role='help-text']").length).toBeGreaterThan(0);
+        expect(result.querySelectorAll("[data-ti-density-role='reference']").length).toBeGreaterThan(0);
+        expect(result.querySelectorAll("[data-ti-density-role='chip']").length).toBeGreaterThan(0);
+        expect(result.querySelector(".MuiTypography-h5, .MuiTypography-h6")).toBeNull();
+        expect(screen.getByText(`Source reference: ${longReference}`)).toBeInTheDocument();
+        expect(screen.getByText("HIGH")).toHaveAttribute("data-ti-density-role", "primary-value");
+        expect(screen.getByText("Status: not_evaluated").closest(".MuiChip-root")).toHaveAttribute("data-ti-density-role", "chip");
+        expect(findingsDensity.chip.height).toBe(20);
+    });
+
+    it("preserves standalone TI presentation when density is omitted", () => {
+        const { container } = render(<ThreatIntelligenceResult intelligence={intelligence} />);
+        expect(container.querySelector(".MuiTypography-h5")).not.toBeNull();
+        expect(container.querySelector(".MuiTypography-h6")).not.toBeNull();
+        expect(container.querySelector("[data-ti-density-role]")).toBeNull();
     });
 });

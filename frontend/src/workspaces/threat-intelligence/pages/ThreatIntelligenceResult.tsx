@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import type { SystemStyleObject, Theme } from "@mui/system";
 
 import Panel from "@/ui/panel/Panel";
 
@@ -15,10 +16,21 @@ import type {
 
 interface ThreatIntelligenceResultProps {
     intelligence: VulnerabilityThreatIntelligence;
+    presentationDensity?: ThreatIntelligencePresentationDensity;
+}
+
+export interface ThreatIntelligencePresentationDensity {
+    subsectionHeading: SystemStyleObject<Theme>;
+    fieldLabel: SystemStyleObject<Theme>;
+    primaryValue: SystemStyleObject<Theme>;
+    helpText: SystemStyleObject<Theme>;
+    reference: SystemStyleObject<Theme>;
+    chip: SystemStyleObject<Theme>;
 }
 
 export default function ThreatIntelligenceResult({
     intelligence,
+    presentationDensity,
 }: ThreatIntelligenceResultProps) {
     return (
         <Stack spacing={2} aria-label="Threat intelligence result">
@@ -28,20 +40,22 @@ export default function ThreatIntelligenceResult({
                 sx={{ alignItems: { md: "center" }, justifyContent: "space-between" }}
             >
                 <Box>
-                    <Typography variant="overline" color="secondary.light">
+                    <Typography variant="overline" color="secondary.light" sx={presentationDensity?.fieldLabel} data-ti-density-role={presentationDensity ? "field-label" : undefined}>
                         Vulnerability intelligence
                     </Typography>
-                    <Typography variant="h5">{intelligence.cve_identifier}</Typography>
+                    <Typography variant={presentationDensity ? "subtitle2" : "h5"} sx={presentationDensity?.subsectionHeading} data-ti-density-role={presentationDensity ? "subsection-heading" : undefined}>{intelligence.cve_identifier}</Typography>
                 </Box>
                 <Chip
                     label={`Contract ${intelligence.contract_version}`}
                     variant="outlined"
+                    sx={presentationDensity?.chip}
+                    data-ti-density-role={presentationDensity ? "chip" : undefined}
                 />
             </Stack>
 
-            <FactPanel title="NVD" fact={intelligence.nvd}>
+            <FactPanel title="NVD" fact={intelligence.nvd} presentationDensity={presentationDensity}>
                 {intelligence.nvd.value && (
-                    <FieldList
+                    <FieldList presentationDensity={presentationDensity}
                         fields={[
                             ["Summary", intelligence.nvd.value.summary],
                             ["Published", intelligence.nvd.value.published_at],
@@ -51,9 +65,9 @@ export default function ThreatIntelligenceResult({
                 )}
             </FactPanel>
 
-            <FactPanel title="CVSS" fact={intelligence.cvss}>
+            <FactPanel title="CVSS" fact={intelligence.cvss} presentationDensity={presentationDensity}>
                 {intelligence.cvss.value && (
-                    <FieldList
+                    <FieldList presentationDensity={presentationDensity}
                         fields={[
                             ["Base score", String(intelligence.cvss.value.base_score)],
                             ["Severity", intelligence.cvss.value.severity],
@@ -64,9 +78,9 @@ export default function ThreatIntelligenceResult({
                 )}
             </FactPanel>
 
-            <FactPanel title="EPSS" fact={intelligence.epss}>
+            <FactPanel title="EPSS" fact={intelligence.epss} presentationDensity={presentationDensity}>
                 {intelligence.epss.value && (
-                    <FieldList
+                    <FieldList presentationDensity={presentationDensity}
                         fields={[
                             ["Probability", String(intelligence.epss.value.probability)],
                             [
@@ -80,9 +94,9 @@ export default function ThreatIntelligenceResult({
                 )}
             </FactPanel>
 
-            <FactPanel title="CISA KEV" fact={intelligence.cisa_kev}>
+            <FactPanel title="CISA KEV" fact={intelligence.cisa_kev} presentationDensity={presentationDensity}>
                 {intelligence.cisa_kev.value && (
-                    <FieldList
+                    <FieldList presentationDensity={presentationDensity}
                         fields={[
                             [
                                 "Catalog membership",
@@ -104,11 +118,13 @@ export default function ThreatIntelligenceResult({
             <FactPanel
                 title="Exploitation Evidence"
                 fact={intelligence.exploitation_evidence}
+                presentationDensity={presentationDensity}
             >
                 {intelligence.exploitation_evidence.value?.map((evidence) => (
                     <EvidenceItem
                         key={`${evidence.evidence_type}:${evidence.provenance.source_reference}`}
                         evidence={evidence}
+                        presentationDensity={presentationDensity}
                     />
                 ))}
             </FactPanel>
@@ -120,9 +136,10 @@ interface FactPanelProps {
     title: string;
     fact: ThreatIntelligenceFact<unknown>;
     children?: ReactNode;
+    presentationDensity?: ThreatIntelligencePresentationDensity;
 }
 
-function FactPanel({ title, fact, children }: FactPanelProps) {
+function FactPanel({ title, fact, children, presentationDensity }: FactPanelProps) {
     return (
         <Panel component="section">
             <Stack spacing={1.5}>
@@ -132,25 +149,27 @@ function FactPanel({ title, fact, children }: FactPanelProps) {
                     useFlexGap
                     sx={{ alignItems: "center", flexWrap: "wrap" }}
                 >
-                    <Typography variant="h6">{title}</Typography>
-                    <Chip label={`Status: ${fact.status}`} size="small" />
+                    <Typography variant={presentationDensity ? "subtitle2" : "h6"} sx={presentationDensity?.subsectionHeading} data-ti-density-role={presentationDensity ? "subsection-heading" : undefined}>{title}</Typography>
+                    <Chip label={`Status: ${fact.status}`} size="small" sx={presentationDensity?.chip} data-ti-density-role={presentationDensity ? "chip" : undefined} />
                     <Chip
                         label={`Source: ${fact.provenance.source_type}`}
                         size="small"
                         variant="outlined"
+                        sx={presentationDensity?.chip}
+                        data-ti-density-role={presentationDensity ? "chip" : undefined}
                     />
                 </Stack>
                 {fact.value === null ? (
-                    <Typography color="text.secondary">
+                    <Typography variant={presentationDensity ? "body2" : undefined} color="text.secondary" sx={presentationDensity?.helpText} data-ti-density-role={presentationDensity ? "help-text" : undefined}>
                         No value supplied by the backend.
                     </Typography>
                 ) : (
                     children
                 )}
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="text.secondary" sx={presentationDensity ? [presentationDensity.reference, { overflowWrap: "anywhere", minWidth: 0 }] : undefined} data-ti-density-role={presentationDensity ? "reference" : undefined}>
                     Source reference: {fact.provenance.source_reference}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="text.secondary" sx={presentationDensity ? [presentationDensity.reference, { overflowWrap: "anywhere", minWidth: 0 }] : undefined} data-ti-density-role={presentationDensity ? "reference" : undefined}>
                     Observed at: {fact.observed_at ?? "Not provided"}
                 </Typography>
             </Stack>
@@ -160,17 +179,18 @@ function FactPanel({ title, fact, children }: FactPanelProps) {
 
 interface FieldListProps {
     fields: ReadonlyArray<readonly [string, string | null]>;
+    presentationDensity?: ThreatIntelligencePresentationDensity;
 }
 
-function FieldList({ fields }: FieldListProps) {
+function FieldList({ fields, presentationDensity }: FieldListProps) {
     return (
         <Stack spacing={1}>
             {fields.map(([label, value]) => (
                 <Box key={label}>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={presentationDensity?.fieldLabel} data-ti-density-role={presentationDensity ? "field-label" : undefined}>
                         {label}
                     </Typography>
-                    <Typography sx={{ overflowWrap: "anywhere" }}>
+                    <Typography variant={presentationDensity ? "body2" : undefined} sx={{ ...presentationDensity?.primaryValue, overflowWrap: "anywhere" }} data-ti-density-role={presentationDensity ? "primary-value" : undefined}>
                         {value ?? "Not provided"}
                     </Typography>
                 </Box>
@@ -179,12 +199,12 @@ function FieldList({ fields }: FieldListProps) {
     );
 }
 
-function EvidenceItem({ evidence }: { evidence: ExploitationEvidence }) {
+function EvidenceItem({ evidence, presentationDensity }: { evidence: ExploitationEvidence; presentationDensity?: ThreatIntelligencePresentationDensity }) {
     return (
         <Stack spacing={0.5}>
-            <Typography>{evidence.evidence_type}</Typography>
-            <Typography color="text.secondary">{evidence.description}</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant={presentationDensity ? "body2" : undefined} sx={presentationDensity?.primaryValue} data-ti-density-role={presentationDensity ? "primary-value" : undefined}>{evidence.evidence_type}</Typography>
+            <Typography variant={presentationDensity ? "body2" : undefined} color="text.secondary" sx={presentationDensity?.helpText} data-ti-density-role={presentationDensity ? "help-text" : undefined}>{evidence.description}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={presentationDensity ? [presentationDensity.reference, { overflowWrap: "anywhere", minWidth: 0 }] : undefined} data-ti-density-role={presentationDensity ? "reference" : undefined}>
                 Evidence source: {evidence.provenance.source_type} —{" "}
                 {evidence.provenance.source_reference}
             </Typography>
