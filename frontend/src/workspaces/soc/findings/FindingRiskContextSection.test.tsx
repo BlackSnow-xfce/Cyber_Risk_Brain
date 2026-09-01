@@ -47,7 +47,7 @@ const context: FindingRiskContext = {
     },
     business_impact_readiness: {
         finding_id: "finding-001", status: "UNAVAILABLE", reason: "Authoritative business context is missing.",
-        facts: [], missing_requirements: ["business_service"], source_references: [],
+        facts: [], missing_requirements: ["business_service", "environment", "service_criticality", "business_context_provenance"], source_references: [],
         completeness_status: "no_data", source_type: "business_impact_readiness",
         source_reference: "business-impact-readiness:unavailable:finding-001",
     },
@@ -65,7 +65,7 @@ const context: FindingRiskContext = {
     business_impact_classification_readiness: {
         finding_id: "finding-001", status: "UNAVAILABLE", reason: "Service profile is missing.",
         business_facts: [], service_impact_facts: [], technical_effects: [],
-        missing_requirements: ["service_impact_profile"], source_references: [],
+        missing_requirements: ["service_impact_profile", "supported_cvss_v3_effect:CVE-2004-2687"], source_references: [],
         completeness_status: "no_data", source_type: "business_impact_classification_readiness",
         source_reference: "business-impact-classification-readiness:unavailable:finding-001",
     },
@@ -105,13 +105,26 @@ describe("FindingRiskContextSection", () => {
         const missingBusinessService = screen.getByText("Business service");
         expect(missingBusinessService).toHaveAttribute("data-color-token", "text.primary");
         expect(missingBusinessService.closest(".MuiChip-root")).toBeNull();
+        expect(screen.queryByText("business_service")).not.toBeInTheDocument();
+        expect(screen.queryByText("environment")).not.toBeInTheDocument();
+        expect(screen.queryByText("service_criticality")).not.toBeInTheDocument();
+        expect(screen.queryByText("business_context_provenance")).not.toBeInTheDocument();
+        expect(screen.queryByText("service_impact_profile")).not.toBeInTheDocument();
+        expect(screen.queryByText("supported_cvss_v3_effect:CVE-2004-2687")).not.toBeInTheDocument();
+        expect(screen.getByText("Environment")).toBeInTheDocument();
+        expect(screen.getByText("Service criticality")).toBeInTheDocument();
+        expect(screen.getByText("Business context provenance")).toBeInTheDocument();
+        expect(screen.getByText("Service impact profile")).toBeInTheDocument();
+        expect(screen.getByText("Supported cvss v3 effect — CVE-2004-2687")).toBeInTheDocument();
+        expect(context.business_impact_readiness?.missing_requirements).toContain("business_service");
+        expect(screen.getByLabelText("Authoritative Business Context").querySelector('[data-color-token="warning.main"]')).not.toBeNull();
         expect(within(screen.getByLabelText("Service Impact Profile")).getByText("NOT_FOUND")).toBeInTheDocument();
         expect(within(screen.getByLabelText("Technical Effect")).getByText("UNAVAILABLE")).toBeInTheDocument();
         expect(screen.getByText(/Readiness is not a Business Impact result/)).toBeInTheDocument();
         expect(container.querySelector("br")).toBeNull();
     });
 
-    it("uses restrained semantic theme tokens without changing authoritative values", () => {
+    it("uses traffic-light authority semantics without coloring neutral values", () => {
         const semanticContext: FindingRiskContext = {
             ...context,
             business_context: {
@@ -160,7 +173,7 @@ describe("FindingRiskContextSection", () => {
         render(<FindingRiskContextSection context={semanticContext} error={null} loading={false} onLoad={vi.fn()} />);
 
         const sourceField = screen.getAllByText("Source")[0].closest("[data-authority-field]");
-        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-color-token", "info.main");
+        expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-color-token", "success.main");
         expect(within(sourceField as HTMLElement).getByText("Source")).toHaveAttribute("data-structural-label", "true");
         expect(within(sourceField as HTMLElement).getByText("Source")).toHaveStyle({ textTransform: "uppercase", fontWeight: "700" });
         expect(within(sourceField as HTMLElement).getByText("Source")).toHaveTextContent("Source");
@@ -173,6 +186,17 @@ describe("FindingRiskContextSection", () => {
         expectStatusChip(screen.getByText("AVAILABLE"), "success");
         expectStatusChip(screen.getByText("UNKNOWN"), "warning");
         expectStatusChip(screen.getAllByText("NOT_EVALUATED")[0], "warning");
+        expect(screen.getByLabelText("What PredatorAI knows").querySelector('[data-color-token="success.main"]')).not.toBeNull();
+        expect(screen.getByLabelText("Business-Impact Readiness").querySelector(':scope > [data-color-token="success.main"]')).not.toBeNull();
+        expect(screen.getByLabelText("Technical Effect").querySelector(':scope > [data-color-token="warning.main"]')).not.toBeNull();
+        const availableTi = screen.getByLabelText("Nvd");
+        const unavailableTi = screen.getByLabelText("Cvss");
+        expect(availableTi).toHaveAttribute("data-authority-tone", "success");
+        expect(unavailableTi).toHaveAttribute("data-authority-tone", "warning");
+        expect(within(availableTi).getByText("Authority")).toHaveAttribute("data-color-token", "success.main");
+        expect(within(unavailableTi).getByText("Authority")).toHaveAttribute("data-color-token", "warning.main");
+        expect(within(availableTi).getByText("nvd")).toHaveAttribute("data-color-token", "text.primary");
+        expect(within(unavailableTi).getByText("nvd:CVE-2004-2687#cvss")).toHaveAttribute("data-color-token", "text.secondary");
         screen.getAllByText("HIGH").forEach((value) => {
             expect(value).toHaveAttribute("data-color-token", "text.primary");
             expect(value.closest(".MuiChip-root")).toBeNull();
@@ -246,7 +270,9 @@ describe("FindingRiskContextSection", () => {
         expect(second.querySelector('[data-layout-spacing="compact"]')).not.toBeNull();
 
         expect(within(first).getByText("CVE-2004-2687")).toBeInTheDocument();
+        expect(within(first).getByText("CVE-2004-2687")).toHaveAttribute("data-color-token", "text.primary");
         expect(within(first).getByText("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N")).toBeInTheDocument();
+        expect(within(first).getByText("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N")).toHaveAttribute("data-color-token", "text.primary");
         expect(within(first).getByText("nvd:CVE-2004-2687#cvss-v3.1-authoritative-reference")).toHaveStyle({ overflowWrap: "anywhere" });
         expect(within(first).getByText("2026-09-01T08:00:00Z")).toBeInTheDocument();
         expect(within(first).queryByText("CVE-2021-44228")).not.toBeInTheDocument();
