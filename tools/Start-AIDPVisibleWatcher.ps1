@@ -52,7 +52,7 @@ try {
             --product-branch $productBranch `
             --infrastructure-root $orchestrationRoot `
             --architect-contract-root $architectRoot 2>&1 |
-            Tee-Object -LiteralPath $activityLog -Append
+            Tee-Object -FilePath $activityLog -Append
         $exitCode = $LASTEXITCODE
         Write-Host ("[{0}] Watcher exited with code {1}; restarting in 10 seconds" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"), $exitCode) -ForegroundColor Red
         Start-Sleep -Seconds 10
