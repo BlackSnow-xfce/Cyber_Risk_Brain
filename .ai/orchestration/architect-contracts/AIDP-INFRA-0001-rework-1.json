@@ -1,0 +1,54 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0001-rework-1-validator-authority-v1",
+    "contract_type": "administrative_validator_authority_correction",
+    "contract": {
+      "task_id": "AIDP-INFRA-0001",
+      "review_iteration": 1,
+      "state": "REWORK_REQUIRED",
+      "purpose": "VALIDATOR-AUTHORITY CORRECTION ONLY",
+      "original_bootstrap_head": "0179487d003761dc15dbdfe2bf465171bace871b",
+      "expected_head": "151b4ce04c2e5c9b0f68ab948a21a8adeeb49314",
+      "implementation_allowed_scope": [],
+      "product_scope": [],
+      "codex_execution_authorized": false,
+      "implementation_changes_required": false,
+      "superseded_validation_requirements": [
+        "python -m pytest"
+      ],
+      "required_validations": [
+        "python -m pytest tests/orchestration",
+        "git diff --check",
+        "Exact 26-path Scope Guard: 0179487d003761dc15dbdfe2bf465171bace871b..151b4ce04c2e5c9b0f68ab948a21a8adeeb49314"
+      ],
+      "baseline_finding": {
+        "classification": "PRE-EXISTING / OUT-OF-SCOPE BASELINE FAILURE",
+        "reproduced_on_head": "0179487d003761dc15dbdfe2bf465171bace871b",
+        "failure_count": 8,
+        "dependency_chain": [
+          "api_app.py",
+          "core/predator_engine.py",
+          "output.story_bundle"
+        ],
+        "implementation_causality": "NONE",
+        "product_paths_changed": 0
+      },
+      "transition_authority": {
+        "all_validations_pass": "READY_FOR_ARCHITECT",
+        "validation_failure": "BLOCKED",
+        "product_owner_authority": false,
+        "done_authority": false,
+        "next_task_authority": false
+      },
+      "prohibited_actions": [
+        "Do not modify the implementation commit",
+        "Do not modify Product code",
+        "Do not launch Codex implementation",
+        "Do not create or consume TASK-0131",
+        "Do not infer Product Owner authority"
+      ],
+      "created_at": "2026-09-01T15:23:29.3686557Z"
+    },
+    "received_at": "2026-09-01T15:23:29.3686557Z"
+  }
+}
