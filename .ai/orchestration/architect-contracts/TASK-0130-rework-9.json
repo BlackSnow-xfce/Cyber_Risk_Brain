@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-9",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 9,
+      "expected_head": "31733076b565538fae868ec5592f187a1b7e0042",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "In What PredatorAI knows, apply restrained MUI success.main guidance to the structural labels of every backend-authoritative source_fact: finding_id source title vendor_severity and observed_asset, plus each associated Source label. Do not invent or duplicate rows.",
+        "When AssetContext status is resolved, apply the same success guidance to Canonical asset, Asset criticality, and its Source structural labels. Do not apply resolved guidance when canonical authority is absent.",
+        "Use an actual local MUI theme-resolved styling path that is visibly effective in the dark theme, preserving compact uppercase weight line-height and letter-spacing. A data attribute alone is insufficient. Do not change global theme tokens or use hard-coded colors.",
+        "Keep all values neutral: fact values text.primary, source names and references neutral or text.secondary as already approved. Critical vendor severity and LOW HIGH CRITICAL criticality values must not inherit success warning or error based on magnitude.",
+        "Focused tests must cover all named known-fact and Source labels with success semantics, neutral Critical and LOW values, secondary references, and preservation of warning unavailable units, neutral mixed Correlation/Evidence parent, error Alerts, exact CVSS acronym, requirement de-duplication, REWORK-6 spacing, grouping, wrapping, order, Chips, accessibility, business_impact null, decision null, recommendations empty, and all frozen TASK-0127 TASK-0128 TASK-0129 TASK-0130 and global UI boundaries. TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T09:59:34Z"
+    },
+    "received_at": "2026-09-01T09:59:34Z"
+  }
+}
