@@ -1,0 +1,34 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-12",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 12,
+      "expected_head": "e460a678e40fdc5f3c88b0b97d93fb204c3a8a77",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingThreatIntelligenceSection.test.tsx"
+      ],
+      "findings": [
+        "This is test-only. Do not modify production code or FindingsPresentationDensity. The existing EvidenceItem implementation already maps evidence type to primaryValue, description to helpText, and evidence source/provenance to wrapping-safe reference.",
+        "Create a non-null exploitation_evidence.value with exactly supported ExploitationEvidence fields: stable evidence_type, exact description, provenance source_type, deliberately long exact provenance source_reference, and valid observed_at. Do not invent fields.",
+        "Render through the production FindingsWorkspace to FindingThreatIntelligenceSection to ThreatIntelligenceResult to EvidenceItem path. A detached EvidenceItem render or exported-constant-only assertion is insufficient.",
+        "Assert the evidence type, description, long provenance reference, and exploitation fact Observed at timestamp are rendered exactly; evidence type uses primaryValue, description uses helpText, provenance uses wrapping-safe reference, ordinary evidence values remain neutral, and the authority status Chip and all existing compact roles remain intact. Item-level observed_at remains in the typed fixture but must not be newly rendered because EvidenceItem does not currently present it.",
+        "Preserve optional density behavior, standalone TI defaults, no compact h5/h6 fallback, traffic-light semantics, neutral values, wrapping, every REWORK-6 through REWORK-11 presentation contract, business_impact null, decision null, and recommendations empty. Run focused evidence and Findings tests, full frontend and controlled Python regressions, TypeScript, build, git diff --check, and exact one-path Scope Guard. Do not create TASK-0131."
+      ],
+      "required_validations": [
+        "focused populated exploitation-evidence rendering test",
+        "focused Findings TI density tests",
+        "focused Findings workspace and Risk Context tests",
+        "full frontend regression",
+        "full python regression with controlled Local Operator isolation",
+        "typescript",
+        "production build",
+        "git diff --check",
+        "exact one-path scope guard"
+      ],
+      "created_at": "2026-09-01T12:50:00Z"
+    },
+    "received_at": "2026-09-01T12:50:00Z"
+  }
+}
