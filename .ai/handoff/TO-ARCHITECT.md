@@ -1,9 +1,6 @@
-# Handoff - Architecture Review
+# Handoff - Architecture Review TASK-0131
 
-Status: CLOSED
-Task: TASK-0130
-Task Status: DONE / PASS / APPROVED
+Status: WAITING
+Task: TASK-0131
+Task Status: READY
 Reviewer: Architect
-Architect Task-Specification Review: PASS / APPROVED
-Architect Implementation Review: PASS / APPROVED
-Product Owner Live Acceptance: PASS / APPROVED
