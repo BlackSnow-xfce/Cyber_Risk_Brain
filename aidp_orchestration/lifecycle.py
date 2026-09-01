@@ -72,7 +72,7 @@ class AIDPLifecycleOnce:
                 return recovered
         if decision.state is AIDPState.WAITING_FOR_PRODUCT_OWNER:
             return LifecycleResult(LifecycleStatus.NO_ACTION, decision.task_id, decision.state, "Product Owner hard gate")
-        if decision.state in {AIDPState.READY_FOR_CODEX, AIDPState.REWORK_REQUIRED}:
+        if decision.state in {AIDPState.WAITING, AIDPState.READY_FOR_CODEX, AIDPState.REWORK_REQUIRED}:
             if decision.state is AIDPState.REWORK_REQUIRED and decision.task_id is not None:
                 try:
                     self._ensure_rework_authority(decision.task_id)
@@ -82,18 +82,17 @@ class AIDPLifecycleOnce:
             if result.status is TriggerStatus.PUBLISHED:
                 execution = result.control_plane_result.runner_result.execution_result
                 return LifecycleResult(
-                    LifecycleStatus.ADVANCED, decision.task_id, AIDPState.READY_FOR_ARCHITECT,
+                    LifecycleStatus.ADVANCED, execution.task_id, AIDPState.READY_FOR_ARCHITECT,
                     "Codex execution and review projection published", execution.execution_id,
                 )
             if result.status is TriggerStatus.NO_ACTION:
-                return LifecycleResult(LifecycleStatus.NO_ACTION, decision.task_id, decision.state, "no eligible Codex contract")
+                reason = "no pending Architect contract" if decision.state is AIDPState.WAITING else "no eligible Codex contract"
+                return LifecycleResult(LifecycleStatus.NO_ACTION, decision.task_id, decision.state, reason)
             reason = result.failure_reason or "Codex lifecycle failed closed"
             status = LifecycleStatus.ESCALATION_REQUIRED if "abandoned" in reason or "execution" in reason else LifecycleStatus.BLOCKED
             return LifecycleResult(status, decision.task_id, decision.state, reason)
         if decision.state is AIDPState.READY_FOR_ARCHITECT:
             return self._review(decision.task_id)
-        if decision.state is AIDPState.WAITING:
-            return LifecycleResult(LifecycleStatus.NO_ACTION, None, decision.state, "no active lifecycle")
         return self._blocked(decision.task_id, decision.state, "; ".join(decision.reasons) or "unsafe lifecycle state")
 
     def _review(self, task_id: str | None) -> LifecycleResult:

@@ -10,7 +10,8 @@ from aidp_orchestration.architect_review import create_review_request, create_re
 from aidp_orchestration.contracts import (
     AIDPState, ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, ArchitectTaskContract,
     ContractInboxItem, ReworkContract,
-    ExecutionStatus, LifecycleStatus, OrchestrationDecision, ScopeCompliance, ValidationResult,
+    ExecutionStatus, LifecycleStatus, OrchestrationDecision, ScopeCompliance, TriggerResult,
+    TriggerStatus, ValidationResult,
 )
 from aidp_orchestration.lifecycle import AIDPLifecycleOnce
 from aidp_orchestration.runtime import LocalRuntimeStore
@@ -80,6 +81,16 @@ class Architect:
             raise ValueError(self.revalidation_error)
 
 
+class Codex:
+    def __init__(self, result):
+        self.result = result
+        self.calls = 0
+
+    def run_once(self):
+        self.calls += 1
+        return self.result
+
+
 class Projection:
     def __init__(self): self.calls = []
     def project_architect_result(self, result): self.calls.append(result.disposition); return "5" * 40
@@ -96,6 +107,18 @@ def test_product_owner_gate_is_absolute_no_action(tmp_path):
     )
     assert lifecycle.run_once().status is LifecycleStatus.NO_ACTION
     assert architect.calls == 0
+
+
+def test_waiting_lifecycle_checks_canonical_contract_consumer(tmp_path):
+    codex = Codex(TriggerResult(TriggerStatus.NO_ACTION, None, None))
+    lifecycle = AIDPLifecycleOnce(
+        Repo([AIDPState.WAITING]), codex=codex,
+        runtime_store=LocalRuntimeStore(tmp_path), projection=Projection(),
+    )
+    result = lifecycle.run_once()
+    assert result.status is LifecycleStatus.NO_ACTION
+    assert result.reason == "no pending Architect contract"
+    assert codex.calls == 1
 
 
 def test_pass_reaches_product_owner_gate_after_verified_persistence(tmp_path):
