@@ -11,7 +11,7 @@ import pytest
 from aidp_orchestration import architect_review
 from aidp_orchestration.architect_review import (
     ArchitectReviewCoordinator, ProductWorktreeIdentityGuard, create_review_request,
-    create_review_result, validate_review_result,
+    architect_result_schema, create_review_result, validate_review_result,
 )
 from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance,
@@ -193,6 +193,31 @@ def test_timeout_and_malformed_output_are_blocked(tmp_path: Path):
         launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
     )
     assert coordinator.review(req, schema_path=schema).failure_reason == "Architect exited with code 7"
+
+
+def test_schema_and_prompt_prevent_forbidden_architect_authority_claims(tmp_path: Path):
+    req = request(repository=str(tmp_path), git_common_dir="C:/repo/.git")
+    schema = architect_result_schema()
+    assert schema["properties"]["authority_claims"]["maxItems"] == 0
+    prompt = ArchitectReviewCoordinator._prompt(req)
+    assert "authority_claims must always be an empty array" in prompt
+
+
+def test_invalid_architect_result_preserves_bounded_diagnostic(tmp_path: Path):
+    req = request(repository=str(tmp_path), git_common_dir="C:/repo/.git")
+    decision = {
+        "disposition": "PASS", "findings": [], "allowed_rework_scope": [],
+        "required_validations": [], "failure_reason": None, "authority_claims": ["forbidden"],
+    }
+    coordinator = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path), runner=FakeRunner(decision),
+        launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW,
+    )
+    result = coordinator.review(req, schema_path=tmp_path / "schema.json")
+    assert result.disposition is ArchitectReviewDisposition.BLOCKED
+    assert result.failure_reason == (
+        "Architect result is invalid: ValueError: Architect result may not assert Product Owner, DONE or next-task authority"
+    )
 
 
 def _git(root: Path, *args: str) -> str:

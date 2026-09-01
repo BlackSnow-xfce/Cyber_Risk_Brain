@@ -187,7 +187,11 @@ class ArchitectReviewCoordinator:
             )
             validate_review_result(request, result)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            return self._blocked(request, started, f"Architect result is invalid: {exc.__class__.__name__}", launcher)
+            diagnostic = " ".join(str(exc).split())[:1024]
+            reason = f"Architect result is invalid: {exc.__class__.__name__}"
+            if diagnostic:
+                reason = f"{reason}: {diagnostic}"
+            return self._blocked(request, started, reason, launcher)
         return result
 
     def _result_from_decision(
@@ -288,7 +292,11 @@ class ArchitectReviewCoordinator:
         evidence = json.dumps(asdict(request), default=_json_default, sort_keys=True, separators=(",", ":"))
         return (
             "Review the immutable AIDP execution evidence. Do not modify files and do not assert Product Owner, "
-            "DONE, or next-task authority. Return only the schema-constrained ArchitectReviewResult.\n"
+            "DONE, or next-task authority. authority_claims must always be an empty array. For PASS, findings, "
+            "allowed_rework_scope, and required_validations must be empty and failure_reason must be null. For "
+            "FAIL, findings, allowed_rework_scope, and required_validations must be non-empty and failure_reason "
+            "must be null. For BLOCKED, findings, allowed_rework_scope, and required_validations must be empty and "
+            "failure_reason must be a non-empty diagnostic. Return only the schema-constrained ArchitectReviewResult.\n"
             f"architect_review_request={evidence}"
         )
 
@@ -416,7 +424,7 @@ def architect_result_schema() -> dict[str, object]:
         "allowed_rework_scope": {"type": "array", "items": {"type": "string"}},
         "required_validations": {"type": "array", "items": {"type": "string"}},
         "failure_reason": {"type": ["string", "null"]},
-        "authority_claims": {"type": "array", "items": {"type": "string"}},
+        "authority_claims": {"type": "array", "items": {"type": "string"}, "maxItems": 0},
     }
     return {"type": "object", "additionalProperties": False, "required": list(properties), "properties": properties}
 
