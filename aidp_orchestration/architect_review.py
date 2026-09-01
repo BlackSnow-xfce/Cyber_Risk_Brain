@@ -1,8 +1,9 @@
-"""Headless, fail-closed Architect review execution and authority validation."""
+"""Fail-closed Architect review execution and authority validation."""
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import asdict, fields
 from datetime import datetime
@@ -23,7 +24,7 @@ from .contracts import (
     utc_now,
 )
 from .control_plane import scope_is_subset
-from .executor import SubprocessRunner
+from .executor import SubprocessRunner, WindowsVisibleCodexRunner
 from .executor_types import ProcessRunner
 from .launcher import CodexLauncher, resolve_codex_launcher
 
@@ -120,7 +121,11 @@ class ArchitectReviewCoordinator:
             raise ValueError("max_capture_bytes must be positive")
         self.product_root = product_root.resolve()
         self.identity_guard = identity_guard
-        self.runner = runner or SubprocessRunner(max_capture_bytes=max_capture_bytes)
+        self.runner = runner or (
+            WindowsVisibleCodexRunner()
+            if os.name == "nt"
+            else SubprocessRunner(max_capture_bytes=max_capture_bytes)
+        )
         self.launcher = launcher
         self.timeout_seconds = timeout_seconds
         self.max_capture_bytes = max_capture_bytes

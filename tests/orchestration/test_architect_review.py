@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from aidp_orchestration import architect_review
 from aidp_orchestration.architect_review import (
     ArchitectReviewCoordinator, ProductWorktreeIdentityGuard, create_review_request,
     create_review_result, validate_review_result,
@@ -16,11 +17,28 @@ from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance,
     ExecutionStatus, ReworkContract, ScopeCompliance, ValidationResult,
 )
+from aidp_orchestration.executor import SubprocessRunner, WindowsVisibleCodexRunner
 from aidp_orchestration.executor_types import ProcessOutcome
 from aidp_orchestration.launcher import CodexLauncher
 
 
 NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+
+def test_default_architect_runner_is_visible_on_windows_and_headless_elsewhere(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.setattr(architect_review.os, "name", "nt")
+    windows = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path),
+    )
+    assert isinstance(windows.runner, WindowsVisibleCodexRunner)
+
+    monkeypatch.setattr(architect_review.os, "name", "posix")
+    posix = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path),
+    )
+    assert isinstance(posix.runner, SubprocessRunner)
 
 
 def request(**changes):

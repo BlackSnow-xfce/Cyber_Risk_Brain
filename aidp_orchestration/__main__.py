@@ -61,7 +61,10 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--watch-interval", type=float, default=10.0)
     parser.add_argument("--architect-contract-branch", help="explicit origin branch enabling Git contract ingress for --watch")
-    parser.add_argument("--autonomous-architect", action="store_true", help="enable headless Architect review for --watch")
+    parser.add_argument(
+        "--autonomous-architect", action="store_true",
+        help="enable autonomous Architect review for --watch (visible on Windows)",
+    )
     parser.add_argument("--product-branch", help="authoritative Product branch for autonomous Architect review")
     parser.add_argument("--infrastructure-root", type=Path, help="excluded infrastructure development worktree")
     parser.add_argument("--architect-contract-root", type=Path, help="excluded Architect contract worktree")
