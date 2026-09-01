@@ -246,8 +246,9 @@ def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path)
     prior_request = _request()
     prior_result = _result(prior_request, ArchitectReviewDisposition.FAIL)
     store.persist_architect_result(prior_result)
-    rework = ReworkContract("TASK-9000", 1, "3" * 40, ("a.py",), ("finding",), ("pytest",), NOW)
-    store.persist_rework_contract("exact-rework-one", rework)
+    rework = ReworkContract("TASK-9000", 1, "1" * 40, ("a.py",), ("finding",), ("pytest",), NOW)
+    exact_rework_id = rework.canonical_id(prior_result.review_result_id)
+    store.persist_rework_contract(exact_rework_id, rework, prior_result.review_result_id)
     envelope = RequestRepo.ai_root / "orchestration/review-inbox/TASK-9000-rework.json"
     envelope.parent.mkdir(parents=True)
     envelope.write_text(json.dumps({"architect_review_envelope": {
@@ -264,4 +265,4 @@ def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path)
     )
     built = lifecycle._build_request("TASK-9000")
     assert built.review_iteration == 1
-    assert built.previous_rework_contract_id == "exact-rework-one"
+    assert built.previous_rework_contract_id == exact_rework_id

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Sequence
@@ -58,6 +59,7 @@ class SubprocessRunner:
     def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
         if self.max_capture_bytes is not None:
             return self._run_bounded(args, cwd=cwd, timeout_seconds=timeout_seconds)
+        process_started_at = datetime.now(timezone.utc)
         try:
             completed = subprocess.run(
                 tuple(args),
@@ -67,6 +69,7 @@ class SubprocessRunner:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            process_completed_at = datetime.now(timezone.utc)
             stdout, stdout_error = _decode_process_output(exc.stdout, "stdout")
             stderr, stderr_error = _decode_process_output(exc.stderr, "stderr")
             return ProcessOutcome(
@@ -75,9 +78,11 @@ class SubprocessRunner:
                 stderr,
                 timed_out=True,
                 error=stdout_error or stderr_error or "timeout",
+                process_started_at=process_started_at, process_completed_at=process_completed_at,
             )
         except OSError as exc:
             return ProcessOutcome(None, "", "", error=f"process error: {exc.__class__.__name__}")
+        process_completed_at = datetime.now(timezone.utc)
         stdout, stdout_error = _decode_process_output(completed.stdout, "stdout")
         stderr, stderr_error = _decode_process_output(completed.stderr, "stderr")
         return ProcessOutcome(
@@ -85,6 +90,7 @@ class SubprocessRunner:
             stdout,
             stderr,
             error=stdout_error or stderr_error,
+            process_started_at=process_started_at, process_completed_at=process_completed_at,
         )
 
     def _run_bounded(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
@@ -96,6 +102,7 @@ class SubprocessRunner:
             )
         except OSError as exc:
             return ProcessOutcome(None, "", "", error=f"process error: {exc.__class__.__name__}")
+        process_started_at = datetime.now(timezone.utc)
         identity = f"pid:{process.pid}:started_ns:{started_ns}"
         limit = self.max_capture_bytes or 1
         buffers = {"stdout": bytearray(), "stderr": bytearray()}
@@ -137,21 +144,25 @@ class SubprocessRunner:
             process.wait()
         for reader in readers:
             reader.join(timeout=1.0)
+        process_completed_at = datetime.now(timezone.utc)
         stdout, stdout_error = _decode_process_output(bytes(buffers["stdout"]), "stdout")
         stderr, stderr_error = _decode_process_output(bytes(buffers["stderr"]), "stderr")
         if overflow.is_set():
             return ProcessOutcome(
                 process.returncode, "", "", error="process output limit exceeded",
                 process_identity=identity, output_limit_exceeded=True,
+                process_started_at=process_started_at, process_completed_at=process_completed_at,
             )
         if timed_out:
             return ProcessOutcome(
                 None, stdout, stderr, timed_out=True,
                 error=stdout_error or stderr_error or "timeout", process_identity=identity,
+                process_started_at=process_started_at, process_completed_at=process_completed_at,
             )
         return ProcessOutcome(
             process.returncode, stdout, stderr, error=stdout_error or stderr_error,
             process_identity=identity,
+            process_started_at=process_started_at, process_completed_at=process_completed_at,
         )
 
 
@@ -429,7 +440,9 @@ class CodexExecutionService:
             try:
                 external_requirements = tuple(
                     value for value in request.validation_requirements
-                    if value.strip().lower() != "exact rework-2 scope guard"
+                    if value.strip().lower() not in {
+                        "exact rework-2 scope guard", "exact rework-3 scope guard",
+                    }
                 )
                 validations = self.validator_registry.run(
                     external_requirements,
@@ -439,7 +452,12 @@ class CodexExecutionService:
                 )
                 if len(external_requirements) != len(request.validation_requirements):
                     validations = (*validations, ValidationResult(
-                        "Exact REWORK-2 Scope Guard", True,
+                        next(
+                            value for value in request.validation_requirements
+                            if value.strip().lower() in {
+                                "exact rework-2 scope guard", "exact rework-3 scope guard",
+                            }
+                        ), True,
                         "changed paths comply with the authorized ReworkContract scope",
                     ))
             except Exception as exc:

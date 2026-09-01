@@ -238,6 +238,15 @@ class ReworkContract:
             values = getattr(self, name)
             if not values or any(not value.strip() for value in values):
                 raise ValueError(f"{name} must contain explicit non-empty values")
+        _aware(self.created_at, "created_at")
+
+    def canonical_id(self, authorizing_review_result_id: str) -> str:
+        _sha256(authorizing_review_result_id, "authorizing_review_result_id")
+        return _digest({
+            "schema": "rework-contract-authority-v1",
+            "authorizing_review_result_id": authorizing_review_result_id,
+            "contract": self,
+        })
 
 
 @dataclass(frozen=True, slots=True)

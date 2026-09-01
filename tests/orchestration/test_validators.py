@@ -153,6 +153,7 @@ def test_rework_two_validator_authority_is_exact_and_scope_guard_is_internal(tmp
     registry = ValidatorRegistry(platform="posix")
     assert registry.unknown((
         "python -m pytest tests/orchestration", "git diff --check", "Exact REWORK-2 Scope Guard",
+        "Exact REWORK-3 Scope Guard",
     )) == ()
     result = registry.run(
         ("python -m pytest tests/orchestration",), root=tmp_path,

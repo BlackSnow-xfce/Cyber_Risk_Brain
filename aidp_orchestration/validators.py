@@ -42,7 +42,7 @@ def resolve_validator_command(
 
 
 class ValidatorRegistry:
-    _internal_validators = frozenset({"exact rework-2 scope guard"})
+    _internal_validators = frozenset({"exact rework-2 scope guard", "exact rework-3 scope guard"})
     _commands: dict[str, tuple[str, ...]] = {
         "python -m pytest tests/orchestration": ("python", "-m", "pytest", "tests/orchestration"),
         "python tests": ("python", "-m", "pytest"),

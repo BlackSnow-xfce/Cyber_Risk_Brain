@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -58,13 +59,63 @@ def test_architect_runtime_records_are_immutable_and_idempotent(tmp_path):
 
 def test_rework_contract_lineage_is_exact_and_iteration_safe(tmp_path):
     store = LocalRuntimeStore(tmp_path)
-    for iteration, contract_id in ((1, "rework-one"), (2, "rework-two")):
+    expected_ids = []
+    for iteration in (1, 2):
         contract = ReworkContract(
             "AIDP-INFRA-0001", iteration, "a" * 40, ("a.py",),
             (f"finding-{iteration}",), ("pytest",), NOW,
         )
-        store.persist_rework_contract(contract_id, contract)
-    assert store.rework_contract_id("AIDP-INFRA-0001", 1) == "rework-one"
-    assert store.rework_contract_id("AIDP-INFRA-0001", 2) == "rework-two"
+        authorizing = str(iteration) * 64
+        contract_id = contract.canonical_id(authorizing)
+        expected_ids.append(contract_id)
+        store.persist_rework_contract(contract_id, contract, authorizing)
+    assert store.rework_contract_id("AIDP-INFRA-0001", 1, expected_head="a" * 40) == expected_ids[0]
+    assert store.rework_contract_id("AIDP-INFRA-0001", 2, expected_head="a" * 40) == expected_ids[1]
     with pytest.raises(ValueError, match="missing or ambiguous"):
-        store.rework_contract_id("AIDP-INFRA-0001", 3)
+        store.rework_contract_id("AIDP-INFRA-0001", 3, expected_head="a" * 40)
+
+
+@pytest.mark.parametrize("mutation", (
+    "missing_payload", "partial_payload", "wrong_task", "unauthorized_task", "wrong_iteration",
+    "stale_head", "findings", "scope", "validators", "timestamp", "contract_id",
+    "filename", "authorizing_result",
+))
+def test_rework_lineage_rejects_forged_or_malformed_authority(tmp_path, mutation):
+    store = LocalRuntimeStore(tmp_path)
+    contract = ReworkContract(
+        "AIDP-INFRA-0001", 1, "a" * 40, ("a.py",), ("finding",), ("pytest",), NOW,
+    )
+    authorizing = "b" * 64
+    contract_id = contract.canonical_id(authorizing)
+    path = store.persist_rework_contract(contract_id, contract, authorizing)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if mutation == "missing_payload":
+        value.pop("rework_contract")
+    elif mutation == "partial_payload":
+        value["rework_contract"].pop("findings")
+    elif mutation == "wrong_task":
+        value["rework_contract"]["task_id"] = "TASK-0001"
+    elif mutation == "unauthorized_task":
+        value["rework_contract"]["task_id"] = "UNAUTHORIZED"
+    elif mutation == "wrong_iteration":
+        value["rework_contract"]["review_iteration"] = 2
+    elif mutation == "stale_head":
+        value["rework_contract"]["expected_head"] = "c" * 40
+    elif mutation == "findings":
+        value["rework_contract"]["findings"] = ["changed"]
+    elif mutation == "scope":
+        value["rework_contract"]["allowed_rework_scope"] = ["other.py"]
+    elif mutation == "validators":
+        value["rework_contract"]["required_validations"] = ["other"]
+    elif mutation == "timestamp":
+        value["rework_contract"]["created_at"] = "2026-09-01T00:00:00"
+    elif mutation == "contract_id":
+        value["contract_id"] = "c" * 64
+    elif mutation == "authorizing_result":
+        value["authorizing_review_result_id"] = "c" * 64
+    path.write_text(json.dumps(value), encoding="utf-8")
+    if mutation == "filename":
+        renamed = path.with_name(f"1-{'c' * 64}.json")
+        path.rename(renamed)
+    with pytest.raises(ValueError):
+        store.rework_contract_id("AIDP-INFRA-0001", 1, expected_head="a" * 40)

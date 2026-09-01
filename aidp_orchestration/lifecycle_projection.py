@@ -79,28 +79,7 @@ class LifecycleProjection:
         document = review.read_text(encoding="utf-8")
         if "Status: REVIEW" not in document:
             raise RuntimeError("REVIEW task has no exact status marker")
-        passed = result.disposition is ArchitectReviewDisposition.PASS
-        status = "ARCHITECT_APPROVED" if passed else "REVIEW / REWORK REQUIRED"
-        codex_status = "WAITING" if passed else "OPEN"
-        architect_status = "CLOSED" if passed else "WAITING"
-        result_relative = (
-            ".ai/orchestration/architect-review-results/"
-            f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
-        )
-        result_path = self.root / result_relative
-        sanitized = {"architect_review_result": asdict(result)}
-        contents = {
-            review: document.replace("Status: REVIEW", f"Status: {status}", 1),
-            self.root / ".ai/handoff/TO-CODEX.md": (
-                f"# Handoff - Architect to Codex\n\nStatus: {codex_status}\n"
-                f"Current AIDP Task: {result.task_id}\nCurrent Phase: {status}\nTask Status: {status}\n"
-            ),
-            self.root / ".ai/handoff/TO-ARCHITECT.md": (
-                f"# Handoff - Architecture Review {result.task_id}\n\nStatus: {architect_status}\n"
-                f"Task: {result.task_id}\nTask Status: {status}\nReviewer: Architect\n"
-            ),
-            result_path: json.dumps(sanitized, default=_json_default, sort_keys=True, separators=(",", ":")) + "\n",
-        }
+        contents = self._result_projection_contents(result, document)
         expected = tuple(sorted(path.relative_to(self.root).as_posix() for path in contents))
         self._materialize(contents)
         return self._commit_exact(expected, f"aidp({result.task_id}): project architect {result.disposition.value.lower()} {result.review_result_id}")
@@ -150,14 +129,52 @@ class LifecycleProjection:
         changed = _nul(self.root, "diff", "--name-only", "--no-renames", "-z", f"{commit}^", commit)
         if tuple(sorted(changed)) != expected:
             raise RuntimeError("pending lifecycle projection paths differ from authority")
-        expected_result = json.dumps(
-            {"architect_review_result": asdict(result)}, default=_json_default,
-            sort_keys=True, separators=(",", ":"),
-        ) + "\n"
-        if (self.root / relative).read_text(encoding="utf-8") != expected_result:
-            raise RuntimeError("pending lifecycle projection result content is invalid")
+        task_relative = f".ai/tasks/review/{result.task_id}.md"
+        try:
+            parent_document = subprocess.check_output(
+                ("git", "show", f"{parent}:{task_relative}"), cwd=self.root,
+                stderr=subprocess.STDOUT,
+            ).decode("utf-8", errors="strict")
+        except (subprocess.CalledProcessError, UnicodeError) as exc:
+            raise RuntimeError("pending lifecycle projection parent task is invalid") from exc
+        expected_contents = self._result_projection_contents(result, parent_document)
+        for path, content in expected_contents.items():
+            relative_path = path.relative_to(self.root).as_posix()
+            committed = _committed_blob(self.root, commit, relative_path)
+            if committed != content.encode("utf-8"):
+                raise RuntimeError(f"pending lifecycle projection content is invalid: {relative_path}")
         if self.git.changed_files():
             raise RuntimeError("pending lifecycle projection worktree is dirty")
+
+    def _result_projection_contents(
+        self, result: ArchitectReviewResult, review_document: str,
+    ) -> dict[Path, str]:
+        if "Status: REVIEW" not in review_document:
+            raise RuntimeError("REVIEW task has no exact status marker")
+        passed = result.disposition is ArchitectReviewDisposition.PASS
+        status = "ARCHITECT_APPROVED" if passed else "REVIEW / REWORK REQUIRED"
+        codex_status = "WAITING" if passed else "OPEN"
+        architect_status = "CLOSED" if passed else "WAITING"
+        result_relative = (
+            ".ai/orchestration/architect-review-results/"
+            f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
+        )
+        return {
+            self.root / f".ai/tasks/review/{result.task_id}.md":
+                review_document.replace("Status: REVIEW", f"Status: {status}", 1),
+            self.root / ".ai/handoff/TO-CODEX.md": (
+                f"# Handoff - Architect to Codex\n\nStatus: {codex_status}\n"
+                f"Current AIDP Task: {result.task_id}\nCurrent Phase: {status}\nTask Status: {status}\n"
+            ),
+            self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                f"# Handoff - Architecture Review {result.task_id}\n\nStatus: {architect_status}\n"
+                f"Task: {result.task_id}\nTask Status: {status}\nReviewer: Architect\n"
+            ),
+            self.root / result_relative: json.dumps(
+                {"architect_review_result": asdict(result)}, default=_json_default,
+                sort_keys=True, separators=(",", ":"),
+            ) + "\n",
+        }
 
     def _commit_exact(self, expected: tuple[str, ...], message: str) -> str:
         changed = self.git.changed_files()
@@ -201,6 +218,30 @@ def _nul(root: Path, *args: str) -> tuple[str, ...]:
     if output and not output.endswith(b"\0"):
         raise RuntimeError("Git returned malformed path output")
     return tuple(output[:-1].decode("utf-8").split("\0")) if output else ()
+
+
+def _committed_blob(root: Path, commit: str, relative_path: str) -> bytes:
+    """Read one exact tree blob without constructing a long ``commit:path`` argument."""
+    entry = subprocess.check_output(
+        ("git", "ls-tree", "-z", commit, "--", relative_path), cwd=root,
+        stderr=subprocess.STDOUT,
+    )
+    if not entry.endswith(b"\0") or entry.count(b"\0") != 1:
+        raise RuntimeError(f"pending lifecycle projection blob is missing: {relative_path}")
+    metadata, separator, encoded_path = entry[:-1].partition(b"\t")
+    fields = metadata.split()
+    if separator != b"\t" or len(fields) != 3 or fields[1] != b"blob":
+        raise RuntimeError(f"pending lifecycle projection tree entry is invalid: {relative_path}")
+    try:
+        tree_path = encoded_path.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise RuntimeError("pending lifecycle projection path is not UTF-8") from exc
+    if tree_path != relative_path:
+        raise RuntimeError(f"pending lifecycle projection path identity is invalid: {relative_path}")
+    return subprocess.check_output(
+        ("git", "cat-file", "blob", fields[2].decode("ascii")), cwd=root,
+        stderr=subprocess.STDOUT,
+    )
 
 
 def _json_default(value: object) -> object:

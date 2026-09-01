@@ -156,18 +156,30 @@ class ArchitectReviewCoordinator:
         )
         outcome = self.runner.run(command, cwd=self.product_root, timeout_seconds=self.timeout_seconds)
         if outcome.timed_out:
-            return self._blocked(request, started, "Architect process timed out", launcher, outcome.process_identity)
+            return self._blocked(
+                request, started, "Architect process timed out", launcher, outcome.process_identity,
+                outcome.process_started_at, outcome.process_completed_at,
+            )
         if outcome.error:
-            return self._blocked(request, started, outcome.error, launcher, outcome.process_identity)
+            return self._blocked(
+                request, started, outcome.error, launcher, outcome.process_identity,
+                outcome.process_started_at, outcome.process_completed_at,
+            )
         if outcome.returncode != 0:
-            return self._blocked(request, started, f"Architect exited with code {outcome.returncode}", launcher, outcome.process_identity)
+            return self._blocked(
+                request, started, f"Architect exited with code {outcome.returncode}", launcher,
+                outcome.process_identity, outcome.process_started_at, outcome.process_completed_at,
+            )
         if len(outcome.stdout.encode("utf-8")) > self.max_capture_bytes or len(outcome.stderr.encode("utf-8")) > self.max_capture_bytes:
             return self._blocked(request, started, "Architect process output exceeded capture limit", launcher)
         try:
             payload = json.loads(_last_message_payload(outcome.stdout))
-            if outcome.process_identity is None:
-                raise ValueError("Architect process identity is unavailable")
-            result = self._result_from_decision(request, payload, started, launcher, outcome.process_identity)
+            if outcome.process_identity is None or outcome.process_started_at is None or outcome.process_completed_at is None:
+                raise ValueError("Architect process provenance is unavailable")
+            result = self._result_from_decision(
+                request, payload, launcher, outcome.process_identity,
+                outcome.process_started_at, outcome.process_completed_at,
+            )
             validate_review_result(request, result)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             return self._blocked(request, started, f"Architect result is invalid: {exc.__class__.__name__}", launcher)
@@ -177,9 +189,10 @@ class ArchitectReviewCoordinator:
         self,
         request: ArchitectReviewRequest,
         payload: dict[str, object],
-        started: datetime,
         launcher: CodexLauncher,
         process_identity: str,
+        process_started_at: datetime,
+        process_completed_at: datetime,
     ) -> ArchitectReviewResult:
         if set(payload) != {
             "disposition", "findings", "allowed_rework_scope", "required_validations",
@@ -200,7 +213,7 @@ class ArchitectReviewCoordinator:
         provenance = ArchitectReviewProvenance(
             process_identity=process_identity,
             launcher_identity=" ".join(launcher.argv_prefix), model=self.model,
-            invocation_started_at=started, invocation_completed_at=created,
+            invocation_started_at=process_started_at, invocation_completed_at=process_completed_at,
             output_schema_version=ARCHITECT_OUTPUT_SCHEMA_VERSION,
         )
         values = dict(
@@ -235,13 +248,15 @@ class ArchitectReviewCoordinator:
         reason: str,
         launcher: CodexLauncher | None = None,
         process_identity: str | None = None,
+        process_started_at: datetime | None = None,
+        process_completed_at: datetime | None = None,
     ) -> ArchitectReviewResult:
         provenance = ArchitectReviewProvenance(
             process_identity=process_identity or "unavailable",
             launcher_identity="unavailable" if launcher is None else " ".join(launcher.argv_prefix),
             model=self.model,
-            invocation_started_at=started,
-            invocation_completed_at=self.clock(),
+            invocation_started_at=process_started_at or started,
+            invocation_completed_at=process_completed_at or self.clock(),
             output_schema_version=ARCHITECT_OUTPUT_SCHEMA_VERSION,
         )
         values = dict(

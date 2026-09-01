@@ -270,16 +270,13 @@ class AIDPLifecycleOnce:
 
     def _persist_rework_authority(self, result: ArchitectReviewResult, expected_head: str) -> None:
         rework_iteration = result.review_iteration + 1
-        contract_id = canonical_digest({
-            "schema": "architect-rework-contract-v1", "review_result_id": result.review_result_id,
-            "task_id": result.task_id, "review_iteration": rework_iteration, "expected_head": expected_head,
-        })
         contract = ReworkContract(
             result.task_id, rework_iteration, expected_head, result.allowed_rework_scope,
             tuple(f"{finding.fingerprint}:{finding.rule_id}:{finding.action_id}" for finding in result.findings),
             result.required_validations, result.created_at,
         )
-        self.runtime.persist_rework_contract(contract_id, contract)
+        contract_id = contract.canonical_id(result.review_result_id)
+        self.runtime.persist_rework_contract(contract_id, contract, result.review_result_id)
         LocalContractInbox(self.runtime.root).persist(ContractInboxItem(contract_id, contract, result.created_at))
 
     def _build_request(self, task_id: str) -> ArchitectReviewRequest:
@@ -332,7 +329,9 @@ class AIDPLifecycleOnce:
             expected_current_head=head, current_head=head, reviewed_head=reviewed_head, reviewed_tree_hash=tree,
             previous_review_result_id=previous[-1].review_result_id if previous else None,
             previous_rework_contract_id=(
-                self.runtime.rework_contract_id(task_id, iteration) if iteration > 0 else None
+                self.runtime.rework_contract_id(
+                    task_id, iteration, expected_head=str(envelope["start_commit"]),
+                ) if iteration > 0 else None
             ),
             previous_finding_fingerprints=tuple(finding.fingerprint for finding in previous[-1].findings) if previous else (),
             created_at=datetime.fromisoformat(str(envelope["published_at"])),

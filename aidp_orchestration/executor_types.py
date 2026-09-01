@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, Sequence
 from pathlib import Path
 
@@ -16,6 +17,8 @@ class ProcessOutcome:
     error: str | None = None
     process_identity: str | None = None
     output_limit_exceeded: bool = False
+    process_started_at: datetime | None = None
+    process_completed_at: datetime | None = None
 
 
 class ProcessRunner(Protocol):

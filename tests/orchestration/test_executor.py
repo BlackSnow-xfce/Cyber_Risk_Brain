@@ -129,6 +129,9 @@ def test_subprocess_runner_bounds_output_while_child_is_running(tmp_path: Path, 
     assert result.stdout == result.stderr == ""
     assert result.process_identity and result.process_identity.startswith("pid:")
     assert result.returncode is not None
+    assert result.process_started_at is not None
+    assert result.process_completed_at is not None
+    assert result.process_started_at <= result.process_completed_at
 
 
 class FakeVisibleProcess:

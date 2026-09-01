@@ -5,6 +5,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from aidp_orchestration.architect_review import create_review_result
 from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance,
@@ -96,3 +98,66 @@ def test_rework_projection_returns_committed_ready_for_architect_state(tmp_path:
     assert "Status: REVIEW" in (root / ".ai/tasks/review/TASK-9000.md").read_text(encoding="utf-8")
     assert "REWORK REQUIRED" not in (root / ".ai/tasks/review/TASK-9000.md").read_text(encoding="utf-8")
     assert not _git(root, "status", "--porcelain=v1")
+
+
+@pytest.mark.parametrize("disposition", (ArchitectReviewDisposition.PASS, ArchitectReviewDisposition.FAIL))
+def test_exact_existing_projection_commit_is_verified_and_pushed_without_recommit(tmp_path: Path, disposition):
+    root = _repo(tmp_path)
+    envelope = ".ai/orchestration/review-inbox/TASK-9000-execution.json"
+    path = root / envelope
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    projection = LifecycleProjection(root)
+    review_head = projection.project_ready_for_architect("TASK-9000", envelope)
+    remote = tmp_path / "origin.git"
+    subprocess.check_call(("git", "init", "--bare", str(remote)), stdout=subprocess.DEVNULL)
+    _git(root, "remote", "add", "origin", str(remote))
+    _git(root, "push", "-u", "origin", "topic")
+    result = _pass_result(review_head) if disposition is ArchitectReviewDisposition.PASS else _fail_result(review_head)
+    commit = projection.project_architect_result(result)
+    count = _git(root, "rev-list", "--count", "HEAD")
+    projection.verify_result_projection_commit(result, commit)
+    projection.push("topic")
+    assert _git(root, "rev-parse", "HEAD") == commit
+    assert _git(root, "rev-parse", "origin/topic") == commit
+    assert _git(root, "rev-list", "--count", "HEAD") == count
+
+
+@pytest.mark.parametrize("target", ("task", "codex", "architect"))
+def test_projection_recovery_rejects_exact_path_set_with_tampered_content(tmp_path: Path, target: str):
+    root = _repo(tmp_path)
+    envelope = ".ai/orchestration/review-inbox/TASK-9000-execution.json"
+    path = root / envelope
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    projection = LifecycleProjection(root)
+    review_head = projection.project_ready_for_architect("TASK-9000", envelope)
+    result = _pass_result(review_head)
+    valid_commit = projection.project_architect_result(result)
+    result_relative = (
+        ".ai/orchestration/architect-review-results/"
+        f"{result.task_id}-{result.review_iteration}-{result.review_result_id}.json"
+    )
+    paths = {
+        "task": f".ai/tasks/review/{result.task_id}.md",
+        "codex": ".ai/handoff/TO-CODEX.md",
+        "architect": ".ai/handoff/TO-ARCHITECT.md",
+        "result": result_relative,
+    }
+    blobs = {
+        name: subprocess.check_output(
+            ("git", "-c", "core.longpaths=true", "show", f"{valid_commit}:{relative}"), cwd=root,
+        )
+        for name, relative in paths.items()
+    }
+    _git(root, "reset", "--hard", review_head)
+    for name, relative in paths.items():
+        destination = root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(blobs[name] + (b"UNAUTHORIZED\n" if name == target else b""))
+    _git(root, "add", *paths.values())
+    _git(root, "commit", "-m", "tampered projection")
+    tampered_commit = _git(root, "rev-parse", "HEAD")
+    assert set(_git(root, "diff", "--name-only", f"{review_head}..{tampered_commit}").splitlines()) == set(paths.values())
+    with pytest.raises(RuntimeError, match="content is invalid"):
+        projection.verify_result_projection_commit(result, tampered_commit)

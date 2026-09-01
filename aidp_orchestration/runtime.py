@@ -65,19 +65,53 @@ class LocalRuntimeStore:
     def architect_attempt_exists(self, request_id: str) -> bool:
         return (self.root / "architect-review-attempts" / f"{request_id}.json").is_file()
 
-    def persist_rework_contract(self, contract_id: str, contract: ReworkContract) -> Path:
+    def persist_rework_contract(
+        self, contract_id: str, contract: ReworkContract,
+        authorizing_review_result_id: str | None = None,
+    ) -> Path:
         path = self.root / "rework-contracts" / contract.task_id / f"{contract.review_iteration}-{contract_id}.json"
-        return self._persist_immutable(path, _json({"contract_id": contract_id, "rework_contract": contract}), contract_id)
+        payload: dict[str, object] = {"contract_id": contract_id, "rework_contract": contract}
+        if authorizing_review_result_id is not None:
+            if contract.canonical_id(authorizing_review_result_id) != contract_id:
+                raise ValueError("ReworkContract identity does not match canonical authority")
+            payload["authorizing_review_result_id"] = authorizing_review_result_id
+        return self._persist_immutable(path, _json(payload), contract_id)
 
-    def rework_contract_id(self, task_id: str, iteration: int) -> str:
+    def rework_contract_id(self, task_id: str, iteration: int, *, expected_head: str) -> str:
         root = self.root / "rework-contracts" / task_id
         candidates = tuple(sorted(root.glob(f"{iteration}-*.json"))) if root.exists() else ()
         if len(candidates) != 1:
             raise ValueError("preceding ReworkContract identity is missing or ambiguous")
         value = json.loads(candidates[0].read_text(encoding="utf-8"))
-        contract_id = value.get("contract_id") if isinstance(value, dict) else None
-        if not isinstance(contract_id, str) or candidates[0].name != f"{iteration}-{contract_id}.json":
-            raise ValueError("persisted ReworkContract identity is malformed")
+        if not isinstance(value, dict) or set(value) != {
+            "contract_id", "authorizing_review_result_id", "rework_contract",
+        }:
+            raise ValueError("persisted ReworkContract envelope is malformed")
+        contract_id = value.get("contract_id")
+        authorizing = value.get("authorizing_review_result_id")
+        payload = value.get("rework_contract")
+        if not isinstance(contract_id, str) or not isinstance(authorizing, str) or not isinstance(payload, dict):
+            raise ValueError("persisted ReworkContract authority is malformed")
+        required = {
+            "task_id", "review_iteration", "expected_head", "allowed_rework_scope",
+            "findings", "required_validations", "created_at",
+        }
+        if set(payload) != required:
+            raise ValueError("persisted ReworkContract payload is malformed")
+        try:
+            contract = ReworkContract(
+                str(payload["task_id"]), int(payload["review_iteration"]), str(payload["expected_head"]),
+                _string_tuple(payload["allowed_rework_scope"]), _string_tuple(payload["findings"]),
+                _string_tuple(payload["required_validations"]), datetime.fromisoformat(str(payload["created_at"])),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("persisted ReworkContract payload is invalid") from exc
+        if contract.task_id != task_id or contract.review_iteration != iteration or contract.expected_head != expected_head:
+            raise ValueError("persisted ReworkContract lineage binding mismatch")
+        if contract.canonical_id(authorizing) != contract_id:
+            raise ValueError("persisted ReworkContract content identity mismatch")
+        if candidates[0].name != f"{iteration}-{contract_id}.json":
+            raise ValueError("persisted ReworkContract filename identity mismatch")
         return contract_id
 
     def append_lifecycle(self, payload: dict[str, object]) -> Path:
@@ -136,3 +170,9 @@ def _json_default(value: object) -> object:
     if isinstance(value, Path):
         return str(value)
     raise TypeError(f"unsupported serialization type: {type(value).__name__}")
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError("ReworkContract sequence must contain strings")
+    return tuple(value)

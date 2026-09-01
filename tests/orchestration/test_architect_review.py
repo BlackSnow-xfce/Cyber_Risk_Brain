@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -122,7 +122,11 @@ class FakeRunner:
         if self.timeout:
             return ProcessOutcome(None, "", "", timed_out=True, error="timeout")
         event = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(self.decision)}})
-        return ProcessOutcome(self.returncode, event, "", process_identity="pid:42:started_ns:1")
+        return ProcessOutcome(
+            self.returncode, event, "", process_identity="pid:42:started_ns:1",
+            process_started_at=NOW + timedelta(seconds=1),
+            process_completed_at=NOW + timedelta(seconds=2),
+        )
 
 
 def test_coordinator_is_headless_read_only_and_orchestrator_binds_result(tmp_path: Path):
@@ -145,6 +149,9 @@ def test_coordinator_is_headless_read_only_and_orchestrator_binds_result(tmp_pat
     assert reviewed.review_request_id == req.review_request_id
     assert reviewed.provenance.process_identity == "pid:42:started_ns:1"
     assert reviewed.provenance.process_identity != req.review_request_id
+    assert reviewed.provenance.invocation_started_at == NOW + timedelta(seconds=1)
+    assert reviewed.provenance.invocation_completed_at == NOW + timedelta(seconds=2)
+    assert reviewed.provenance.invocation_started_at != NOW
 
 
 def test_timeout_and_malformed_output_are_blocked(tmp_path: Path):
