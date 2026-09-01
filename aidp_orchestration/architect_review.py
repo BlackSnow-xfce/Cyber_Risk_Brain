@@ -294,6 +294,7 @@ class ArchitectReviewCoordinator:
     @staticmethod
     def _prompt(request: ArchitectReviewRequest) -> str:
         evidence = json.dumps(asdict(request), default=_json_default, sort_keys=True, separators=(",", ":"))
+        validator_authority = json.dumps(request.original_validation_requirements, separators=(",", ":"))
         return (
             "Review the immutable AIDP execution evidence. Do not modify files and do not assert Product Owner, "
             "DONE, or next-task authority. authority_claims must always be an empty array. For PASS, findings, "
@@ -301,7 +302,8 @@ class ArchitectReviewCoordinator:
             "FAIL, findings, allowed_rework_scope, and required_validations must be non-empty and failure_reason "
             "must be null. For BLOCKED, findings, allowed_rework_scope, and required_validations must be empty and "
             "failure_reason must be a non-empty diagnostic. Each finding evidence_paths array must contain unique "
-            "paths in ascending lexical order. Return only the schema-constrained ArchitectReviewResult.\n"
+            "paths in ascending lexical order. For FAIL, required_validations may contain only exact values from "
+            f"this immutable array: {validator_authority}. Return only the schema-constrained ArchitectReviewResult.\n"
             f"architect_review_request={evidence}"
         )
 

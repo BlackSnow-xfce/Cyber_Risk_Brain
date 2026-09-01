@@ -201,6 +201,7 @@ def test_schema_and_prompt_prevent_forbidden_architect_authority_claims(tmp_path
     assert schema["properties"]["authority_claims"]["maxItems"] == 0
     prompt = ArchitectReviewCoordinator._prompt(req)
     assert "authority_claims must always be an empty array" in prompt
+    assert 'required_validations may contain only exact values from this immutable array: ["python tests"]' in prompt
 
 
 def test_invalid_architect_result_preserves_bounded_diagnostic(tmp_path: Path):
