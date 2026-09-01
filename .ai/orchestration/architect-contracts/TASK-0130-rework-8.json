@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-8",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 8,
+      "expected_head": "fb14601fbebfc927e55fa2fc91fe907d16c21d82",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Render the human-readable missing requirement supported_cvss_v3_effect:CVE-2004-2687 exactly as Supported CVSS v3 effect — CVE-2004-2687. Preserve the raw identifier unchanged in transport mapping and stable keys and continue suppressing its redundant raw display in the analyst UI.",
+        "Apply parent authority tone only when all relevant child states are compatible: all positive may be success, all incomplete may be warning when semantically correct, mixed positive plus incomplete must be neutral, and genuine failure may be error only under existing surfaced failure semantics.",
+        "For Correlation NO_DATA or incomplete plus available Evidence, render the Correlation / Evidence parent neutral, the Correlation child warning, and the Evidence child success. Do not infer parent success from evidence existence and do not leak either child tone to its sibling.",
+        "Add focused tests that require uppercase CVSS and reject lowercase cvss while proving the raw identifier remains unchanged, and that exercise the mixed Correlation/Evidence state with neutral parent, independent child tones, and unchanged values.",
+        "Preserve REWORK-6 spacing and grouping, REWORK-7 status Chips and traffic-light child semantics, neutral technical values, wrapping, section order, accessibility, missing-requirement de-duplication, business_impact null, decision null, recommendations empty, and all frozen functional global UI TASK-0127 TASK-0128 TASK-0129 and TASK-0130 boundaries. TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T09:48:35Z"
+    },
+    "received_at": "2026-09-01T09:48:35Z"
+  }
+}
