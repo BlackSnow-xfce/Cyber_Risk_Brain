@@ -54,6 +54,12 @@ function authorityTone(value: ReactNode): AuthorityTone | undefined {
     return statusColor(value);
 }
 
+function unanimousAuthorityTone(tones: readonly (AuthorityTone | undefined)[]): AuthorityTone | undefined {
+    if (tones.length === 0 || tones.some((tone) => tone === undefined)) return undefined;
+    const [first] = tones;
+    return tones.every((tone) => tone === first) ? first : undefined;
+}
+
 function AuthorityField({ label, value, detail, semanticStatus = false, authorityTone: tone, valueTone = "primary" }: AuthorityFieldProps) {
     const valueColor = semanticStatus ? statusColor(value) : undefined;
     const neutralValueColor = valueTone === "secondary" ? "text.secondary" : "text.primary";
@@ -116,7 +122,8 @@ function AuthorityGroup({ label, children, structural = false, authorityTone: to
 function presentationLabel(identifier: string) {
     const [name, qualifier] = identifier.split(":", 2);
     const words = name.replaceAll("_", " ").replaceAll("-", " ");
-    const label = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    const readableWords = name === "supported_cvss_v3_effect" ? "supported CVSS v3 effect" : words;
+    const label = `${readableWords.charAt(0).toUpperCase()}${readableWords.slice(1)}`;
     return qualifier ? `${label} — ${qualifier}` : label;
 }
 
@@ -131,6 +138,11 @@ function inputLabel(reference: string) {
 }
 
 export default function FindingRiskContextSection({ context, error, loading, onLoad }: FindingRiskContextSectionProps) {
+    const correlationEvidenceTone = context ? unanimousAuthorityTone([
+        authorityTone(context.correlation.completeness_status),
+        ...context.evidence.map(() => "success" as const),
+    ]) : undefined;
+
     return (
         <Stack spacing={1.5} aria-label="Finding risk context">
             <Divider />
@@ -294,7 +306,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                         </Stack>
                     </AuthorityGroup>
 
-                    <AuthorityGroup label="Correlation / Evidence" authorityTone={context.evidence.length > 0 || authorityTone(context.correlation.completeness_status) === "success" ? "success" : "warning"}>
+                    <AuthorityGroup label="Correlation / Evidence" authorityTone={correlationEvidenceTone}>
                         <Stack spacing={1.5}>
                             <AuthorityGroup label="Correlation" structural authorityTone={authorityTone(context.correlation.completeness_status)}>
                                 <Stack spacing={1.25} data-layout-spacing="units">

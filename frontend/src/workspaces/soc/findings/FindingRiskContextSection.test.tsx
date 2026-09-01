@@ -115,7 +115,9 @@ describe("FindingRiskContextSection", () => {
         expect(screen.getByText("Service criticality")).toBeInTheDocument();
         expect(screen.getByText("Business context provenance")).toBeInTheDocument();
         expect(screen.getByText("Service impact profile")).toBeInTheDocument();
-        expect(screen.getByText("Supported cvss v3 effect — CVE-2004-2687")).toBeInTheDocument();
+        expect(screen.getByText("Supported CVSS v3 effect — CVE-2004-2687")).toBeInTheDocument();
+        expect(screen.queryByText("Supported cvss v3 effect — CVE-2004-2687")).not.toBeInTheDocument();
+        expect(context.business_impact_classification_readiness?.missing_requirements).toContain("supported_cvss_v3_effect:CVE-2004-2687");
         expect(context.business_impact_readiness?.missing_requirements).toContain("business_service");
         expect(screen.getByLabelText("Authoritative Business Context").querySelector('[data-color-token="warning.main"]')).not.toBeNull();
         expect(within(screen.getByLabelText("Service Impact Profile")).getByText("NOT_FOUND")).toBeInTheDocument();
@@ -435,6 +437,15 @@ describe("FindingRiskContextSection", () => {
         const evidence = screen.getByLabelText("Evidence");
         expect(within(evidence).getByText("correlation:finding-001:CVE-2004-2687")).toBeInTheDocument();
         expect(within(evidence).getByText("derived")).toBeInTheDocument();
+        const correlationEvidence = screen.getByLabelText("Correlation / Evidence");
+        const parentHeading = within(correlationEvidence).getByText("Correlation / Evidence");
+        expect(parentHeading).not.toHaveAttribute("data-color-token", "success.main");
+        expect(parentHeading).not.toHaveAttribute("data-color-token", "warning.main");
+        const correlation = within(correlationEvidence).getByLabelText("Correlation");
+        expect(within(correlation).getByText("Correlation")).toHaveAttribute("data-color-token", "warning.main");
+        expect(within(evidence).getByText("Evidence")).toHaveAttribute("data-color-token", "success.main");
+        expect(within(correlation).queryByText("correlation:finding-001:CVE-2004-2687")).not.toBeInTheDocument();
+        expect(within(evidence).queryByText("canonical-asset-context-unresolved")).not.toBeInTheDocument();
         const inputs = within(evidence).getByLabelText("Inputs");
         expect(inputs).toHaveAttribute("data-layout-spacing", "group");
         expect(inputs.querySelector('[data-layout-spacing="records"]')).not.toBeNull();
