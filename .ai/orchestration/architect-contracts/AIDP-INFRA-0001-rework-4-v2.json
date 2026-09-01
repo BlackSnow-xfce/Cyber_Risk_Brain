@@ -1,0 +1,27 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0001-rework-4-v2",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "AIDP-INFRA-0001",
+      "review_iteration": 4,
+      "expected_head": "c1503eb5c361c56a2e429da0e7e0cec7d8bffcaa",
+      "allowed_rework_scope": [
+        "aidp_orchestration/runtime.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_lifecycle.py"
+      ],
+      "findings": [
+        "REWORK-4-AUTHORIZING-RESULT-BINDING: When resolving previous_rework_contract_id, retain the existing strict ReworkContract envelope, payload, canonical content-ID, filename, task, iteration, expected-HEAD and timestamp checks, then require architect-review-results/{authorizing_review_result_id}.json to exist. Parse its exact architect_review_result envelope through the canonical ArchitectReviewResult parser, verify the parsed result identity equals both its canonical digest and authorizing_review_result_id, and require disposition FAIL. Bind the ReworkContract exactly to that result: contract.task_id equals result.task_id; contract.review_iteration equals result.review_iteration + 1; contract.findings equals the existing deterministic fingerprint:rule_id:action_id projection of result.findings; allowed_rework_scope and required_validations equal the result values without widening or reordering; and contract.created_at equals result.created_at. Bind contract.expected_head to the persisted PUBLISHED FAIL lifecycle-projection event for the same task and review_result_id, requiring event disposition FAIL, expected_parent equal result.expected_head, and projection_commit equal contract.expected_head. Reject missing, ambiguous, malformed, PASS/BLOCKED, wrong-ID, wrong-task, wrong-iteration, stale-HEAD, changed-finding, changed-scope, changed-validator, changed-timestamp, wrong-projection or internally recomputed forged authority. A self-consistent contract ID and matching filename alone must never authorize lineage.",
+        "REWORK-4-LIFECYCLE-FIXTURE-AUTHORITY: tests/orchestration/test_lifecycle.py authority is limited exclusively to updating test_review_request_binds_exact_preceding_rework_contract_identity so its fixture persists a canonical ArchitectReviewResult.FAIL, deterministic canonical findings, exact task/iteration/scope/validators/timestamp/result identity, a PUBLISHED FAIL projection event with the correct expected-parent and projection-commit relationship, and the exact preceding ReworkContract identity. Do not weaken its assertions, alter unrelated lifecycle tests, or modify lifecycle production code. Production implementation scope remains aidp_orchestration/runtime.py only."
+      ],
+      "required_validations": [
+        "python -m pytest tests/orchestration",
+        "git diff --check",
+        "Exact revised REWORK-4 Three-Path Scope Guard"
+      ],
+      "created_at": "2026-09-01T16:39:50.6703603Z"
+    },
+    "received_at": "2026-09-01T16:39:50.6703603Z"
+  }
+}
