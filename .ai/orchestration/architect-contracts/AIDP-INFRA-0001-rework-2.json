@@ -1,0 +1,44 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0001-rework-2-v1",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "AIDP-INFRA-0001",
+      "review_iteration": 2,
+      "expected_head": "151b4ce04c2e5c9b0f68ab948a21a8adeeb49314",
+      "allowed_rework_scope": [
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/executor_types.py",
+        "aidp_orchestration/executor.py",
+        "aidp_orchestration/architect_review.py",
+        "aidp_orchestration/lifecycle.py",
+        "aidp_orchestration/lifecycle_projection.py",
+        "aidp_orchestration/runtime.py",
+        "aidp_orchestration/validators.py",
+        "tests/orchestration/test_architect_review.py",
+        "tests/orchestration/test_executor.py",
+        "tests/orchestration/test_lifecycle.py",
+        "tests/orchestration/test_lifecycle_acceptance.py",
+        "tests/orchestration/test_lifecycle_projection.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_validators.py"
+      ],
+      "findings": [
+        "REWORK-2-NAMESPACE: Centralize productive task-id validation and apply it to ArchitectTaskContract, ReworkContract, ArchitectReviewRequest, ArchitectReviewResult, and every rework parsing/ingress boundary. Accept exactly TASK followed by four digits, the already-authorized TASK-E2E-0001, TASK-E2E-WRITER followed by four digits, TASK-E2E-TRIGGER followed by four digits, and AIDP-INFRA followed by four digits. Reject arbitrary text, malformed TASK and AIDP-INFRA values, empty identifiers, and every broader form. Add adversarial direct-contract and parser tests without duplicating regex authority.",
+        "REWORK-2-PRE-MUTATION-IDENTITY: Revalidate the bound Product root, Git top-level, Git Common Directory, expected branch, origin, upstream, exact HEAD, HEAD/upstream equality, clean worktree, and excluded Architect-contract and Infrastructure roots after Architect result validation and immediately before any PASS, FAIL, BLOCKED-result, or escalation Git publication/lifecycle projection. Bind the revalidation to ArchitectReviewRequest. Any post-review HEAD, branch, dirty-worktree, upstream, remote, common-directory, or repository-identity change must BLOCK or ESCALATE without projection or rework authority. Ensure the same explicit Product identity authority protects lifecycle mutation and is not inferred from cwd.",
+        "REWORK-2-PROJECTION-RECOVERY: Persist immutable projection intent/result identity before lifecycle mutation and record the exact local projection commit after commit creation. On restart, when the exact local lifecycle commit exists but origin is not synchronized, verify persisted request/result/projection identity, exact commit parent and changed paths/content, branch, clean worktree, and absence of divergence; push that existing commit without creating another commit; verify local and remote SHA equality; then continue. PASS must not hard-stop at local WAITING_FOR_PRODUCT_OWNER until publication is confirmed. FAIL must not persist/execute ReworkContract or enter Codex before publication is confirmed. Add PASS and FAIL crash-before-push recovery tests proving exact single-commit reuse.",
+        "REWORK-2-BOUNDED-OUTPUT: Enhance the reusable ProcessRunner/SubprocessRunner boundary minimally so Architect stdout and stderr are bounded during execution, not after capture_output completes. Use shell-free explicit argv, concurrently drain bounded streams, deterministically terminate then kill the child on either stream overflow, preserve timeout handling, expose an unambiguous overflow outcome, and ensure no partial output becomes Architect authority. Add real subprocess tests for stdout overflow, stderr overflow, termination, timeout, and normal bounded output.",
+        "REWORK-2-PROCESS-PROVENANCE: Extend ProcessOutcome/process execution evidence to expose actual process-layer identity, including PID and process start/creation identity where available, plus launcher identity and invocation timestamps. ArchitectReviewProvenance must bind to that execution evidence and must never substitute review_request_id for process identity. Capability-check provenance must not be confused with the review process. Add tests proving provenance identity comes from the review ProcessOutcome and differs from review_request_id.",
+        "REWORK-2-REWORK-LINEAGE: Persist and resolve the exact immutable ReworkContract ID that authorized each Codex rework. Initial ArchitectReviewRequest must have previous_rework_contract_id null; the review after Rework 1 must bind the exact Rework-1 ID; subsequent reviews must bind the immediately preceding exact persisted ID. Resolve lineage from verified persisted contract/lifecycle evidence, reject missing or ambiguous lineage, and add multiple-rework tests. Do not guess identity from iteration number.",
+        "REWORK-2-ADVERSARIAL-COVERAGE: Add explicit isolated tests for unauthorized and malformed ReworkContract task IDs; post-Architect HEAD, branch, dirty-worktree, upstream and repository divergence; PASS and FAIL local-commit-before-push recovery; reuse of the exact existing projection commit; FAIL prohibition before publication; bounded stdout and stderr with child termination; actual process provenance; Rework-1 and multiple-rework lineage; malformed Architect output; non-zero exit; duplicate request/result identities; and repeated Product Owner hard-gate NO_ACTION. Preserve all already-passing PASS, FAIL, multiple-rework, loop-limit, no-progress, persistence, watcher-lock, visible-Codex, ingress, Scope Guard, and validator behavior. Corrected infrastructure validation must remain scoped to python -m pytest tests/orchestration and must never restore repository-wide Product pytest authority. TASK-0131 must not be created or consumed."
+      ],
+      "required_validations": [
+        "python -m pytest tests/orchestration",
+        "git diff --check",
+        "Exact REWORK-2 Scope Guard"
+      ],
+      "created_at": "2026-09-01T15:35:56.8784796Z"
+    },
+    "received_at": "2026-09-01T15:35:56.8784796Z"
+  }
+}
