@@ -8,6 +8,7 @@ import type {
 import { ThreatIntelligenceRequestError } from "@/workspaces/threat-intelligence/ThreatIntelligenceApiClient";
 
 import FindingsWorkspace from "./FindingsWorkspace";
+import { findingsDensity } from "./FindingsPresentationDensity";
 import type { FindingSummary } from "./FindingSummary";
 
 afterEach(() => {
@@ -236,3 +237,12 @@ function deferred<Value>() {
     });
     return { promise, resolve };
 }
+
+describe("Finding TI density contract", () => {
+    it("keeps TI headings, values, and compact controls on the shared scale", () => {
+        expect(findingsDensity.sectionHeading).toMatchObject({ fontSize: "0.875rem", lineHeight: 1.35 });
+        expect(findingsDensity.subsectionHeading).toMatchObject({ fontSize: "0.8125rem", lineHeight: 1.3 });
+        expect(findingsDensity.primaryValue).toMatchObject({ fontSize: "0.75rem", lineHeight: 1.35 });
+        expect(findingsDensity.toolbarButton).toMatchObject({ fontSize: "0.75rem", lineHeight: 1.25 });
+    });
+});

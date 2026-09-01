@@ -8,6 +8,8 @@ import Typography from "@mui/material/Typography";
 import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-intelligence/ThreatIntelligence";
 import ThreatIntelligenceResult from "@/workspaces/threat-intelligence/pages/ThreatIntelligenceResult";
 
+import { findingsDensity } from "./FindingsPresentationDensity";
+
 interface FindingThreatIntelligenceSectionProps {
     result: FindingThreatIntelligenceEnrichment | null;
     error: string | null;
@@ -25,27 +27,28 @@ export default function FindingThreatIntelligenceSection({
         <Stack
             component="section"
             spacing={2}
+            sx={{ "& .MuiChip-root": findingsDensity.chip }}
             aria-label="Finding threat intelligence"
             id="finding-threat-intelligence"
             tabIndex={-1}
         >
             <Divider />
             <Stack spacing={0.5}>
-                <Typography variant="h6">Threat Intelligence</Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading}>Threat Intelligence</Typography>
+                <Typography variant="body2" color="text.secondary" sx={findingsDensity.helpText}>
                     Load CVE-based intelligence supplied by the PredatorAI backend
                     for this finding.
                 </Typography>
             </Stack>
 
-            <Button variant="outlined" onClick={onLoad} disabled={loading}>
+            <Button variant="outlined" onClick={onLoad} disabled={loading} sx={findingsDensity.toolbarButton}>
                 {loading ? "Loading" : "Load Threat Intelligence"}
             </Button>
 
             {loading && (
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <CircularProgress size={20} />
-                    <Typography>Loading finding threat intelligence</Typography>
+                    <Typography sx={findingsDensity.helpText}>Loading finding threat intelligence</Typography>
                 </Stack>
             )}
 
@@ -54,10 +57,10 @@ export default function FindingThreatIntelligenceSection({
             {result && (
                 <Stack spacing={2}>
                     <Stack spacing={0.5}>
-                        <Typography variant="subtitle2">Finding context</Typography>
-                        <Typography variant="body2">ID: {result.finding_id}</Typography>
-                        <Typography variant="body2">Title: {result.finding_title}</Typography>
-                        <Typography variant="body2">Source: {result.finding_source}</Typography>
+                        <Typography variant="subtitle2" sx={findingsDensity.subsectionHeading}>Finding context</Typography>
+                        <Typography variant="body2" sx={findingsDensity.primaryValue}>ID: {result.finding_id}</Typography>
+                        <Typography variant="body2" sx={findingsDensity.primaryValue}>Title: {result.finding_title}</Typography>
+                        <Typography variant="body2" sx={findingsDensity.primaryValue}>Source: {result.finding_source}</Typography>
                     </Stack>
 
                     {result.relationships.map((relationship) => {
@@ -76,7 +79,7 @@ export default function FindingThreatIntelligenceSection({
 
                         return (
                             <Stack key={relationshipKey} spacing={1.5}>
-                                <Typography variant="subtitle2">
+                                <Typography variant="subtitle2" sx={findingsDensity.subsectionHeading}>
                                     Applicability: {relationship.applicability}
                                 </Typography>
                                 <ThreatIntelligenceResult

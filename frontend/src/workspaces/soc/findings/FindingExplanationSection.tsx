@@ -11,6 +11,7 @@ import type {
     FindingExplanationResult,
     FindingExplanationStatement,
 } from "./FindingExplanation";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingExplanationSectionProps {
     explanation: FindingExplanationResult | null;
@@ -28,7 +29,7 @@ export default function FindingExplanationSection({
     const output = explanation?.model_output ?? null;
 
     return (
-        <Stack spacing={2}>
+        <Stack spacing={2} data-findings-density="explanation" sx={{ "& .MuiChip-root": findingsDensity.chip, "& .MuiButton-root": findingsDensity.toolbarButton }}>
             <Divider />
 
             <Stack
@@ -36,7 +37,7 @@ export default function FindingExplanationSection({
                 spacing={1}
                 sx={{ alignItems: "center", justifyContent: "space-between" }}
             >
-                <Typography variant="h6">AI Explanation</Typography>
+                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading}>AI Explanation</Typography>
                 <AppButton onClick={onGenerate} disabled={loading}>
                     {loading ? "Generating…" : "Generate AI Explanation"}
                 </AppButton>
@@ -83,7 +84,7 @@ export default function FindingExplanationSection({
                     )}
 
                     <Stack spacing={1}>
-                        <Typography variant="subtitle2">Missing Context</Typography>
+                        <Typography variant="subtitle2" sx={findingsDensity.subsectionHeading}>Missing Context</Typography>
                         <Stack
                             direction="row"
                             spacing={1}
@@ -91,7 +92,7 @@ export default function FindingExplanationSection({
                             sx={{ flexWrap: "wrap" }}
                         >
                             {explanation.missing_context.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography variant="body2" color="text.secondary" sx={findingsDensity.helpText}>
                                     None reported.
                                 </Typography>
                             ) : (
@@ -152,7 +153,7 @@ function ExplanationGroup({ title, statements }: ExplanationGroupProps) {
 
     return (
         <Stack spacing={1}>
-            <Typography variant="subtitle2">{title}</Typography>
+            <Typography variant="subtitle2" sx={findingsDensity.subsectionHeading}>{title}</Typography>
             {statements.map((statement, statementIndex) => (
                 <Stack
                     key={`${title}-${statement.kind}-${statementIndex}`}
@@ -165,7 +166,7 @@ function ExplanationGroup({ title, statements }: ExplanationGroupProps) {
                         label={statement.kind}
                         sx={{ alignSelf: "flex-start" }}
                     />
-                    <Typography variant="body2">{statement.text}</Typography>
+                    <Typography variant="body2" sx={findingsDensity.primaryValue}>{statement.text}</Typography>
                     {statement.basis_fact_ids.length > 0 && (
                         <Stack
                             direction="row"

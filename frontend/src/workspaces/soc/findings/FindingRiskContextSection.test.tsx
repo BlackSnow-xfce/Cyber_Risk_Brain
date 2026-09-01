@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FindingRiskContext } from "./FindingRiskContext";
 import FindingRiskContextSection from "./FindingRiskContextSection";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 afterEach(cleanup);
 
@@ -547,3 +548,16 @@ function expectStatusChip(text: HTMLElement, semantic: "success" | "warning") {
     expect(chip).toHaveAttribute("data-color-token", `${semantic}.main`);
     expect(chip).toHaveTextContent(text.textContent ?? "");
 }
+
+describe("Risk Context density contract", () => {
+    it("keeps compact labels, values, references, and status Chips", () => {
+        render(<FindingRiskContextSection context={context} error={null} loading={false} onLoad={vi.fn()} />);
+        const title = screen.getByText("Authoritative Risk Context");
+        expect(title).toHaveAttribute("data-findings-typography", "section-heading");
+        const label = screen.getByText("Title");
+        expect(label).toHaveAttribute("data-structural-label", "true");
+        expect(screen.getByText("Controlled finding")).toHaveAttribute("data-color-token", "text.primary");
+        expect(findingsDensity.reference).toEqual({ fontSize: "0.6875rem", lineHeight: 1.3 });
+        expect(findingsDensity.chip.height).toBe(20);
+    });
+});

@@ -9,6 +9,7 @@ import Typography from "@mui/material/Typography";
 import type { ReactNode } from "react";
 
 import type { FindingRiskContext } from "./FindingRiskContext";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingRiskContextSectionProps {
     context: FindingRiskContext | null;
@@ -68,7 +69,7 @@ function AuthorityField({ label, value, detail, semanticStatus = false, authorit
         <Stack spacing={0.125} sx={{ minWidth: 0 }} data-authority-field={label} data-layout-spacing="compact">
             <Typography
                 variant="caption"
-                sx={{ color: labelColor, fontWeight: 700, lineHeight: 1.2, letterSpacing: "0.06em", textTransform: "uppercase" }}
+                sx={{ ...findingsDensity.fieldLabel, color: labelColor, letterSpacing: "0.06em", textTransform: "uppercase" }}
                 data-color-token={labelColor}
                 data-structural-label="true"
             >
@@ -80,7 +81,7 @@ function AuthorityField({ label, value, detail, semanticStatus = false, authorit
                     size="small"
                     variant="outlined"
                     color={valueColor}
-                    sx={{ alignSelf: "flex-start", fontWeight: 700 }}
+                    sx={{ ...findingsDensity.chip, alignSelf: "flex-start", fontWeight: 700 }}
                     data-status-semantic={valueColor}
                     data-color-token={`${valueColor}.main`}
                 />
@@ -89,14 +90,14 @@ function AuthorityField({ label, value, detail, semanticStatus = false, authorit
                     component="div"
                     variant="body2"
                     color={neutralValueColor}
-                    sx={wrappingValueSx}
+                    sx={{ ...findingsDensity.primaryValue, ...wrappingValueSx }}
                     data-color-token={neutralValueColor}
                 >
                     {value}
                 </Typography>
             )}
             {detail !== undefined && (
-                <Typography component="div" variant="caption" color="text.secondary" sx={wrappingValueSx} data-color-token="text.secondary">{detail}</Typography>
+                <Typography component="div" variant="caption" color="text.secondary" sx={{ ...findingsDensity.reference, ...wrappingValueSx }} data-color-token="text.secondary">{detail}</Typography>
             )}
         </Stack>
     );
@@ -109,6 +110,7 @@ function AuthorityGroup({ label, children, structural = false, authorityTone: to
             <Typography
                 variant="subtitle2"
                 color={labelColor}
+                sx={findingsDensity.sectionHeading}
                 data-color-token={labelColor}
             >
                 {label}
@@ -143,11 +145,11 @@ export default function FindingRiskContextSection({ context, error, loading, onL
     ]) : undefined;
 
     return (
-        <Stack spacing={1.5} aria-label="Finding risk context">
+        <Stack spacing={1.5} aria-label="Finding risk context" data-findings-density="risk-context">
             <Divider />
             <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
-                <Typography variant="h6">Authoritative Risk Context</Typography>
-                <Button size="small" variant="outlined" onClick={onLoad} disabled={loading}>
+                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading} data-findings-typography="section-heading">Authoritative Risk Context</Typography>
+                <Button size="small" variant="outlined" onClick={onLoad} disabled={loading} sx={findingsDensity.toolbarButton}>
                     {loading ? "Loading" : "Load risk context"}
                 </Button>
             </Stack>
@@ -267,7 +269,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                                 <AuthorityField label="Reason" value={context.business_impact_classification_readiness.reason} authorityTone={authorityTone(context.business_impact_classification_readiness.status)} />
                                 <AuthorityField label="Source" value={context.business_impact_classification_readiness.source_type} detail={context.business_impact_classification_readiness.source_reference} authorityTone={authorityTone(context.business_impact_classification_readiness.status)} />
                                 <AuthorityField label="Completeness" value={context.business_impact_classification_readiness.completeness_status} semanticStatus authorityTone={authorityTone(context.business_impact_classification_readiness.completeness_status)} />
-                                <Typography variant="body2">Readiness is not a Business Impact result.</Typography>
+                                <Typography variant="body2" sx={findingsDensity.helpText}>Readiness is not a Business Impact result.</Typography>
                                 {context.business_impact_classification_readiness.missing_requirements.length > 0 && (
                                     <AuthorityGroup label="Missing requirements" structural authorityTone="warning">
                                         <Stack spacing={1.5} data-layout-spacing="records">

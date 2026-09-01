@@ -15,6 +15,7 @@ import type { FindingSummary } from "./FindingSummary";
 import FindingThreatIntelligenceSection from "./FindingThreatIntelligenceSection";
 import type { FindingRiskContext } from "./FindingRiskContext";
 import FindingRiskContextSection from "./FindingRiskContextSection";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingDetailsPanelProps {
     finding: FindingSummary | null;
@@ -73,6 +74,8 @@ export default function FindingDetailsPanel({
             className={feedbackActive ? "finding-details-panel--updated" : undefined}
             sx={{
                 height: "100%",
+                "& .MuiChip-root": findingsDensity.chip,
+                "& .MuiButton-root": findingsDensity.toolbarButton,
                 ...(feedbackActive && {
                     animation: "finding-details-panel-update 2000ms cubic-bezier(.4, 0, .2, 1)",
                     "@keyframes finding-details-panel-update": {
@@ -93,7 +96,9 @@ export default function FindingDetailsPanel({
             <Stack spacing={2}>
                 <Typography
                     id="finding-details-title"
-                    variant="h6"
+                    variant="subtitle1"
+                    sx={findingsDensity.panelHeading}
+                    data-findings-typography="panel-heading"
                 >
                     Finding Details
                 </Typography>
@@ -101,6 +106,7 @@ export default function FindingDetailsPanel({
                 <Typography
                     variant="body2"
                     color="text.secondary"
+                    sx={findingsDensity.helpText}
                 >
                     {finding
                         ? finding.title
@@ -110,7 +116,7 @@ export default function FindingDetailsPanel({
                 <Divider />
 
                 {finding && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={findingsDensity.helpText}>
                         Canonical scanner finding. Risk and decision enrichment
                         is not available for this live data.
                     </Typography>
@@ -118,13 +124,14 @@ export default function FindingDetailsPanel({
 
                 {detailSections.map(([section, content]) => (
                     <Stack key={section} spacing={0.5}>
-                        <Typography variant="subtitle2">
+                        <Typography variant="subtitle2" sx={findingsDensity.fieldLabel} data-findings-typography="field-label">
                             {section}
                         </Typography>
 
                         <Typography
                             variant="body2"
                             color="text.secondary"
+                            sx={findingsDensity.primaryValue}
                         >
                             {content}
                         </Typography>
@@ -157,19 +164,20 @@ export default function FindingDetailsPanel({
                                 direction="row"
                                 sx={{ justifyContent: "space-between", alignItems: "center" }}
                             >
-                                <Typography variant="h6">Linked Incidents</Typography>
+                                <Typography variant="subtitle2" sx={findingsDensity.sectionHeading}>Linked Incidents</Typography>
                                 <Button
                                     size="small"
                                     variant="outlined"
                                     onClick={onLoadIncidents}
                                     disabled={incidentsLoading}
+                                    sx={findingsDensity.toolbarButton}
                                 >
                                     {incidentsLoading ? "Loading…" : "Load incidents"}
                                 </Button>
                             </Stack>
                             {incidentsError && <Alert severity="error">{incidentsError}</Alert>}
                             {!incidentsLoading && !incidentsError && incidents.length === 0 && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography variant="body2" color="text.secondary" sx={findingsDensity.helpText}>
                                     No linked incidents loaded.
                                 </Typography>
                             )}
@@ -177,7 +185,7 @@ export default function FindingDetailsPanel({
                                 <Button
                                     key={incident.relationship_id}
                                     variant="text"
-                                    sx={{ justifyContent: "flex-start", textTransform: "none" }}
+                                    sx={{ ...findingsDensity.primaryValue, justifyContent: "flex-start", textTransform: "none" }}
                                     component="a"
                                     href={`/incident-response/incidents/${encodeURIComponent(incident.incident_id)}/command-center`}
                                 >

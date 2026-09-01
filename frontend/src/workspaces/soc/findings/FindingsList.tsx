@@ -5,6 +5,7 @@ import Panel from "@/ui/panel/Panel";
 
 import type { FindingSummary } from "./FindingSummary";
 import FindingListItem from "./FindingListItem";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingsListProps {
     findings: readonly FindingSummary[];
@@ -22,7 +23,9 @@ export default function FindingsList({
             <Stack spacing={2}>
                 <Typography
                     id="findings-list-title"
-                    variant="h6"
+                    variant="subtitle1"
+                    sx={findingsDensity.panelHeading}
+                    data-findings-typography="panel-heading"
                 >
                     Findings List
                 </Typography>

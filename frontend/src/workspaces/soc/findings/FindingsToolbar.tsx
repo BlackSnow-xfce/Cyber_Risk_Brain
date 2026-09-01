@@ -1,4 +1,8 @@
+import Box from "@mui/material/Box";
+
 import SOCWorkspaceToolbar from "../SOCWorkspaceToolbar";
+
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingsToolbarProps {
     searchValue: string;
@@ -14,12 +18,14 @@ export default function FindingsToolbar({
     refreshing,
 }: FindingsToolbarProps) {
     return (
-        <SOCWorkspaceToolbar
-            searchLabel="Search findings"
-            searchValue={searchValue}
-            onSearchChange={onSearchChange}
-            onRefresh={onRefresh}
-            refreshing={refreshing}
-        />
+        <Box data-findings-density="toolbar" sx={{ "& .MuiInputBase-input, & .MuiInputLabel-root": findingsDensity.searchInput, "& .MuiButton-root": findingsDensity.toolbarButton }}>
+            <SOCWorkspaceToolbar
+                searchLabel="Search findings"
+                searchValue={searchValue}
+                onSearchChange={onSearchChange}
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+            />
+        </Box>
     );
 }

@@ -25,6 +25,7 @@ import {
 } from "./FindingsApiClient";
 import FindingsList from "./FindingsList";
 import FindingsToolbar from "./FindingsToolbar";
+import { findingsDensity } from "./FindingsPresentationDensity";
 import {
     getFindingIncidents,
     type FindingIncidentReference,
@@ -382,7 +383,7 @@ export default function FindingsWorkspace({
                     sx={{ alignItems: "center" }}
                 >
                     <CircularProgress size={20} />
-                    <Typography>Loading live findings</Typography>
+                    <Typography sx={findingsDensity.helpText}>Loading live findings</Typography>
                 </Stack>
             )}
 

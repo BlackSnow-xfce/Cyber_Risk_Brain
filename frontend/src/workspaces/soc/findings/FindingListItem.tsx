@@ -5,6 +5,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import type { FindingSummary } from "./FindingSummary";
+import { findingsDensity } from "./FindingsPresentationDensity";
 
 interface FindingListItemProps {
     finding: FindingSummary;
@@ -48,11 +49,13 @@ export default function FindingListItem({
                         label={`Severity ${finding.vendorSeverity}`}
                         size="small"
                         variant="outlined"
+                        sx={findingsDensity.chip}
                     />
 
                     <Typography
-                        variant="subtitle1"
-                        sx={{ fontWeight: 600 }}
+                        variant="subtitle2"
+                        sx={findingsDensity.subsectionHeading}
+                        data-findings-typography="subsection-heading"
                     >
                         {finding.title}
                     </Typography>
@@ -96,11 +99,13 @@ function FindingAttribute({
             <Typography
                 variant="caption"
                 color="text.secondary"
+                sx={findingsDensity.fieldLabel}
+                data-findings-typography="field-label"
             >
                 {label}
             </Typography>
 
-            <Typography variant="body2">{value}</Typography>
+            <Typography variant="body2" sx={findingsDensity.primaryValue} data-findings-typography="primary-value">{value}</Typography>
         </Box>
     );
 }

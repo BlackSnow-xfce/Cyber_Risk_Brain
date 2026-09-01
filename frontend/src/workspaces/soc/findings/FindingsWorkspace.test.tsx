@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FindingsWorkspace from "./FindingsWorkspace";
+import { findingsDensity } from "./FindingsPresentationDensity";
 import type { FindingExplanationResult } from "./FindingExplanation";
 import { FindingExplanationRequestError } from "./FindingsApiClient";
 import type { FindingSummary } from "./FindingSummary";
@@ -11,6 +12,29 @@ import type { FindingThreatIntelligenceEnrichment } from "@/workspaces/threat-in
 afterEach(() => {
     cleanup();
     window.history.replaceState({}, "", "/");
+});
+
+describe("local Findings typography density", () => {
+    it("uses the shared hierarchy in both workspace columns", async () => {
+        render(<FindingsWorkspace loadFindings={() => Promise.resolve([finding])} />);
+
+        expect(await screen.findByText("Findings List")).toHaveAttribute("data-findings-typography", "panel-heading");
+        fireEvent.click(screen.getByRole("button", { name: /Controlled scanner finding/ }));
+        expect(await screen.findByText("Finding Details")).toHaveAttribute("data-findings-typography", "panel-heading");
+        expect(screen.getAllByText("Asset")[0]).toHaveAttribute("data-findings-typography", "field-label");
+        expect(screen.getAllByText(finding.asset)[0]).toHaveAttribute("data-findings-typography", "primary-value");
+        expect(screen.getByLabelText("Search findings").closest("[data-findings-density='toolbar']")).not.toBeNull();
+    });
+
+    it("keeps a distinct readable local scale", () => {
+        expect(findingsDensity.panelHeading.fontSize).toBe("0.9375rem");
+        expect(findingsDensity.sectionHeading.fontSize).toBe("0.875rem");
+        expect(findingsDensity.subsectionHeading.fontSize).toBe("0.8125rem");
+        expect(findingsDensity.fieldLabel.fontSize).toBe("0.6875rem");
+        expect(findingsDensity.primaryValue.fontSize).toBe("0.75rem");
+        expect(findingsDensity.reference.lineHeight).toBe(1.3);
+        expect(findingsDensity.chip.height).toBe(20);
+    });
 });
 
 const finding: FindingSummary = {
