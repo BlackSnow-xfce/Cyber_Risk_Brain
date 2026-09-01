@@ -1,0 +1,31 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-task-0130-rework-6",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "TASK-0130",
+      "review_iteration": 6,
+      "expected_head": "2d3c290e11f02bf2c245e5349b1dd208b5639fac",
+      "allowed_rework_scope": [
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.tsx",
+        "frontend/src/workspaces/soc/findings/FindingRiskContextSection.test.tsx"
+      ],
+      "findings": [
+        "Correct only Technical Effect spacing ownership: create or use a dedicated container whose exclusive children are repeated effect records; it must own MUI spacing 1.5 and the repeated-record layout marker. Status and reason remain outside that effects list with the approved unit rhythm.",
+        "Each individual Technical Effect record must own MUI spacing 1.25 and the sibling-unit layout marker for CVE version vector C I A source and observed fields. It must not declare repeated-record spacing internally. Preserve AuthorityField compact spacing 0.125.",
+        "Add a focused test rendering at least two distinct complete Technical Effects with different CVEs vectors CIA values sources references and observed timestamps. Prove both groups are independent, retain their own exact values without cross-effect mixing, the parent declares repeated-record spacing, and each record declares sibling-unit spacing.",
+        "The multi-effect test must also preserve outlined status Chip semantics, neutral HIGH LOW NONE TechnicalEffectLevel values, exact wrapping-safe references, section order, and business_impact null decision null recommendations empty. Do not use screenshots pixel values or computed-spacing assertions.",
+        "Preserve every other REWORK-3/4/5 presentation and all TASK-0127/0128/0129 and TASK-0130 authority global UI theme backend API parser CVSS provenance priority readiness legacy and AI boundaries. Product Owner acceptance remains PENDING / NOT READY and TASK-0131 must not be created."
+      ],
+      "required_validations": [
+        "python tests",
+        "frontend tests",
+        "typescript",
+        "production build",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-01T09:20:00Z"
+    },
+    "received_at": "2026-09-01T09:20:00Z"
+  }
+}
