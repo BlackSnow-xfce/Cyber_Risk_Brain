@@ -1,0 +1,39 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0001-rework-3-v1",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "AIDP-INFRA-0001",
+      "review_iteration": 3,
+      "expected_head": "1a53d0e8a3f70c47426d159146d21aeeefa5fc7f",
+      "allowed_rework_scope": [
+        "aidp_orchestration/lifecycle_projection.py",
+        "aidp_orchestration/runtime.py",
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/executor_types.py",
+        "aidp_orchestration/executor.py",
+        "aidp_orchestration/architect_review.py",
+        "aidp_orchestration/lifecycle.py",
+        "aidp_orchestration/validators.py",
+        "tests/orchestration/test_lifecycle_projection.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_executor.py",
+        "tests/orchestration/test_architect_review.py",
+        "tests/orchestration/test_lifecycle.py",
+        "tests/orchestration/test_validators.py"
+      ],
+      "findings": [
+        "REWORK-3-EXACT-PROJECTION-CONTENT: Refactor PASS and FAIL lifecycle projection construction so commit creation and recovery verification share one deterministic content builder. Recovery must read committed blobs from the candidate commit and compare exact bytes for the REVIEW task file, TO-CODEX.md, TO-ARCHITECT.md, and sanitized Architect result envelope. Bind expected content to task ID, review iteration, disposition, reviewed and expected HEAD, review-result identity, Product Owner gate state, and exact handoff states. Verify the exact parent, exact four-path set, clean worktree, expected branch and non-divergent publication state before push. Reject every mismatch with BLOCK or ESCALATION_REQUIRED and do not push. Add real temporary Git repositories proving exact PASS and FAIL commits recover and push without a second commit, while one-field tampering of Task status, TO-CODEX, or TO-ARCHITECT with the correct parent, result envelope, path set, and clean worktree is rejected.",
+        "REWORK-3-VERIFIED-REWORK-LINEAGE: Define canonical deterministic ReworkContract content identity and persist the authorizing review/result provenance needed to verify it. Lineage resolution must load the complete envelope, reconstruct ReworkContract through canonical validation, require timezone-aware created_at and authorized task namespace, verify requested task and iteration, expected HEAD, scope, findings, validators, content identity, authorizing result binding, and filename identity, and reject missing, partial, malformed, stale, forged, widened, or ambiguous evidence. The contract creator in lifecycle.py must generate and persist exactly this canonical identity. Add adversarial tests for missing payload, malformed timestamp, wrong task, wrong iteration, stale expected HEAD, altered scope, validators or findings, content-ID mismatch, filename-ID mismatch, plus valid Rework-1 and multiple-rework lineage. A top-level contract_id alone must never authorize lineage.",
+        "REWORK-3-PROCESS-TIMING-PROVENANCE: Extend ProcessOutcome so the process layer returns timezone-aware process_started_at and process_completed_at values bracketing the actual child Popen execution. Capture start immediately around successful child creation and completion only after exit, timeout, overflow termination or kill completion. Preserve actual PID/start identity, bounded concurrent stdout/stderr, shell=False, timeout, non-zero and overflow semantics. ArchitectReviewCoordinator must use the review child ProcessOutcome timestamps verbatim for ArchitectReviewProvenance and must not reuse coordinator entry, repository validation, launcher resolution, capability-check, request creation, or review_request_id timing/identity. Fail closed if successful review output lacks valid process timing or identity. Add tests proving capability/preflight precede review process_started_at, completion follows child termination, result provenance equals ProcessOutcome timing, coordinator start is not reused, PID identity differs from request identity, and timeout/non-zero/overflow behavior remains preserved. Corrected validation remains python -m pytest tests/orchestration, git diff --check, and Exact REWORK-3 Scope Guard; repository-wide Product pytest is forbidden; Product Owner authority and TASK-0131 remain untouched."
+      ],
+      "required_validations": [
+        "python -m pytest tests/orchestration",
+        "git diff --check",
+        "Exact REWORK-3 Scope Guard"
+      ],
+      "created_at": "2026-09-01T15:59:07.1163856Z"
+    },
+    "received_at": "2026-09-01T15:59:07.1163856Z"
+  }
+}
