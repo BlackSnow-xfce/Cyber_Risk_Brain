@@ -217,6 +217,56 @@ describe("FindingRiskContextSection", () => {
         expect(error).toHaveTextContent("Controlled source failure.");
     });
 
+    it("marks every authoritative known-fact label as success while values remain neutral", () => {
+        const knownFacts: FindingRiskContext = {
+            ...context,
+            source_facts: [
+                { name: "finding_id", value: "finding-001", source_reference: "greenbone:report-1" },
+                { name: "source", value: "greenbone", source_reference: "greenbone:report-1" },
+                { name: "title", value: "DistCC RCE Vulnerability (CVE-2004-2687)", source_reference: "greenbone:report-1" },
+                { name: "vendor_severity", value: "Critical", source_reference: "greenbone:report-1" },
+                { name: "observed_asset", value: "172.18.0.19", source_reference: "greenbone:report-1" },
+            ],
+            asset_context: {
+                status: "resolved",
+                observed_identifier_type: "ip_address",
+                observed_identifier_value: "172.18.0.19",
+                canonical_asset_id: "asset-lab-metasploitable2-001",
+                criticality: "LOW",
+                source_reference: "product-owner:metasploitable2-lab-classification",
+            },
+        };
+
+        render(<FindingRiskContextSection context={knownFacts} error={null} loading={false} onLoad={vi.fn()} />);
+
+        const expectedFacts = [
+            ["finding_id", "Finding id", "finding-001"],
+            ["source", "Source", "greenbone"],
+            ["title", "Title", "DistCC RCE Vulnerability (CVE-2004-2687)"],
+            ["vendor_severity", "Vendor severity", "Critical"],
+            ["observed_asset", "Observed asset", "172.18.0.19"],
+        ] as const;
+        expectedFacts.forEach(([name, label, value]) => {
+            const row = document.querySelector(`[data-known-fact="${name}"]`);
+            expect(row).not.toBeNull();
+            expect(within(row as HTMLElement).getAllByText(label)[0]).toHaveAttribute("data-color-token", "success.main");
+            expect(within(row as HTMLElement).getAllByText(value)[0]).toHaveAttribute("data-color-token", "text.primary");
+            expect(within(row as HTMLElement).getByText("greenbone:report-1")).toHaveAttribute("data-color-token", "text.secondary");
+        });
+        expect(document.querySelectorAll("[data-known-fact]")).toHaveLength(knownFacts.source_facts.length);
+
+        const asset = screen.getByLabelText("Canonical asset context");
+        ["Canonical asset", "Asset criticality", "Source"].forEach((label) => {
+            expect(within(asset).getByText(label)).toHaveAttribute("data-color-token", "success.main");
+        });
+        expect(within(asset).getByText("asset-lab-metasploitable2-001")).toHaveAttribute("data-color-token", "text.primary");
+        expect(within(asset).getByText("LOW")).toHaveAttribute("data-color-token", "text.primary");
+        expect(within(asset).getByText("product-owner:metasploitable2-lab-classification")).toHaveAttribute("data-color-token", "text.secondary");
+        expect(knownFacts.business_impact).toBeNull();
+        expect(knownFacts.decision).toBeNull();
+        expect(knownFacts.recommendations).toEqual([]);
+    });
+
     it("separates repeated Technical Effect records without mixing their authority", () => {
         const multiEffectContext: FindingRiskContext = {
             ...context,

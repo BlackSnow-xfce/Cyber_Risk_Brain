@@ -68,8 +68,7 @@ function AuthorityField({ label, value, detail, semanticStatus = false, authorit
         <Stack spacing={0.125} sx={{ minWidth: 0 }} data-authority-field={label} data-layout-spacing="compact">
             <Typography
                 variant="caption"
-                color={labelColor}
-                sx={{ fontWeight: 700, lineHeight: 1.2, letterSpacing: "0.06em", textTransform: "uppercase" }}
+                sx={{ color: labelColor, fontWeight: 700, lineHeight: 1.2, letterSpacing: "0.06em", textTransform: "uppercase" }}
                 data-color-token={labelColor}
                 data-structural-label="true"
             >
@@ -159,7 +158,7 @@ export default function FindingRiskContextSection({ context, error, loading, onL
                     <AuthorityGroup label="What PredatorAI knows" authorityTone="success">
                         <Stack spacing={1.25}>
                             {context.source_facts.map((fact) => (
-                                <Stack key={fact.name} spacing={1.25} data-layout-spacing="units">
+                                <Stack key={fact.name} spacing={1.25} data-layout-spacing="units" data-known-fact={fact.name}>
                                     <AuthorityField label={presentationLabel(fact.name)} value={fact.value} authorityTone="success" />
                                     <AuthorityField label="Source" value={fact.source_reference} valueTone="secondary" authorityTone="success" />
                                 </Stack>
