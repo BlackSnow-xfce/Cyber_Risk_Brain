@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
 from dataclasses import asdict
 from datetime import datetime
@@ -10,8 +12,10 @@ from enum import Enum
 from pathlib import Path
 
 from .contracts import (
-    ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult, AuditEvent,
-    CodexExecutionResult, ReworkContract, canonical_digest, utc_now,
+    AIDPState, ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult,
+    AuditEvent, AuthenticatedProductOwner, CodexExecutionResult, ProductOwnerApprovalContext,
+    ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
+    ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract, canonical_digest, utc_now,
 )
 
 
@@ -64,6 +68,343 @@ class LocalRuntimeStore:
 
     def architect_attempt_exists(self, request_id: str) -> bool:
         return (self.root / "architect-review-attempts" / f"{request_id}.json").is_file()
+
+    def latest_architect_result(self, task_id: str) -> ArchitectReviewResult | None:
+        from .architect_review import parse_architect_review_result
+
+        candidates: list[ArchitectReviewResult] = []
+        directory = self.root / "architect-review-results"
+        if directory.exists():
+            for path in sorted(directory.glob("*.json")):
+                envelope = json.loads(path.read_text(encoding="utf-8"))
+                payload = envelope.get("architect_review_result") if isinstance(envelope, dict) else None
+                if isinstance(payload, dict) and payload.get("task_id") == task_id:
+                    candidates.append(parse_architect_review_result(json.dumps(payload)))
+        if not candidates:
+            return None
+        ordered = sorted(candidates, key=lambda item: item.review_iteration)
+        if len({item.review_iteration for item in ordered}) != len(ordered):
+            raise ValueError("Architect result history is ambiguous")
+        return ordered[-1]
+
+    def persist_product_owner_approval_context(self, context: ProductOwnerApprovalContext) -> Path:
+        return self._persist_immutable(
+            self.root / "approval-contexts" / f"{context.approval_context_id}.json",
+            _json({"product_owner_approval_context": context}), context.approval_context_id,
+        )
+
+    def product_owner_approval_context(self, context_id: str) -> ProductOwnerApprovalContext:
+        _identity(context_id, "approval_context_id")
+        value = self._read_exact(
+            self.root / "approval-contexts" / f"{context_id}.json",
+            "product_owner_approval_context",
+        )
+        required = {
+            "schema_version", "approval_context_id", "task_id", "repository_identity",
+            "repository_remote_identity", "expected_state", "expected_lifecycle_version",
+            "policy_version", "implementation_execution_id", "architect_review_id",
+            "architect_result_digest", "product_commit", "issued_at", "expires_at",
+            "nonce_digest", "context_digest",
+        }
+        if set(value) != required:
+            raise ValueError("approval context fields do not match schema")
+        context = ProductOwnerApprovalContext(
+            schema_version=_string(value, "schema_version"),
+            approval_context_id=_string(value, "approval_context_id"),
+            task_id=_string(value, "task_id"),
+            repository_identity=_string(value, "repository_identity"),
+            repository_remote_identity=_string(value, "repository_remote_identity"),
+            expected_state=AIDPState(_string(value, "expected_state")),
+            expected_lifecycle_version=_string(value, "expected_lifecycle_version"),
+            policy_version=_string(value, "policy_version"),
+            implementation_execution_id=_string(value, "implementation_execution_id"),
+            architect_review_id=_string(value, "architect_review_id"),
+            architect_result_digest=_string(value, "architect_result_digest"),
+            product_commit=_string(value, "product_commit"),
+            issued_at=datetime.fromisoformat(_string(value, "issued_at")),
+            expires_at=datetime.fromisoformat(_string(value, "expires_at")),
+            nonce_digest=_string(value, "nonce_digest"),
+            context_digest=_string(value, "context_digest"),
+        )
+        if context.approval_context_id != context_id:
+            raise ValueError("approval context filename identity mismatch")
+        return context
+
+    def product_owner_approval_contexts(self) -> tuple[ProductOwnerApprovalContext, ...]:
+        directory = self.root / "approval-contexts"
+        if not directory.exists():
+            return ()
+        return tuple(self.product_owner_approval_context(path.stem) for path in sorted(directory.glob("*.json")))
+
+    def persist_product_owner_decision(self, decision: ProductOwnerDecision) -> Path:
+        return self._persist_immutable(
+            self.root / "product-owner-decisions" / f"{decision.decision_id}.json",
+            _json({"product_owner_decision": decision}), decision.decision_id,
+        )
+
+    def product_owner_decision(self, decision_id: str) -> ProductOwnerDecision:
+        _identity(decision_id, "decision_id")
+        value = self._read_exact(
+            self.root / "product-owner-decisions" / f"{decision_id}.json",
+            "product_owner_decision",
+        )
+        principal_value = _mapping(value, "principal")
+        authorization_value = _mapping(value, "authorization")
+        if set(value) != {
+            "schema_version", "decision_id", "approval_context_id", "approval_context_digest",
+            "principal", "authorization", "operation", "reason", "decided_at",
+            "client_identity", "command_id", "command_payload_digest", "nonce_digest",
+            "integrity_digest",
+        }:
+            raise ValueError("Product Owner decision fields do not match schema")
+        if set(principal_value) != {
+            "principal_id", "issuer", "subject", "authentication_event_id", "authenticated_at",
+            "authentication_method", "assurance_level", "session_reference",
+        }:
+            raise ValueError("authenticated Product Owner fields do not match schema")
+        if set(authorization_value) != {
+            "authorization_reference", "principal_id", "operation", "task_id",
+            "repository_identity", "policy_version", "evaluated_at", "valid_until",
+        }:
+            raise ValueError("Product Owner authorization fields do not match schema")
+        principal = AuthenticatedProductOwner(
+            principal_id=_string(principal_value, "principal_id"),
+            issuer=_string(principal_value, "issuer"),
+            subject=_string(principal_value, "subject"),
+            authentication_event_id=_string(principal_value, "authentication_event_id"),
+            authenticated_at=datetime.fromisoformat(_string(principal_value, "authenticated_at")),
+            authentication_method=_string(principal_value, "authentication_method"),
+            assurance_level=_string(principal_value, "assurance_level"),
+            session_reference=_string(principal_value, "session_reference"),
+        )
+        valid_until = authorization_value.get("valid_until")
+        authorization = ProductOwnerAuthorizationEvidence(
+            authorization_reference=_string(authorization_value, "authorization_reference"),
+            principal_id=_string(authorization_value, "principal_id"),
+            operation=ProductOwnerOperation(_string(authorization_value, "operation")),
+            task_id=_string(authorization_value, "task_id"),
+            repository_identity=_string(authorization_value, "repository_identity"),
+            policy_version=_string(authorization_value, "policy_version"),
+            evaluated_at=datetime.fromisoformat(_string(authorization_value, "evaluated_at")),
+            valid_until=datetime.fromisoformat(valid_until) if isinstance(valid_until, str) else None,
+        )
+        decision = ProductOwnerDecision(
+            schema_version=_string(value, "schema_version"),
+            decision_id=_string(value, "decision_id"),
+            approval_context_id=_string(value, "approval_context_id"),
+            approval_context_digest=_string(value, "approval_context_digest"),
+            principal=principal,
+            authorization=authorization,
+            operation=ProductOwnerOperation(_string(value, "operation")),
+            reason=value.get("reason") if isinstance(value.get("reason"), str) else None,
+            decided_at=datetime.fromisoformat(_string(value, "decided_at")),
+            client_identity=_string(value, "client_identity"),
+            command_id=_string(value, "command_id"),
+            command_payload_digest=_string(value, "command_payload_digest"),
+            nonce_digest=_string(value, "nonce_digest"),
+            integrity_digest=_string(value, "integrity_digest"),
+        )
+        if decision.decision_id != decision_id:
+            raise ValueError("Product Owner decision filename identity mismatch")
+        return decision
+
+    def persist_product_owner_idempotency(
+        self, principal_id: str, command_id: str, payload_digest: str, decision_id: str,
+    ) -> Path:
+        identity = canonical_digest({"principal_id": principal_id, "command_id": command_id})
+        payload = {
+            "principal_id": principal_id, "command_id": command_id,
+            "payload_digest": payload_digest, "decision_id": decision_id,
+        }
+        return self._persist_immutable(
+            self.root / "product-owner-idempotency" / f"{identity}.json",
+            _json({"product_owner_idempotency": payload}), identity,
+        )
+
+    def product_owner_idempotency(self, principal_id: str, command_id: str) -> tuple[str, str] | None:
+        identity = canonical_digest({"principal_id": principal_id, "command_id": command_id})
+        path = self.root / "product-owner-idempotency" / f"{identity}.json"
+        if not path.exists():
+            return None
+        value = self._read_exact(path, "product_owner_idempotency")
+        if value.get("principal_id") != principal_id or value.get("command_id") != command_id:
+            raise ValueError("idempotency identity mismatch")
+        return _string(value, "payload_digest"), _string(value, "decision_id")
+
+    def append_product_owner_decision_event(self, event: ProductOwnerDecisionEvent) -> Path:
+        directory = self.root / "product-owner-decision-events" / event.decision_id
+        existing = tuple(sorted(directory.glob("*.json"))) if directory.exists() else ()
+        if any(path.name.endswith(f"-{event.event_id}.json") for path in existing):
+            raise ValueError("Product Owner decision event identity already exists")
+        sequence = len(existing)
+        if sequence == 0 and event.previous_event_digest is not None:
+            raise ValueError("first decision event cannot have a predecessor")
+        if sequence > 0:
+            previous = self.product_owner_decision_events(event.decision_id)[-1]
+            if event.previous_event_digest != previous.event_digest:
+                raise ValueError("decision event chain mismatch")
+        return self._persist_immutable(
+            directory / f"{sequence:04d}-{event.event_id}.json",
+            _json({"product_owner_decision_event": event}), event.event_id,
+        )
+
+    def product_owner_decision_events(self, decision_id: str) -> tuple[ProductOwnerDecisionEvent, ...]:
+        _identity(decision_id, "decision_id")
+        directory = self.root / "product-owner-decision-events" / decision_id
+        paths = tuple(sorted(directory.glob("*.json"))) if directory.exists() else ()
+        events: list[ProductOwnerDecisionEvent] = []
+        previous: ProductOwnerDecisionEvent | None = None
+        for index, path in enumerate(paths):
+            value = self._read_exact(path, "product_owner_decision_event")
+            if set(value) != {
+                "event_id", "decision_id", "approval_context_id", "previous_state",
+                "current_state", "event_type", "binding_digest", "timestamp",
+                "reason_code", "previous_event_digest", "event_digest",
+            }:
+                raise ValueError("Product Owner decision event fields do not match schema")
+            event = ProductOwnerDecisionEvent(
+                event_id=_string(value, "event_id"),
+                decision_id=_string(value, "decision_id"),
+                approval_context_id=_string(value, "approval_context_id"),
+                previous_state=(ProductOwnerDecisionState(_string(value, "previous_state")) if value.get("previous_state") is not None else None),
+                current_state=ProductOwnerDecisionState(_string(value, "current_state")),
+                event_type=_string(value, "event_type"),
+                binding_digest=_string(value, "binding_digest"),
+                timestamp=datetime.fromisoformat(_string(value, "timestamp")),
+                reason_code=_string(value, "reason_code"),
+                previous_event_digest=(str(value["previous_event_digest"]) if value.get("previous_event_digest") is not None else None),
+                event_digest=_string(value, "event_digest"),
+            )
+            if event.decision_id != decision_id or (previous is None) != (event.previous_event_digest is None):
+                raise ValueError("decision event lineage mismatch")
+            if previous is not None and event.previous_event_digest != previous.event_digest:
+                raise ValueError("decision event digest chain mismatch")
+            if not path.name.startswith(f"{index:04d}-") or not path.name.endswith(f"{event.event_id}.json"):
+                raise ValueError("decision event filename identity mismatch")
+            events.append(event)
+            previous = event
+        return tuple(events)
+
+    def recorded_product_owner_decisions(self) -> tuple[ProductOwnerDecision, ...]:
+        directory = self.root / "product-owner-decisions"
+        decisions: list[ProductOwnerDecision] = []
+        if directory.exists():
+            for path in sorted(directory.glob("*.json")):
+                decision = self.product_owner_decision(path.stem)
+                events = self.product_owner_decision_events(decision.decision_id)
+                if len(events) == 1 and events[0].current_state is ProductOwnerDecisionState.RECORDED:
+                    decisions.append(decision)
+        return tuple(decisions)
+
+    def product_owner_decisions(self) -> tuple[ProductOwnerDecision, ...]:
+        directory = self.root / "product-owner-decisions"
+        if not directory.exists():
+            return ()
+        return tuple(self.product_owner_decision(path.stem) for path in sorted(directory.glob("*.json")))
+
+    def append_product_owner_confirmation_attempt(self, payload: dict[str, object]) -> Path:
+        path = self.root / "product-owner-confirmation-attempts.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = _json({"product_owner_confirmation_attempt": payload}) + "\n"
+        with path.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _sync_parent(path.parent)
+        return path
+
+    def append_product_owner_transaction(self, decision_id: str, payload: dict[str, object]) -> Path:
+        path = self.root / "product-owner-transactions" / f"{decision_id}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = _json({"product_owner_transaction": payload}) + "\n"
+        with path.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _sync_parent(path.parent)
+        return path
+
+    def product_owner_transaction(self, decision_id: str) -> tuple[dict[str, object], ...]:
+        _identity(decision_id, "decision_id")
+        path = self.root / "product-owner-transactions" / f"{decision_id}.jsonl"
+        if not path.exists():
+            return ()
+        events: list[dict[str, object]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            envelope = _strict_json_loads(line)
+            if not isinstance(envelope, dict) or set(envelope) != {"product_owner_transaction"}:
+                raise ValueError("Product Owner transaction envelope is malformed")
+            event = envelope["product_owner_transaction"]
+            required = {
+                "schema_version", "decision_id", "approval_context_id", "binding_digest",
+                "operation", "state", "timestamp", "projection_commit",
+                "previous_event_digest", "event_digest",
+            }
+            if not isinstance(event, dict) or set(event) != required or event.get("decision_id") != decision_id:
+                raise ValueError("Product Owner transaction identity mismatch")
+            if event.get("schema_version") != "product-owner-transaction-v1":
+                raise ValueError("Product Owner transaction schema is unsupported")
+            if event.get("operation") not in {item.value for item in ProductOwnerOperation}:
+                raise ValueError("Product Owner transaction operation is invalid")
+            try:
+                timestamp = datetime.fromisoformat(str(event.get("timestamp")))
+            except ValueError as exc:
+                raise ValueError("Product Owner transaction timestamp is malformed") from exc
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                raise ValueError("Product Owner transaction timestamp must be timezone-aware")
+            digest = event.get("event_digest")
+            previous_digest = event.get("previous_event_digest")
+            if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise ValueError("Product Owner transaction digest is malformed")
+            if previous_digest is not None and (
+                not isinstance(previous_digest, str)
+                or re.fullmatch(r"[0-9a-f]{64}", previous_digest) is None
+            ):
+                raise ValueError("Product Owner transaction predecessor is malformed")
+            unsigned = dict(event)
+            unsigned.pop("event_digest")
+            if canonical_digest(unsigned) != digest:
+                raise ValueError("Product Owner transaction digest mismatch")
+            if events:
+                prior = events[-1]
+                if (
+                    previous_digest != prior["event_digest"]
+                    or event["approval_context_id"] != prior["approval_context_id"]
+                    or event["binding_digest"] != prior["binding_digest"]
+                    or event["operation"] != prior["operation"]
+                ):
+                    raise ValueError("Product Owner transaction lineage mismatch")
+            elif previous_digest is not None:
+                raise ValueError("first Product Owner transaction has a predecessor")
+            events.append(event)
+        states = tuple(event.get("state") for event in events)
+        allowed = ((), ("INTENT",), ("INTENT", "COMMITTED"), ("INTENT", "COMMITTED", "PUBLISHED"))
+        if states not in allowed:
+            raise ValueError("Product Owner transaction sequence is invalid")
+        for event in events:
+            commit = event["projection_commit"]
+            if event["state"] == "INTENT" and commit is not None:
+                raise ValueError("Product Owner INTENT cannot claim a projection commit")
+            if event["state"] != "INTENT" and (
+                not isinstance(commit, str)
+                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit) is None
+            ):
+                raise ValueError("Product Owner transaction projection commit is invalid")
+        if len(events) == 3 and events[1]["projection_commit"] != events[2]["projection_commit"]:
+            raise ValueError("Product Owner transaction projection commit changed")
+        return tuple(events)
+
+    @staticmethod
+    def _read_exact(path: Path, envelope_name: str) -> dict[str, object]:
+        if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+            raise ValueError(f"{envelope_name} path cannot traverse a symbolic link")
+        envelope = _strict_json_loads(path.read_text(encoding="utf-8"))
+        if not isinstance(envelope, dict) or set(envelope) != {envelope_name}:
+            raise ValueError(f"{envelope_name} envelope is malformed")
+        value = envelope[envelope_name]
+        if not isinstance(value, dict):
+            raise ValueError(f"{envelope_name} payload is malformed")
+        return value
 
     def persist_rework_contract(
         self, contract_id: str, contract: ReworkContract,
@@ -236,16 +577,31 @@ class LocalRuntimeStore:
         try:
             with path.open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
         except FileExistsError:
             if path.read_text(encoding="utf-8") != encoded:
                 raise RuntimeError(f"immutable identity collision: {identity}") from None
         if path.read_bytes() != encoded.encode("utf-8"):
             raise RuntimeError(f"immutable persistence verification failed: {identity}")
+        _sync_parent(path.parent)
         return path
 
 
 def _json(value: object) -> str:
     return json.dumps(value, default=_json_default, sort_keys=True, separators=(",", ":"))
+
+
+def _strict_json_loads(payload: str) -> object:
+    def reject_duplicate_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for name, item in pairs:
+            if name in value:
+                raise ValueError(f"duplicate JSON field: {name}")
+            value[name] = item
+        return value
+
+    return json.loads(payload, object_pairs_hook=reject_duplicate_fields)
 
 
 def _json_default(value: object) -> object:
@@ -262,3 +618,34 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ValueError("ReworkContract sequence must contain strings")
     return tuple(value)
+
+
+def _string(value: dict[str, object], name: str) -> str:
+    item = value.get(name)
+    if not isinstance(item, str):
+        raise ValueError(f"{name} must be a string")
+    return item
+
+
+def _mapping(value: dict[str, object], name: str) -> dict[str, object]:
+    item = value.get(name)
+    if not isinstance(item, dict):
+        raise ValueError(f"{name} must be an object")
+    return item
+
+
+def _identity(value: str, name: str) -> None:
+    if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ValueError(f"{name} must be a lowercase SHA-256 identity")
+
+
+def _sync_parent(directory: Path) -> None:
+    """Sync directory metadata where the platform exposes directory handles."""
+    try:
+        descriptor = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

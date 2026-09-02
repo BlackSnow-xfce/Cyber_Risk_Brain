@@ -67,6 +67,15 @@ from .contracts import (
     ArchitectReviewResult,
     LifecycleResult,
     LifecycleStatus,
+    ProductOwnerAcceptanceResult,
+    ProductOwnerAcceptanceStatus,
+    ProductOwnerApprovalContext,
+    ProductOwnerAuthorizationEvidence,
+    ProductOwnerDecision,
+    ProductOwnerDecisionEvent,
+    ProductOwnerDecisionState,
+    ProductOwnerOperation,
+    AuthenticatedProductOwner,
 )
 from .control_plane import (
     AIDPControlPlane,
@@ -115,6 +124,16 @@ from .watcher_runtime import (
     WatcherRuntimeLock,
     serialize_watch_iteration_event,
     serialize_watch_runtime_result,
+)
+from .product_owner_acceptance import ProductOwnerDecisionConsumer, ProductOwnerStatusProjector
+from .product_owner_confirmation import (
+    ApprovalChallenge,
+    ApprovalContextValidator,
+    ApprovalContextIssuer,
+    ProductOwnerAuthenticator,
+    ProductOwnerAuthorizer,
+    ProductOwnerConfirmationCommand,
+    ProductOwnerConfirmationService,
 )
 
 __all__ = [
@@ -165,6 +184,24 @@ __all__ = [
     "ProductWorktreeIdentityGuard",
     "LifecycleResult",
     "LifecycleStatus",
+    "ProductOwnerAcceptanceResult",
+    "ProductOwnerAcceptanceStatus",
+    "ProductOwnerApprovalContext",
+    "ProductOwnerAuthorizationEvidence",
+    "ProductOwnerDecision",
+    "ProductOwnerDecisionEvent",
+    "ProductOwnerDecisionState",
+    "ProductOwnerOperation",
+    "AuthenticatedProductOwner",
+    "ProductOwnerDecisionConsumer",
+    "ProductOwnerStatusProjector",
+    "ApprovalChallenge",
+    "ApprovalContextValidator",
+    "ApprovalContextIssuer",
+    "ProductOwnerAuthenticator",
+    "ProductOwnerAuthorizer",
+    "ProductOwnerConfirmationCommand",
+    "ProductOwnerConfirmationService",
     "AIDPLifecycleOnce",
     "LifecycleProjection",
     "MAX_AUTONOMOUS_REWORKS",

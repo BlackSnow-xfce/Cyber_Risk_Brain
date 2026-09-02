@@ -10,7 +10,10 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from .contracts import ArchitectReviewDisposition, ArchitectReviewResult
+from .contracts import (
+    ArchitectReviewDisposition, ArchitectReviewResult, ProductOwnerDecision,
+    ProductOwnerOperation,
+)
 from .executor import GitInspector
 
 
@@ -97,6 +100,54 @@ class LifecycleProjection:
         self._materialize({path: content})
         return self._commit_exact((relative,), f"aidp({result.task_id}): publish blocked architect review {result.review_result_id}")
 
+    def project_product_owner_decision(self, decision: ProductOwnerDecision) -> str:
+        review = self.root / ".ai" / "tasks" / "review" / f"{decision.authorization.task_id}.md"
+        if not review.is_file():
+            raise RuntimeError("Product Owner projection requires one review task")
+        document = review.read_text(encoding="utf-8")
+        contents, deletes = self._product_owner_projection_contents(decision, document)
+        expected = tuple(sorted(path.relative_to(self.root).as_posix() for path in contents))
+        expected = tuple(sorted((*expected, *(path.relative_to(self.root).as_posix() for path in deletes))))
+        self._materialize(contents, deletes=deletes)
+        operation = "accept" if decision.operation is ProductOwnerOperation.ACCEPT else "request rework"
+        return self._commit_exact(expected, f"aidp({decision.authorization.task_id}): Product Owner {operation} {decision.decision_id}")
+
+    def verify_product_owner_projection(self, decision: ProductOwnerDecision, commit: str) -> None:
+        if self.git.head() != commit:
+            raise RuntimeError("Product Owner projection is not repository HEAD")
+        parent = subprocess.check_output(
+            ("git", "rev-parse", f"{commit}^"), cwd=self.root, text=True, stderr=subprocess.STDOUT,
+        ).strip()
+        task_id = decision.authorization.task_id
+        context_path = f".ai/tasks/review/{task_id}.md"
+        if parent == commit:
+            raise RuntimeError("Product Owner projection has no distinct parent")
+        parent_document = subprocess.check_output(
+            ("git", "show", f"{parent}:{context_path}"), cwd=self.root, stderr=subprocess.STDOUT,
+        ).decode("utf-8", errors="strict")
+        contents, deletes = self._product_owner_projection_contents(decision, parent_document)
+        expected = tuple(sorted((
+            *(path.relative_to(self.root).as_posix() for path in contents),
+            *(path.relative_to(self.root).as_posix() for path in deletes),
+        )))
+        changed = tuple(sorted(_nul(self.root, "diff", "--name-only", "--no-renames", "-z", parent, commit)))
+        if changed != expected:
+            raise RuntimeError("Product Owner projection paths differ from authority")
+        for path, content in contents.items():
+            relative = path.relative_to(self.root).as_posix()
+            if _committed_blob(self.root, commit, relative) != content.encode("utf-8"):
+                raise RuntimeError(f"Product Owner projection content is invalid: {relative}")
+        for path in deletes:
+            relative = path.relative_to(self.root).as_posix()
+            entry = subprocess.run(
+                ("git", "cat-file", "-e", f"{commit}:{relative}"), cwd=self.root,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if entry.returncode == 0:
+                raise RuntimeError("Product Owner projection retained a deleted task")
+        if self.git.changed_files():
+            raise RuntimeError("Product Owner projection worktree is dirty")
+
     def push(self, expected_branch: str) -> str:
         if self.git.branch() != expected_branch:
             raise RuntimeError("lifecycle projection branch mismatch")
@@ -175,6 +226,56 @@ class LifecycleProjection:
                 sort_keys=True, separators=(",", ":"),
             ) + "\n",
         }
+
+    def _product_owner_projection_contents(
+        self, decision: ProductOwnerDecision, review_document: str,
+    ) -> tuple[dict[Path, str], tuple[Path, ...]]:
+        marker = "Status: ARCHITECT_APPROVED"
+        if marker not in review_document:
+            raise RuntimeError("Product Owner projection requires ARCHITECT_APPROVED task")
+        task_id = decision.authorization.task_id
+        review = self.root / ".ai" / "tasks" / "review" / f"{task_id}.md"
+        safe_relative = f".ai/orchestration/product-owner-decisions/{task_id}-{decision.decision_id}.json"
+        safe_projection = json.dumps({
+            "product_owner_decision_projection": {
+                "schema_version": decision.schema_version,
+                "decision_id": decision.decision_id,
+                "approval_context_id": decision.approval_context_id,
+                "task_id": task_id,
+                "operation": decision.operation.value,
+                "authorization_reference": decision.authorization.authorization_reference,
+                "decided_at": decision.decided_at,
+                "integrity_digest": decision.integrity_digest,
+            }
+        }, default=_json_default, sort_keys=True, separators=(",", ":")) + "\n"
+        if decision.operation is ProductOwnerOperation.ACCEPT:
+            done = self.root / ".ai" / "tasks" / "done" / f"{task_id}.md"
+            contents = {
+                done: review_document.replace(marker, "Status: DONE / PASS / APPROVED", 1),
+                self.root / ".ai/handoff/TO-CODEX.md": (
+                    f"# Handoff - Architect to Codex\n\nStatus: CLOSED\nCurrent AIDP Task: {task_id}\n"
+                    "Current Phase: DONE\nTask Status: DONE / PASS / APPROVED\n"
+                ),
+                self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                    f"# Handoff - Architecture Review {task_id}\n\nStatus: CLOSED\nTask: {task_id}\n"
+                    "Task Status: DONE / PASS / APPROVED\nReviewer: Architect\n"
+                ),
+                self.root / safe_relative: safe_projection,
+            }
+            return contents, (review,)
+        contents = {
+            review: review_document.replace(marker, "Status: PRODUCT OWNER REWORK REQUESTED", 1),
+            self.root / ".ai/handoff/TO-CODEX.md": (
+                f"# Handoff - Architect to Codex\n\nStatus: WAITING\nCurrent AIDP Task: {task_id}\n"
+                "Current Phase: PRODUCT OWNER REWORK REQUESTED\nTask Status: PRODUCT OWNER REWORK REQUESTED\n"
+            ),
+            self.root / ".ai/handoff/TO-ARCHITECT.md": (
+                f"# Handoff - Architecture Review {task_id}\n\nStatus: OPEN\nTask: {task_id}\n"
+                "Task Status: PRODUCT OWNER REWORK REQUESTED\nReviewer: Architect\n"
+            ),
+            self.root / safe_relative: safe_projection,
+        }
+        return contents, ()
 
     def _commit_exact(self, expected: tuple[str, ...], message: str) -> str:
         changed = self.git.changed_files()

@@ -15,7 +15,8 @@ from .architect_review import (
 from .contracts import (
     AIDPState, ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult, AuditEvent,
     ArchitectTaskContract, ContractInboxItem, ExecutionStatus, LifecycleResult, LifecycleStatus,
-    ReworkContract, ScopeCompliance, TriggerStatus, ValidationResult, canonical_digest, utc_now,
+    ProductOwnerAcceptanceStatus, ReworkContract, ScopeCompliance,
+    TriggerStatus, ValidationResult, canonical_digest, utc_now,
 )
 from .lifecycle_projection import LifecycleProjection
 from .repository import AIDPRepository
@@ -35,6 +36,10 @@ class ArchitectBoundary(Protocol):
     def revalidate(self, request: ArchitectReviewRequest) -> None: ...
 
 
+class ProductOwnerAcceptanceBoundary(Protocol):
+    def consume(self): ...
+
+
 class AIDPLifecycleOnce:
     def __init__(
         self,
@@ -45,6 +50,7 @@ class AIDPLifecycleOnce:
         runtime_store: LocalRuntimeStore | None = None,
         projection: LifecycleProjection | None = None,
         request_factory=None,
+        product_owner_acceptance: ProductOwnerAcceptanceBoundary | None = None,
         clock=utc_now,
     ) -> None:
         self.repository = repository
@@ -53,6 +59,7 @@ class AIDPLifecycleOnce:
         self.runtime = runtime_store or LocalRuntimeStore.for_repository(repository.root)
         self.projection = projection or LifecycleProjection(repository.root)
         self.request_factory = request_factory or self._build_request
+        self.product_owner_acceptance = product_owner_acceptance
         self.clock = clock
 
     def run_once(self) -> LifecycleResult:
@@ -71,7 +78,35 @@ class AIDPLifecycleOnce:
             if recovered is not None:
                 return recovered
         if decision.state is AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            if self.product_owner_acceptance is not None:
+                try:
+                    acceptance = self.product_owner_acceptance.consume()
+                except Exception as exc:
+                    return self._blocked(
+                        decision.task_id, decision.state,
+                        f"Product Owner acceptance boundary failed closed: {exc.__class__.__name__}",
+                    )
+                if acceptance is not None:
+                    if acceptance.status is ProductOwnerAcceptanceStatus.ACCEPTED_AND_APPLIED:
+                        return LifecycleResult(
+                            LifecycleStatus.ADVANCED, acceptance.task_id,
+                            acceptance.lifecycle_state,
+                            f"Product Owner {acceptance.operation.value} consumed",
+                        )
+                    if acceptance.status not in {
+                        ProductOwnerAcceptanceStatus.CONFIRMATION_REQUIRED,
+                        ProductOwnerAcceptanceStatus.ACCEPTED_PENDING_CONSUMPTION,
+                    }:
+                        return self._blocked(
+                            decision.task_id, decision.state,
+                            f"Product Owner acceptance failed closed: {acceptance.reason_code}",
+                        )
             return LifecycleResult(LifecycleStatus.NO_ACTION, decision.task_id, decision.state, "Product Owner hard gate")
+        if decision.state is AIDPState.PRODUCT_OWNER_REWORK_REQUESTED:
+            return LifecycleResult(
+                LifecycleStatus.NO_ACTION, decision.task_id, decision.state,
+                "Product Owner rework requires Architect planning authority",
+            )
         if decision.state in {AIDPState.WAITING, AIDPState.READY_FOR_CODEX, AIDPState.REWORK_REQUIRED}:
             if decision.state is AIDPState.REWORK_REQUIRED and decision.task_id is not None:
                 try:

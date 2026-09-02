@@ -92,9 +92,19 @@ class AIDPRepository:
                 if metadata and metadata.product_owner_gate:
                     return OrchestrationDecision(task_id, AIDPState.WAITING_FOR_PRODUCT_OWNER, None, branch, commit, (), utc_now())
                 return OrchestrationDecision(task_id, AIDPState.ARCHITECT_APPROVED, AIDPState.DONE, branch, commit, (), utc_now())
+            if status == "PRODUCT OWNER REWORK REQUESTED":
+                return OrchestrationDecision(
+                    task_id, AIDPState.PRODUCT_OWNER_REWORK_REQUESTED, None,
+                    branch, commit, ("Architect rework planning authority is required",), utc_now(),
+                )
             if not self._handoffs_match(task_id, expected_review=True):
                 return self._blocked(task_id, branch, commit, "handoff/task state conflict")
             return OrchestrationDecision(task_id, AIDPState.READY_FOR_ARCHITECT, None, branch, commit, (), utc_now())
+        done_handoff = self.parse_handoff(self.ai_root / "handoff" / "TO-CODEX.md")
+        if done_handoff.status == "CLOSED" and done_handoff.task_id:
+            done = tuple(path for path in self.task_paths("done") if path.stem == done_handoff.task_id)
+            if len(done) == 1 and self._explicit_status(done[0].read_text(encoding="utf-8")) == "DONE / PASS / APPROVED":
+                return OrchestrationDecision(done[0].stem, AIDPState.DONE, None, branch, commit, (), utc_now())
         return OrchestrationDecision(None, AIDPState.WAITING, None, branch, commit, (), utc_now())
 
     def build_execution_request(self, task_id: str, *, rework_count: int = 0) -> CodexExecutionRequest:

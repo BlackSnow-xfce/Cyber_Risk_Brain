@@ -20,6 +20,7 @@ class AIDPState(StrEnum):
     REWORK_REQUIRED = "REWORK_REQUIRED"
     ARCHITECT_APPROVED = "ARCHITECT_APPROVED"
     WAITING_FOR_PRODUCT_OWNER = "WAITING_FOR_PRODUCT_OWNER"
+    PRODUCT_OWNER_REWORK_REQUESTED = "PRODUCT_OWNER_REWORK_REQUESTED"
     DONE = "DONE"
     BLOCKED = "BLOCKED"
     STALE_EXECUTION = "STALE_EXECUTION"
@@ -110,6 +111,30 @@ class LifecycleStatus(StrEnum):
     ADVANCED = "ADVANCED"
     BLOCKED = "BLOCKED"
     ESCALATION_REQUIRED = "ESCALATION_REQUIRED"
+
+
+class ProductOwnerOperation(StrEnum):
+    ACCEPT = "ACCEPT"
+    REQUEST_REWORK = "REQUEST_REWORK"
+
+
+class ProductOwnerDecisionState(StrEnum):
+    RECORDED = "RECORDED"
+    CONSUMED = "CONSUMED"
+    STALE = "STALE"
+    REJECTED = "REJECTED"
+
+
+class ProductOwnerAcceptanceStatus(StrEnum):
+    CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
+    ACCEPTED_PENDING_CONSUMPTION = "ACCEPTED_PENDING_CONSUMPTION"
+    ACCEPTED_AND_APPLIED = "ACCEPTED_AND_APPLIED"
+    REJECTED_STALE = "REJECTED_STALE"
+    REJECTED_UNAUTHORIZED = "REJECTED_UNAUTHORIZED"
+    REJECTED_INVALID_STATE = "REJECTED_INVALID_STATE"
+    REJECTED_INVALID_REQUEST = "REJECTED_INVALID_REQUEST"
+    ALREADY_APPLIED = "ALREADY_APPLIED"
+    BLOCKED = "BLOCKED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,6 +475,227 @@ class ArchitectReviewResult:
             "authority_claims": self.authority_claims,
             "created_at": self.created_at,
         })
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerApprovalContext:
+    schema_version: str
+    approval_context_id: str
+    task_id: str
+    repository_identity: str
+    repository_remote_identity: str
+    expected_state: AIDPState
+    expected_lifecycle_version: str
+    policy_version: str
+    implementation_execution_id: str
+    architect_review_id: str
+    architect_result_digest: str
+    product_commit: str
+    issued_at: datetime
+    expires_at: datetime
+    nonce_digest: str
+    context_digest: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "product-owner-approval-context-v1":
+            raise ValueError("unsupported approval context schema")
+        validate_task_id(self.task_id)
+        for name in (
+            "repository_identity", "repository_remote_identity", "expected_lifecycle_version",
+            "policy_version", "implementation_execution_id", "architect_review_id",
+        ):
+            _single_line(getattr(self, name), name)
+        for name in (
+            "approval_context_id", "architect_result_digest", "nonce_digest", "context_digest",
+        ):
+            _sha256(getattr(self, name), name)
+        _git_identity(self.product_commit, "product_commit")
+        _aware(self.issued_at, "issued_at")
+        _aware(self.expires_at, "expires_at")
+        if self.expected_state is not AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            raise ValueError("approval context requires Product Owner gate")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("approval context must expire after issuance")
+        if self.context_digest != self.expected_digest():
+            raise ValueError("approval context digest mismatch")
+        if self.approval_context_id != self.context_digest:
+            raise ValueError("approval context identity mismatch")
+
+    def expected_digest(self) -> str:
+        return canonical_digest({
+            "schema_version": self.schema_version,
+            "task_id": self.task_id,
+            "repository_identity": self.repository_identity,
+            "repository_remote_identity": self.repository_remote_identity,
+            "expected_state": self.expected_state,
+            "expected_lifecycle_version": self.expected_lifecycle_version,
+            "policy_version": self.policy_version,
+            "implementation_execution_id": self.implementation_execution_id,
+            "architect_review_id": self.architect_review_id,
+            "architect_result_digest": self.architect_result_digest,
+            "product_commit": self.product_commit,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+            "nonce_digest": self.nonce_digest,
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedProductOwner:
+    principal_id: str
+    issuer: str
+    subject: str
+    authentication_event_id: str
+    authenticated_at: datetime
+    authentication_method: str
+    assurance_level: str
+    session_reference: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "principal_id", "issuer", "subject", "authentication_event_id",
+            "authentication_method", "assurance_level", "session_reference",
+        ):
+            _single_line(getattr(self, name), name)
+        _aware(self.authenticated_at, "authenticated_at")
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerAuthorizationEvidence:
+    authorization_reference: str
+    principal_id: str
+    operation: ProductOwnerOperation
+    task_id: str
+    repository_identity: str
+    policy_version: str
+    evaluated_at: datetime
+    valid_until: datetime | None = None
+
+    def __post_init__(self) -> None:
+        validate_task_id(self.task_id)
+        for name in ("authorization_reference", "principal_id", "repository_identity", "policy_version"):
+            _single_line(getattr(self, name), name)
+        _aware(self.evaluated_at, "evaluated_at")
+        if self.valid_until is not None:
+            _aware(self.valid_until, "valid_until")
+            if self.valid_until <= self.evaluated_at:
+                raise ValueError("authorization validity is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerDecision:
+    schema_version: str
+    decision_id: str
+    approval_context_id: str
+    approval_context_digest: str
+    principal: AuthenticatedProductOwner
+    authorization: ProductOwnerAuthorizationEvidence
+    operation: ProductOwnerOperation
+    reason: str | None
+    decided_at: datetime
+    client_identity: str
+    command_id: str
+    command_payload_digest: str
+    nonce_digest: str
+    integrity_digest: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "product-owner-decision-v1":
+            raise ValueError("unsupported Product Owner decision schema")
+        for name in ("client_identity", "command_id"):
+            _single_line(getattr(self, name), name)
+        for name in (
+            "decision_id", "approval_context_id", "approval_context_digest",
+            "command_payload_digest", "nonce_digest", "integrity_digest",
+        ):
+            _sha256(getattr(self, name), name)
+        _aware(self.decided_at, "decided_at")
+        if self.reason is not None and (not self.reason.strip() or len(self.reason) > 2048):
+            raise ValueError("decision reason must be non-empty and bounded")
+        if self.operation is ProductOwnerOperation.REQUEST_REWORK and self.reason is None:
+            raise ValueError("REQUEST_REWORK requires a reason")
+        if self.principal.principal_id != self.authorization.principal_id:
+            raise ValueError("decision principal and authorization differ")
+        if self.operation is not self.authorization.operation:
+            raise ValueError("decision operation and authorization differ")
+        if self.integrity_digest != self.expected_digest() or self.decision_id != self.integrity_digest:
+            raise ValueError("Product Owner decision integrity mismatch")
+
+    def expected_digest(self) -> str:
+        return canonical_digest({
+            "schema_version": self.schema_version,
+            "approval_context_id": self.approval_context_id,
+            "approval_context_digest": self.approval_context_digest,
+            "principal": self.principal,
+            "authorization": self.authorization,
+            "operation": self.operation,
+            "reason": self.reason,
+            "decided_at": self.decided_at,
+            "client_identity": self.client_identity,
+            "command_id": self.command_id,
+            "command_payload_digest": self.command_payload_digest,
+            "nonce_digest": self.nonce_digest,
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerDecisionEvent:
+    event_id: str
+    decision_id: str
+    approval_context_id: str
+    previous_state: ProductOwnerDecisionState | None
+    current_state: ProductOwnerDecisionState
+    event_type: str
+    binding_digest: str
+    timestamp: datetime
+    reason_code: str
+    previous_event_digest: str | None
+    event_digest: str
+
+    def __post_init__(self) -> None:
+        for name in ("event_id", "decision_id", "approval_context_id", "binding_digest", "event_digest"):
+            _sha256(getattr(self, name), name)
+        for name in ("event_type", "reason_code"):
+            _single_line(getattr(self, name), name)
+        if self.previous_event_digest is not None:
+            _sha256(self.previous_event_digest, "previous_event_digest")
+        _aware(self.timestamp, "timestamp")
+        allowed = {
+            (None, ProductOwnerDecisionState.RECORDED),
+            (ProductOwnerDecisionState.RECORDED, ProductOwnerDecisionState.CONSUMED),
+            (ProductOwnerDecisionState.RECORDED, ProductOwnerDecisionState.STALE),
+            (ProductOwnerDecisionState.RECORDED, ProductOwnerDecisionState.REJECTED),
+        }
+        if (self.previous_state, self.current_state) not in allowed:
+            raise ValueError("invalid Product Owner decision state transition")
+        if self.event_digest != self.expected_digest() or self.event_id != self.event_digest:
+            raise ValueError("Product Owner decision event digest mismatch")
+
+    def expected_digest(self) -> str:
+        return canonical_digest({
+            "decision_id": self.decision_id,
+            "approval_context_id": self.approval_context_id,
+            "previous_state": self.previous_state,
+            "current_state": self.current_state,
+            "event_type": self.event_type,
+            "binding_digest": self.binding_digest,
+            "timestamp": self.timestamp,
+            "reason_code": self.reason_code,
+            "previous_event_digest": self.previous_event_digest,
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerAcceptanceResult:
+    status: ProductOwnerAcceptanceStatus
+    task_id: str
+    approval_context_id: str
+    decision_id: str | None
+    operation: ProductOwnerOperation | None
+    lifecycle_state: AIDPState
+    reason_code: str
+    recorded_at: datetime | None = None
+    consumed_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

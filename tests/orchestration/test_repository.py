@@ -119,6 +119,15 @@ def test_architect_approval_with_product_owner_gate_is_waiting(tmp_path: Path) -
     assert repo.inspect().state is AIDPState.WAITING_FOR_PRODUCT_OWNER
 
 
+def test_product_owner_rework_requested_is_not_codex_executable(tmp_path: Path) -> None:
+    repo = write_repo(tmp_path, review=("TASK-9000",), status="PRODUCT OWNER REWORK REQUESTED")
+    decision = repo.inspect()
+    assert decision.state is AIDPState.PRODUCT_OWNER_REWORK_REQUESTED
+    assert decision.next_state is None
+    with pytest.raises(ValueError):
+        repo.build_execution_request("TASK-9000")
+
+
 def test_stale_head_blocks_execution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = write_repo(tmp_path, ready=("TASK-9000",))
     request = repo.build_execution_request("TASK-9000")

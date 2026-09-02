@@ -109,6 +109,40 @@ def test_product_owner_gate_is_absolute_no_action(tmp_path):
     assert architect.calls == 0
 
 
+def test_product_owner_rework_requested_is_fail_closed_without_architect_planning(tmp_path):
+    lifecycle = AIDPLifecycleOnce(
+        Repo([AIDPState.PRODUCT_OWNER_REWORK_REQUESTED]),
+        runtime_store=LocalRuntimeStore(tmp_path), projection=Projection(),
+    )
+    result = lifecycle.run_once()
+    assert result.status is LifecycleStatus.NO_ACTION
+    assert result.state is AIDPState.PRODUCT_OWNER_REWORK_REQUESTED
+    assert "Architect planning authority" in result.reason
+
+
+def test_configured_product_owner_consumer_may_advance_exact_gate(tmp_path):
+    class Acceptance:
+        def consume(self):
+            from aidp_orchestration.contracts import (
+                ProductOwnerAcceptanceResult, ProductOwnerAcceptanceStatus,
+                ProductOwnerOperation,
+            )
+            return ProductOwnerAcceptanceResult(
+                ProductOwnerAcceptanceStatus.ACCEPTED_AND_APPLIED,
+                "TASK-9000", "a" * 64, "b" * 64, ProductOwnerOperation.ACCEPT,
+                AIDPState.DONE, "decision_applied", NOW, NOW,
+            )
+
+    lifecycle = AIDPLifecycleOnce(
+        Repo([AIDPState.WAITING_FOR_PRODUCT_OWNER]),
+        runtime_store=LocalRuntimeStore(tmp_path), projection=Projection(),
+        product_owner_acceptance=Acceptance(),
+    )
+    result = lifecycle.run_once()
+    assert result.status is LifecycleStatus.ADVANCED
+    assert result.state is AIDPState.DONE
+
+
 def test_waiting_lifecycle_checks_canonical_contract_consumer(tmp_path):
     codex = Codex(TriggerResult(TriggerStatus.NO_ACTION, None, None))
     lifecycle = AIDPLifecycleOnce(
