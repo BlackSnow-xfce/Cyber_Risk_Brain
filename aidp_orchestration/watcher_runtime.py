@@ -6,6 +6,7 @@ import json
 import math
 import os
 import platform
+import secrets
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -15,7 +16,8 @@ from typing import Callable, Protocol
 
 from .contracts import (
     ArchitectIngressResult, IngressStatus, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
-    WatchRuntimeStatus, utc_now,
+    WatchRuntimeStatus, ExternalWatcherHealth, ExternalWatcherOutcome,
+    WatcherHeartbeatV1, canonical_digest, utc_now,
 )
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
@@ -36,6 +38,23 @@ class IngressBoundary(Protocol):
 
 class LifecycleBoundary(Protocol):
     def run_once(self) -> LifecycleResult: ...
+
+
+class SanitizedWatcherHeartbeatPublisher:
+    def __init__(self, store: LocalRuntimeStore, *, expected_interval_seconds: float, clock=utc_now):
+        self.store, self.expected_interval_seconds, self.clock = store, expected_interval_seconds, clock
+        self.previous = store.watcher_heartbeat()
+        self.instance_id = self.previous.watcher_instance_id if self.previous else canonical_digest(secrets.token_bytes(32))
+        self.started_at = self.previous.started_at if self.previous else self.clock()
+
+    def publish(self, status: ExternalWatcherHealth, outcome: ExternalWatcherOutcome) -> None:
+        sequence = 0 if self.previous is None else self.previous.sequence + 1
+        values = dict(schema_version="aidp-watcher-heartbeat-v1", watcher_instance_id=self.instance_id,
+            sequence=sequence, started_at=self.started_at, observed_at=self.clock(),
+            expected_interval_seconds=self.expected_interval_seconds, status=status, last_outcome=outcome,
+            previous_heartbeat_digest=None if self.previous is None else self.previous.heartbeat_digest)
+        heartbeat = WatcherHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+        self.store.persist_watcher_heartbeat(heartbeat); self.previous = heartbeat
 
 
 class WatcherRuntimeLock:
@@ -126,6 +145,7 @@ class AIDPLocalWatcherRuntime:
         clock: Callable[[], datetime] = utc_now,
         ingress: IngressBoundary | None = None,
         lifecycle: LifecycleBoundary | None = None,
+        heartbeat: SanitizedWatcherHeartbeatPublisher | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
             raise ValueError(f"watch interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
@@ -137,6 +157,7 @@ class AIDPLocalWatcherRuntime:
         self.clock = clock
         self.ingress = ingress
         self.lifecycle = lifecycle
+        self.heartbeat = heartbeat
 
     def run(self) -> WatchRuntimeResult:
         try:
@@ -148,7 +169,12 @@ class AIDPLocalWatcherRuntime:
         if not acquired:
             return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, 0, "another local watcher runtime is active")
         iteration = 0
+        terminal_health = ExternalWatcherHealth.BLOCKED
+        terminal_outcome = ExternalWatcherOutcome.BLOCKED
         try:
+            if self.heartbeat is not None:
+                try: self.heartbeat.publish(ExternalWatcherHealth.ACTIVE, ExternalWatcherOutcome.UNKNOWN)
+                except Exception: return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, 0, "watcher heartbeat failed")
             while True:
                 iteration += 1
                 ingress_result: ArchitectIngressResult | None = None
@@ -156,6 +182,7 @@ class AIDPLocalWatcherRuntime:
                     try:
                         ingress_result = self.ingress.run_once()
                     except KeyboardInterrupt:
+                        terminal_health, terminal_outcome = ExternalWatcherHealth.STOPPED, ExternalWatcherOutcome.STOPPED
                         return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration - 1)
                     except Exception as exc:
                         ingress_result = ArchitectIngressResult(
@@ -170,6 +197,7 @@ class AIDPLocalWatcherRuntime:
                     else:
                         trigger_result = self.watcher.run_once()
                 except KeyboardInterrupt:
+                    terminal_health, terminal_outcome = ExternalWatcherHealth.STOPPED, ExternalWatcherOutcome.STOPPED
                     return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration - 1)
                 except Exception as exc:  # Runtime containment must not bypass the normal retry interval.
                     trigger_result = TriggerResult(
@@ -189,13 +217,21 @@ class AIDPLocalWatcherRuntime:
                     self.event_sink(serialize_watch_iteration_event(event))
                 except Exception as exc:
                     return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, iteration, f"watch event sink failed: {exc.__class__.__name__}")
+                if self.heartbeat is not None:
+                    outcome = ExternalWatcherOutcome.ADVANCED if trigger_result.status is TriggerStatus.PUBLISHED else ExternalWatcherOutcome.NO_ACTION if trigger_result.status is TriggerStatus.NO_ACTION else ExternalWatcherOutcome.ERROR
+                    try: self.heartbeat.publish(ExternalWatcherHealth.ACTIVE, outcome)
+                    except Exception: return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, iteration, "watcher heartbeat failed")
                 try:
                     self.sleeper(self.interval_seconds)
                 except KeyboardInterrupt:
+                    terminal_health, terminal_outcome = ExternalWatcherHealth.STOPPED, ExternalWatcherOutcome.STOPPED
                     return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration)
                 except Exception as exc:
                     return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, iteration, f"watch interval failed: {exc.__class__.__name__}")
         finally:
+            if self.heartbeat is not None:
+                try: self.heartbeat.publish(terminal_health, terminal_outcome)
+                except Exception: pass
             self.lock.release()
 
 

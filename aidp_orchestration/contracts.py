@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 import hashlib
 import json
 from dataclasses import dataclass
@@ -962,6 +963,127 @@ class Handoff:
     status: str
     task_id: str | None
     task_status: str | None
+
+
+class ExternalConsistency(StrEnum):
+    CONSISTENT = "CONSISTENT"
+    UNKNOWN = "UNKNOWN"
+    STALE = "STALE"
+    PARTIAL = "PARTIAL"
+    CONFLICT = "CONFLICT"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class ExternalNextTask(StrEnum):
+    EXISTS = "EXISTS"
+    NONE = "NONE"
+    UNKNOWN = "UNKNOWN"
+
+
+class ExternalWatcherHealth(StrEnum):
+    ACTIVE = "ACTIVE"
+    STALE = "STALE"
+    STOPPED = "STOPPED"
+    BLOCKED = "BLOCKED"
+    UNKNOWN = "UNKNOWN"
+
+
+class ExternalWatcherOutcome(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    ADVANCED = "ADVANCED"
+    BLOCKED = "BLOCKED"
+    ERROR = "ERROR"
+    STOPPED = "STOPPED"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class WatcherHeartbeatV1:
+    schema_version: str
+    watcher_instance_id: str
+    sequence: int
+    started_at: datetime
+    observed_at: datetime
+    expected_interval_seconds: float
+    status: ExternalWatcherHealth
+    last_outcome: ExternalWatcherOutcome
+    previous_heartbeat_digest: str | None
+    heartbeat_digest: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-watcher-heartbeat-v1": raise ValueError("unsupported heartbeat schema")
+        _sha256(self.watcher_instance_id, "watcher_instance_id"); _sha256(self.heartbeat_digest, "heartbeat_digest")
+        if self.previous_heartbeat_digest is not None: _sha256(self.previous_heartbeat_digest, "previous_heartbeat_digest")
+        if self.sequence < 0 or not 5 <= self.expected_interval_seconds <= 300: raise ValueError("invalid heartbeat bounds")
+        _aware(self.started_at, "started_at"); _aware(self.observed_at, "observed_at")
+        if self.observed_at < self.started_at: raise ValueError("heartbeat timestamp rollback")
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "heartbeat_digest"}
+        if canonical_digest(values) != self.heartbeat_digest: raise ValueError("heartbeat digest mismatch")
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalStatusProjectionV1:
+    schema_version: str
+    projection_id: str
+    generated_at: datetime
+    repository_id: str
+    product_head: str | None
+    head_status: str
+    task_id: str | None
+    task_phase: str | None
+    task_status: str
+    lifecycle_state: str
+    product_owner_gate: str
+    architect_status: str
+    execution_status: str
+    validation_summary: str
+    watcher_status: ExternalWatcherHealth
+    watcher_last_activity_at: datetime | None
+    watcher_activity_age_seconds: int | None
+    watcher_last_outcome: ExternalWatcherOutcome
+    blocker_code: str | None
+    blocker_category: str
+    blocker_message: str | None
+    human_action_required: bool
+    human_action_kind: str
+    next_task: ExternalNextTask
+    consistency: ExternalConsistency
+    consistency_issues: tuple[str, ...]
+    oldest_observation_at: datetime | None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-external-status-v1": raise ValueError("unsupported external status schema")
+        _sha256(self.projection_id, "projection_id"); _aware(self.generated_at, "generated_at")
+        if self.repository_id != "predatorai-product": raise ValueError("repository alias is not authorized")
+        allowed = {
+            "head_status":{"CURRENT","CHANGED_DURING_READ","UNAVAILABLE"},
+            "task_status":{"NONE","READY","IN_PROGRESS","REVIEW","ARCHITECT_APPROVED","PRODUCT_OWNER_REWORK_REQUESTED","DONE","BLOCKED","UNKNOWN"},
+            "product_owner_gate":{"NOT_REQUIRED","AWAITING_HUMAN","DECISION_RECORDED","APPLIED","REWORK_REQUESTED","REJECTED_STALE","BLOCKED","UNKNOWN"},
+            "architect_status":{"NOT_REQUIRED","NOT_STARTED","PENDING","PASS","REWORK_REQUIRED","FAILED","STALE","UNKNOWN"},
+            "execution_status":{"NOT_REQUIRED","NOT_STARTED","PENDING","RUNNING","SUCCEEDED","FAILED","SCOPE_VIOLATION","STALE","UNKNOWN"},
+            "validation_summary":{"PASSED","FAILED","NOT_AVAILABLE","UNKNOWN"},
+            "blocker_category":{"NONE","HUMAN","AUTHORITY","STALE_STATE","DEPENDENCY","CONCURRENCY","INTEGRITY","UNKNOWN"},
+            "human_action_kind":{"NONE","PRODUCT_OWNER_DECISION","ARCHITECT_ACTION","OPERATOR_ACTION","UNKNOWN"},
+        }
+        for name, valueset in allowed.items():
+            if getattr(self,name) not in valueset: raise ValueError(f"invalid external {name}")
+        if self.lifecycle_state not in {item.value for item in AIDPState}|{"UNKNOWN"}: raise ValueError("invalid lifecycle state")
+        if self.task_phase not in {None,"implementation","acceptance","rework","UNKNOWN"}: raise ValueError("invalid task phase")
+        blocker_codes={None,"PRODUCT_OWNER_ACTION_REQUIRED","ARCHITECT_ACTION_REQUIRED","ARCHITECT_REWORK_PLANNING_REQUIRED","NO_AUTHORIZED_WORK","STATE_CONFLICT","STALE_RUNTIME_EVIDENCE","WATCHER_STALE","WATCHER_BLOCKED","AUTHORITATIVE_SOURCE_UNAVAILABLE","RUNTIME_INTEGRITY_FAILURE","UNKNOWN_BLOCKER"}
+        issue_codes={"HEAD_CHANGED_DURING_PROJECTION","LIFECYCLE_CHANGED_DURING_PROJECTION","MULTIPLE_ACTIVE_TASKS","TASK_RUNTIME_BINDING_MISMATCH","EXECUTION_BINDING_STALE","ARCHITECT_BINDING_STALE","PRODUCT_OWNER_BINDING_STALE","WATCHER_HEARTBEAT_STALE","RUNTIME_EVIDENCE_INCOMPLETE","SOURCE_SCHEMA_UNSUPPORTED","AUTHORITATIVE_SOURCE_UNAVAILABLE","SOURCE_INTEGRITY_FAILURE"}
+        if self.blocker_code not in blocker_codes: raise ValueError("invalid blocker code")
+        if len(self.consistency_issues)>16 or any(value not in issue_codes for value in self.consistency_issues): raise ValueError("invalid consistency issue")
+        for value in (self.blocker_code,self.blocker_message):
+            if value is not None and (len(value)>160 or any(unicodedata.category(c) in {"Cc","Cf"} for c in value)): raise ValueError("invalid blocker disclosure")
+        if self.product_head is not None: _git_identity(self.product_head, "product_head")
+        if self.task_id is not None: validate_task_id(self.task_id)
+        if self.watcher_last_activity_at is not None: _aware(self.watcher_last_activity_at, "watcher_last_activity_at")
+        if self.oldest_observation_at is not None: _aware(self.oldest_observation_at, "oldest_observation_at")
+        if self.watcher_activity_age_seconds is not None and self.watcher_activity_age_seconds < 0: raise ValueError("watcher age cannot be negative")
+        if len(set(self.consistency_issues)) != len(self.consistency_issues): raise ValueError("duplicate consistency issues")
+        if self.human_action_required != (self.human_action_kind != "NONE"): raise ValueError("human action fields conflict")
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "projection_id"}
+        if canonical_digest(values) != self.projection_id: raise ValueError("projection digest mismatch")
 
 
 def utc_now() -> datetime:

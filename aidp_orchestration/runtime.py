@@ -15,7 +15,9 @@ from .contracts import (
     AIDPState, ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult,
     AuditEvent, AuthenticatedProductOwner, CodexExecutionResult, ProductOwnerApprovalContext,
     ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
-    ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract, canonical_digest, utc_now,
+    ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
+    ExternalStatusProjectionV1, ExternalWatcherHealth, ExternalWatcherOutcome,
+    WatcherHeartbeatV1, canonical_digest, utc_now,
 )
 
 
@@ -48,6 +50,47 @@ class LocalRuntimeStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
             stream.write(_json(event) + "\n")
+        return path
+
+    def persist_external_status(self, projection: ExternalStatusProjectionV1) -> Path:
+        path = self.root / "external-status" / "current.json"
+        return self._atomic_projection(path, _json({"external_status_projection": projection}))
+
+    def persist_watcher_heartbeat(self, heartbeat: WatcherHeartbeatV1) -> Path:
+        path = self.root / "external-status-internal" / "watcher-heartbeat.json"
+        if path.exists():
+            previous = self.watcher_heartbeat()
+            if previous is None or heartbeat.watcher_instance_id != previous.watcher_instance_id or heartbeat.sequence != previous.sequence + 1 or heartbeat.previous_heartbeat_digest != previous.heartbeat_digest or heartbeat.observed_at < previous.observed_at:
+                raise ValueError("watcher heartbeat replay or rollback")
+        elif heartbeat.sequence != 0 or heartbeat.previous_heartbeat_digest is not None:
+            raise ValueError("first watcher heartbeat is invalid")
+        return self._atomic_projection(path, _json({"watcher_heartbeat": heartbeat}))
+
+    def watcher_heartbeat(self) -> WatcherHeartbeatV1 | None:
+        path = self.root / "external-status-internal" / "watcher-heartbeat.json"
+        if not path.exists(): return None
+        value = self._read_exact(path, "watcher_heartbeat")
+        return WatcherHeartbeatV1(
+            schema_version=_string(value,"schema_version"), watcher_instance_id=_string(value,"watcher_instance_id"),
+            sequence=int(value["sequence"]), started_at=datetime.fromisoformat(_string(value,"started_at")),
+            observed_at=datetime.fromisoformat(_string(value,"observed_at")), expected_interval_seconds=float(value["expected_interval_seconds"]),
+            status=ExternalWatcherHealth(_string(value,"status")),
+            last_outcome=ExternalWatcherOutcome(_string(value,"last_outcome")),
+            previous_heartbeat_digest=value.get("previous_heartbeat_digest"), heartbeat_digest=_string(value,"heartbeat_digest"))
+
+    @staticmethod
+    def _atomic_projection(path: Path, serialized: str) -> Path:
+        if path.is_symlink() or path.parent.is_symlink(): raise ValueError("status path cannot be symbolic link")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        encoded = serialized.rstrip("\n") + "\n"
+        try:
+            with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, path); _sync_parent(path.parent)
+            if path.read_text(encoding="utf-8") != encoded: raise RuntimeError("status persistence verification failed")
+        finally:
+            temporary.unlink(missing_ok=True)
         return path
 
     def persist_architect_request(self, request: ArchitectReviewRequest) -> Path:

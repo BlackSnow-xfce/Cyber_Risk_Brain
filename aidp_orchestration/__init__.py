@@ -76,7 +76,10 @@ from .contracts import (
     ProductOwnerDecisionState,
     ProductOwnerOperation,
     AuthenticatedProductOwner,
+    ExternalConsistency, ExternalNextTask, ExternalStatusProjectionV1,
+    ExternalWatcherHealth, ExternalWatcherOutcome, WatcherHeartbeatV1,
 )
+from .external_status import ExternalStatusProjector, RepositoryStatusObservation, RuntimeStatusObservation
 from .control_plane import (
     AIDPControlPlane,
     LocalArchitectInbox,
@@ -256,4 +259,7 @@ __all__ = [
     "serialize_architect_ingress_result",
     "ArchitectIngressAcceptanceHarness",
     "serialize_architect_ingress_acceptance_result",
+    "ExternalConsistency", "ExternalNextTask", "ExternalStatusProjectionV1",
+    "ExternalWatcherHealth", "ExternalWatcherOutcome", "WatcherHeartbeatV1",
+    "ExternalStatusProjector", "RepositoryStatusObservation", "RuntimeStatusObservation",
 ]
