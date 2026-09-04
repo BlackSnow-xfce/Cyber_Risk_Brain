@@ -112,6 +112,7 @@ def main() -> int:
                 infrastructure_repository,
                 runtime_root=LocalRuntimeStore.for_repository(args.root).root,
                 timeout_seconds=args.timeout,
+                allow_test_failure_retry=True,
             )
             infrastructure_guard = ProductWorktreeIdentityGuard(
                 args.infrastructure_root,

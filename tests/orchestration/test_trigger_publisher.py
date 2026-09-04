@@ -297,3 +297,45 @@ def test_terminal_blocked_only_item_returns_no_action_without_retry(tmp_path: Pa
     ).run_once()
     assert result.status is TriggerStatus.NO_ACTION
     assert writer.calls == control.calls == publisher.calls == 0
+
+
+def test_one_authorized_infrastructure_test_failure_retry_is_append_only(tmp_path: Path, monkeypatch) -> None:
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime, "infra-retry", "AIDP-INFRA-0002")
+    consumption = ConsumptionStore(runtime)
+    consumption.append("infra-retry", ConsumptionState.RECEIVED, "received")
+    consumption.append("infra-retry", ConsumptionState.MATERIALIZED, "materialized")
+    consumption.append("infra-retry", ConsumptionState.EXECUTING, "executing")
+    consumption.append("infra-retry", ConsumptionState.BLOCKED, "execution is not review-ready")
+
+    class NoWriter(FakeWriter):
+        def materialize_task(self, contract):
+            raise AssertionError("recovery must not rematerialize authority")
+
+    watcher = AIDPWatchOnce(
+        AIDPRepository(tmp_path, task_namespace="infrastructure"),
+        writer=NoWriter(), control_plane=FakeControlPlane(), publisher=FakePublisher(),
+        runtime_root=runtime, execution_lock_active=lambda: False,
+        allow_test_failure_retry=True,
+    )
+    monkeypatch.setattr(watcher, "_test_failure_retry_is_authorized", lambda _item: True)
+    result = watcher.run_once()
+    assert result.status is TriggerStatus.PUBLISHED
+    assert [event.state for event in consumption.events("infra-retry")][-3:] == [
+        ConsumptionState.RECOVERY_AUTHORIZED,
+        ConsumptionState.RECOVERY_EXECUTING,
+        ConsumptionState.REVIEW_PUBLISHED,
+    ]
+
+
+def test_blocked_contract_is_not_retried_without_infrastructure_recovery_policy(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime, "blocked-contract")
+    consumption = ConsumptionStore(runtime)
+    consumption.append("blocked-contract", ConsumptionState.RECEIVED, "received")
+    consumption.append("blocked-contract", ConsumptionState.BLOCKED, "execution is not review-ready")
+    watcher = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=FakeControlPlane(),
+        publisher=FakePublisher(), runtime_root=runtime, execution_lock_active=lambda: False,
+    )
+    assert watcher.run_once().status is TriggerStatus.NO_ACTION

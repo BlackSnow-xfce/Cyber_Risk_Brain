@@ -94,16 +94,24 @@ class ConsumptionStore:
         ConsumptionState.RECEIVED: {ConsumptionState.MATERIALIZED, ConsumptionState.BLOCKED},
         ConsumptionState.MATERIALIZED: {ConsumptionState.EXECUTING, ConsumptionState.BLOCKED},
         ConsumptionState.EXECUTING: {ConsumptionState.REVIEW_PUBLISHED, ConsumptionState.BLOCKED},
-        ConsumptionState.REVIEW_PUBLISHED: set(), ConsumptionState.BLOCKED: set(),
+        ConsumptionState.BLOCKED: {ConsumptionState.RECOVERY_AUTHORIZED},
+        ConsumptionState.RECOVERY_AUTHORIZED: {ConsumptionState.RECOVERY_EXECUTING, ConsumptionState.BLOCKED},
+        ConsumptionState.RECOVERY_EXECUTING: {ConsumptionState.REVIEW_PUBLISHED, ConsumptionState.BLOCKED},
+        ConsumptionState.REVIEW_PUBLISHED: set(),
     }
 
     def __init__(self, root: Path):
         self.path = root / "consumption-events.jsonl"
 
     def current(self, contract_id: str) -> ConsumptionState | None:
+        events = self.events(contract_id)
+        return events[-1].state if events else None
+
+    def events(self, contract_id: str) -> tuple[ConsumptionEvent, ...]:
         states: dict[str, ConsumptionState] = {}
+        events: list[ConsumptionEvent] = []
         if not self.path.exists():
-            return None
+            return ()
         for line in self.path.read_text(encoding="utf-8").splitlines():
             value = json.loads(line).get("consumption_event")
             if not isinstance(value, dict):
@@ -116,7 +124,13 @@ class ConsumptionStore:
             if candidate not in self._allowed[previous]:
                 raise ValueError("inconsistent consumption transition")
             states[event_id] = candidate
-        return states.get(contract_id)
+            if event_id == contract_id:
+                events.append(ConsumptionEvent(
+                    event_id, candidate,
+                    datetime.fromisoformat(_string(value, "timestamp")),
+                    _string(value, "reason"),
+                ))
+        return tuple(events)
 
     def append(self, contract_id: str, state: ConsumptionState, reason: str) -> None:
         previous = self.current(contract_id)
@@ -212,7 +226,8 @@ class AIDPWatchOnce:
     def __init__(self, repository: AIDPRepository, *, writer: WriterBoundary | None = None,
                  control_plane: ControlPlaneBoundary | None = None, publisher: PublisherBoundary | None = None,
                  runtime_root: Path | None = None, timeout_seconds: float = 900.0,
-                 execution_lock_active: Callable[[], bool] | None = None):
+                 execution_lock_active: Callable[[], bool] | None = None,
+                 allow_test_failure_retry: bool = False):
         root = runtime_root or LocalRuntimeStore.for_repository(repository.root).root
         self.inbox = LocalContractInbox(root)
         self.consumption = ConsumptionStore(root)
@@ -221,6 +236,7 @@ class AIDPWatchOnce:
         self.writer = writer or ArchitectContractWriter(repository)
         self.control_plane = control_plane or AIDPControlPlane(repository, timeout_seconds=timeout_seconds)
         self.publisher = publisher or GitReviewPublisher(repository)
+        self.allow_test_failure_retry = allow_test_failure_retry
 
     def run_once(self) -> TriggerResult:
         item: ContractInboxItem | None = None
@@ -238,8 +254,11 @@ class AIDPWatchOnce:
             candidates = tuple(
                 candidate for candidate in items
                 if self.repository.accepts_task_id(candidate.contract.task_id)
-                if self.consumption.current(candidate.contract_id)
-                not in {ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}
+                if (
+                    self.consumption.current(candidate.contract_id)
+                    not in {ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}
+                    or self._test_failure_retry_is_authorized(candidate)
+                )
             )
             if not candidates:
                 return TriggerResult(TriggerStatus.NO_ACTION, None, None)
@@ -247,6 +266,7 @@ class AIDPWatchOnce:
                 return TriggerResult(TriggerStatus.BLOCKED, None, None, failure_reason="contract inbox is ambiguous")
             item = candidates[0]
             current = self.consumption.current(item.contract_id)
+            recovering = current is ConsumptionState.BLOCKED
             if current in {ConsumptionState.RECEIVED, ConsumptionState.MATERIALIZED, ConsumptionState.EXECUTING}:
                 if current is ConsumptionState.EXECUTING and self.execution_lock_active():
                     return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, current, failure_reason="contract execution is still locally active")
@@ -254,25 +274,37 @@ class AIDPWatchOnce:
                     item.contract_id, current,
                     f"recovered abandoned {current.value} consumption as terminal BLOCKED",
                 )
-            if current is not None:
+            if current is not None and not recovering:
                 return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, current, failure_reason="contract_id was already consumed")
             if self.execution_lock_active():
                 return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, None, failure_reason="local execution lock is active")
-            self.consumption.append(item.contract_id, ConsumptionState.RECEIVED, "immutable contract received")
-            lifecycle_state = ConsumptionState.RECEIVED
-            writer_result = (self.writer.materialize_task(item.contract) if isinstance(item.contract, ArchitectTaskContract)
-                             else self.writer.materialize_rework(item.contract))
-            if writer_result.decision.action is WriterAction.BLOCKED:
-                return self._block(item.contract_id, ConsumptionState.RECEIVED, writer_result.failure_reason or writer_result.decision.reason, writer_result)
-            if writer_result.materialized_paths:
-                self.publisher.commit_materialization(writer_result)
-            self.consumption.append(item.contract_id, ConsumptionState.MATERIALIZED, "contract materialized")
-            lifecycle_state = ConsumptionState.MATERIALIZED
+            if recovering:
+                if not self._test_failure_retry_is_authorized(item):
+                    return TriggerResult(TriggerStatus.NO_ACTION, None, None)
+                self.consumption.append(
+                    item.contract_id, ConsumptionState.RECOVERY_AUTHORIZED,
+                    "one infrastructure TEST_FAILED recovery authorized",
+                )
+                lifecycle_state = ConsumptionState.RECOVERY_AUTHORIZED
+            else:
+                self.consumption.append(item.contract_id, ConsumptionState.RECEIVED, "immutable contract received")
+                lifecycle_state = ConsumptionState.RECEIVED
+                writer_result = (self.writer.materialize_task(item.contract) if isinstance(item.contract, ArchitectTaskContract)
+                                 else self.writer.materialize_rework(item.contract))
+                if writer_result.decision.action is WriterAction.BLOCKED:
+                    return self._block(item.contract_id, ConsumptionState.RECEIVED, writer_result.failure_reason or writer_result.decision.reason, writer_result)
+                if writer_result.materialized_paths:
+                    self.publisher.commit_materialization(writer_result)
+                self.consumption.append(item.contract_id, ConsumptionState.MATERIALIZED, "contract materialized")
+                lifecycle_state = ConsumptionState.MATERIALIZED
             decision = self.control_plane.decide()
             if decision.action is not ControlPlaneAction.EXECUTE:
                 return self._block(item.contract_id, ConsumptionState.MATERIALIZED, f"control plane decided {decision.action.value}", writer_result)
-            self.consumption.append(item.contract_id, ConsumptionState.EXECUTING, "control plane authorized execution")
-            lifecycle_state = ConsumptionState.EXECUTING
+            execution_state = (
+                ConsumptionState.RECOVERY_EXECUTING if recovering else ConsumptionState.EXECUTING
+            )
+            self.consumption.append(item.contract_id, execution_state, "control plane authorized execution")
+            lifecycle_state = execution_state
             control_result = self.control_plane.run_once()
             publish_result = self.publisher.publish(control_result, decision.branch)
             if publish_result.push_status != "PUSHED":
@@ -314,6 +346,68 @@ class AIDPWatchOnce:
         ).strip()
         resolved = Path(lock_path) if Path(lock_path).is_absolute() else self.repository.root / lock_path
         return resolved.exists()
+
+    def _test_failure_retry_is_authorized(self, item: ContractInboxItem) -> bool:
+        if (
+            not self.allow_test_failure_retry
+            or self.repository.task_namespace != "infrastructure"
+            or not isinstance(item.contract, ArchitectTaskContract)
+        ):
+            return False
+        try:
+            events = self.consumption.events(item.contract_id)
+            if (
+                not events or events[-1].state is not ConsumptionState.BLOCKED
+                or events[-1].reason != "execution is not review-ready"
+                or any(event.state is ConsumptionState.RECOVERY_AUTHORIZED for event in events)
+            ):
+                return False
+            decision = self.repository.inspect()
+            contract = item.contract
+            if decision.state is not AIDPState.READY_FOR_CODEX or decision.task_id != contract.task_id:
+                return False
+            task_path = self.repository.ai_root / "tasks" / "ready" / f"{contract.task_id}.md"
+            metadata = self.repository.parse_metadata(task_path)
+            if metadata is None or (
+                metadata.task_id != contract.task_id
+                or metadata.phase != contract.phase
+                or metadata.allowed_scope != contract.allowed_scope
+                or metadata.prohibited_actions != contract.prohibited_actions
+                or metadata.validation_requirements != contract.validation_requirements
+                or metadata.product_owner_gate != contract.product_owner_gate
+            ):
+                return False
+            parent = self.repository._git("rev-parse", f"{decision.commit}^")
+            materialized = tuple(sorted(filter(None, self.repository._git(
+                "diff-tree", "--no-commit-id", "--name-only", "-r", decision.commit,
+            ).splitlines())))
+            expected_materialized = tuple(sorted((
+                f".ai/tasks/ready/{contract.task_id}.md",
+                ".ai/handoff/TO-CODEX.md",
+                ".ai/handoff/TO-ARCHITECT.md",
+            )))
+            if parent != contract.expected_head or materialized != expected_materialized:
+                return False
+            changed = GitInspector(self.repository.root).changed_files()
+            if self.repository.validate_scope(
+                self.repository.build_execution_request(contract.task_id), changed,
+            ) is not ScopeCompliance.COMPLIANT:
+                return False
+            result = LocalRuntimeStore.for_repository(self.repository.root).latest_execution_result(contract.task_id)
+            return bool(
+                result is not None
+                and result.status is ExecutionStatus.TEST_FAILED
+                and result.scope_compliance is ScopeCompliance.COMPLIANT
+                and result.resulting_commit == decision.commit
+                and tuple(validation.name for validation in result.validation_results)
+                == contract.validation_requirements
+                and any(not validation.passed for validation in result.validation_results)
+                and self.repository.scope_compliance_for_paths(
+                    contract.allowed_scope, contract.prohibited_actions, result.changed_files,
+                ) is ScopeCompliance.COMPLIANT
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
 
 
 def serialize_review_envelope(value: ReviewEnvelope) -> str:

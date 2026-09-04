@@ -17,7 +17,8 @@ from .contracts import (
     ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
     ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
     ExternalStatusProjectionV1, ExternalWatcherHealth, ExternalWatcherOutcome,
-    WatcherHeartbeatV1, canonical_digest, utc_now,
+    WatcherHeartbeatV1, ExecutionStatus, ScopeCompliance, ValidationResult,
+    canonical_digest, utc_now,
 )
 
 
@@ -44,6 +45,45 @@ class LocalRuntimeStore:
         with path.open("x", encoding="utf-8") as stream:
             stream.write(_json(payload) + "\n")
         return path
+
+    def latest_execution_result(self, task_id: str) -> CodexExecutionResult | None:
+        directory = self.root / "results"
+        paths = tuple(directory.glob("*.json")) if directory.exists() else ()
+        matches: list[tuple[datetime, CodexExecutionResult]] = []
+        for path in paths:
+            wrapper = json.loads(path.read_text(encoding="utf-8"))
+            value = wrapper.get("codex_execution_result") if isinstance(wrapper, dict) else None
+            if not isinstance(value, dict) or value.get("task_id") != task_id:
+                continue
+            validations = value.get("validation_results")
+            if not isinstance(validations, list):
+                raise ValueError("execution validation evidence is malformed")
+            result = CodexExecutionResult(
+                execution_id=_string(value, "execution_id"),
+                task_id=_string(value, "task_id"),
+                start_commit=_string(value, "start_commit"),
+                resulting_commit=(str(value["resulting_commit"]) if value.get("resulting_commit") is not None else None),
+                changed_files=_string_tuple(value.get("changed_files")),
+                validation_results=tuple(
+                    ValidationResult(
+                        name=_string(item, "name"),
+                        passed=(item["passed"] if isinstance(item.get("passed"), bool) else _invalid_boolean()),
+                        detail=_string(item, "detail"),
+                    )
+                    for item in validations if isinstance(item, dict)
+                ),
+                status=ExecutionStatus(_string(value, "status")),
+                failure_reason=(str(value["failure_reason"]) if value.get("failure_reason") is not None else None),
+                scope_compliance=ScopeCompliance(_string(value, "scope_compliance")),
+            )
+            if len(result.validation_results) != len(validations):
+                raise ValueError("execution validation evidence is malformed")
+            timestamp = datetime.fromisoformat(_string(wrapper, "timestamp"))
+            matches.append((timestamp, result))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: item[0])
+        return matches[-1][1]
 
     def append_audit(self, event: AuditEvent) -> Path:
         path = self.root / "audit.jsonl"
@@ -668,6 +708,10 @@ def _string(value: dict[str, object], name: str) -> str:
     if not isinstance(item, str):
         raise ValueError(f"{name} must be a string")
     return item
+
+
+def _invalid_boolean() -> bool:
+    raise ValueError("passed must be a boolean")
 
 
 def _mapping(value: dict[str, object], name: str) -> dict[str, object]:

@@ -7,13 +7,25 @@ import pytest
 
 from aidp_orchestration.architect_review import create_review_request, create_review_result
 from aidp_orchestration.contracts import (
-    ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, ExecutionStatus,
+    ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, CodexExecutionResult, ExecutionStatus,
     ReworkContract, ScopeCompliance, ValidationResult,
 )
 from aidp_orchestration.runtime import LocalRuntimeStore
 
 
 NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+
+def test_latest_execution_result_preserves_authoritative_failure_evidence(tmp_path) -> None:
+    store = LocalRuntimeStore(tmp_path)
+    first = CodexExecutionResult(
+        "exec-1", "AIDP-INFRA-0002", "1" * 40, "2" * 40, ("a.py",),
+        (ValidationResult("pytest", False, "exit_code=1"),), ExecutionStatus.TEST_FAILED,
+        "one or more validations failed", ScopeCompliance.COMPLIANT,
+    )
+    store.persist_result(first)
+    assert store.latest_execution_result("AIDP-INFRA-0002") == first
+    assert store.latest_execution_result("AIDP-INFRA-9999") is None
 
 
 def _request():
