@@ -138,6 +138,19 @@ from .product_owner_confirmation import (
     ProductOwnerConfirmationCommand,
     ProductOwnerConfirmationService,
 )
+from .product_owner_oidc import (
+    KeycloakOIDCClient,
+    OIDCError,
+    OIDCSessionProof,
+    OIDCTransaction,
+    OIDCTransport,
+    ProductOwnerOIDCConfig,
+    ProtectedSecretProvider,
+    RequestsOIDCTransport,
+    new_oidc_transaction,
+)
+from .product_owner_web_session import ProductOwnerWebSession, ProductOwnerWebSessionStore
+from .product_owner_http import ProductOwnerHTTPApplication
 
 __all__ = [
     "AIDPRepository",
@@ -205,6 +218,18 @@ __all__ = [
     "ProductOwnerAuthorizer",
     "ProductOwnerConfirmationCommand",
     "ProductOwnerConfirmationService",
+    "KeycloakOIDCClient",
+    "OIDCError",
+    "OIDCSessionProof",
+    "OIDCTransaction",
+    "OIDCTransport",
+    "ProductOwnerOIDCConfig",
+    "ProtectedSecretProvider",
+    "RequestsOIDCTransport",
+    "new_oidc_transaction",
+    "ProductOwnerWebSession",
+    "ProductOwnerWebSessionStore",
+    "ProductOwnerHTTPApplication",
     "AIDPLifecycleOnce",
     "LifecycleProjection",
     "MAX_AUTONOMOUS_REWORKS",
