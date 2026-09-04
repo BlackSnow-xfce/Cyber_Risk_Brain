@@ -1,0 +1,73 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "8c30b641d06ef0111cb9097a7fe0844e35ea6465c456ff34e557769ee17ced8a",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "AIDP-INFRA-0002",
+      "title": "First-Party Keycloak OIDC Product Owner Confirmation Adapter",
+      "phase": "AIDP INFRASTRUCTURE GOVERNANCE",
+      "expected_head": "0906b73f1b1e8e3940410808b3db1a17434d1e3f",
+      "allowed_scope": [
+        "aidp_orchestration/product_owner_oidc.py",
+        "aidp_orchestration/product_owner_web_session.py",
+        "aidp_orchestration/product_owner_http.py",
+        "aidp_orchestration/__init__.py",
+        "aidp_orchestration/__main__.py",
+        "pyproject.toml",
+        "tests/orchestration/test_product_owner_oidc.py",
+        "tests/orchestration/test_product_owner_web_session.py",
+        "tests/orchestration/test_product_owner_http.py",
+        "tests/orchestration/test_product_owner_http_security.py"
+      ],
+      "prohibited_actions": [
+        "Do not modify any file outside the exact ten allowed paths",
+        "Do not modify ProductOwnerApprovalContext ProductOwnerConfirmationService ProductOwnerDecisionConsumer Decision Journal replay idempotency stale-decision lifecycle or watcher core semantics",
+        "Do not add a direct lifecycle mutation decision-journal write approval-context mutation Codex Architect task-creation or generic command endpoint",
+        "Do not accept client-supplied principal role identity authorization binding fields approval nonce or lifecycle fields as authority",
+        "Do not accept unsigned JWTs unverified JWTs password-only authentication implicit flow resource-owner-password flow device flow or bearer possession as Product Owner authority",
+        "Do not expose OIDC tokens authorization codes client secrets PKCE verifier OIDC nonce approval nonce session credentials or authentication material in browser-visible state URLs logs or ordinary API responses",
+        "Do not commit secrets use dotenv environment-only secrets CLI secret arguments permissive development authentication or fake Product Owner authentication",
+        "Do not add a durable token or session database Keycloak installation final deployment values HTTP-only deployment MCP ChatGPT connector or general external command bus",
+        "Do not grant Keycloak ChatGPT middleware Codex Architect or watcher Product Owner Decision Journal Git repository or lifecycle mutation authority",
+        "Do not modify PredatorAI product code TASK-0131 TASK-0132 or any product task handoff lifecycle artifact and do not create TASK-0133",
+        "Do not perform Product Owner live acceptance infer Product Owner acceptance or advance any product lifecycle state"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "The implementation changes at most the exact ten allowed paths and the exact Scope Guard reports COMPLIANT; the existing Product Owner core files and every PredatorAI product path remain byte-identical.",
+        "A dedicated first-party server-rendered adapter implements only GET confirmation display or login initiation GET exact OIDC callback POST confirmation and POST logout; GET never records a decision and no endpoint directly consumes a decision or mutates lifecycle state.",
+        "The OIDC client uses Authorization Code Flow only with mandatory PKCE S256 exact configured HTTPS issuer client identifier audience redirect URI and post-logout allowlist; implicit password device and unvalidated bearer flows are absent.",
+        "Every callback validates single-use transaction-bound state OIDC nonce and PKCE verifier then verifies ID-token signature through trusted JWKS with an explicit asymmetric algorithm allowlist and validates issuer audience authorized-party expiry issued-at authentication-time and required claims with at most sixty seconds configured clock skew; unknown keys trigger only one bounded JWKS refresh and every validation dependency failure fails closed.",
+        "Product Owner identity is derived only from verified issuer plus subject using a deterministic non-reversible principal identity; username email display name browser fields and URL or form claims are informational and never grant authorization.",
+        "Authorization requires the exact configured dedicated Keycloak client role aidp-product-owner plus configured repository operation and policy binding; ACCEPT and REQUEST_REWORK are the only operations and REQUEST_REWORK requires a bounded untrusted safely encoded reason.",
+        "MFA is mandatory with the private MVP accepting a configured Keycloak TOTP assurance evidenced by verified authentication context claims; password-only or missing ambiguous stale assurance fails closed and authentication age at confirmation is no more than five minutes.",
+        "A protected secret-provider protocol supplies the confidential OIDC client credential only to the server-side adapter; no permissive environment dotenv command-line URL browser or repository secret provider is implemented and adapter startup or authentication fails closed when a deployable protected provider is absent.",
+        "Opaque cryptographically random server-side sessions are memory-only with fifteen-minute absolute and five-minute idle limits; authentication rotates the session identifier session state is lost on restart and loss expiry logout or restart requires reauthentication without recovering bearer authority.",
+        "Session cookies are host-only Secure HttpOnly SameSite Strict with no Domain and the narrowest practical Path; successful authentication rotates pre-authentication state and logout revokes server state clears the cookie and uses only an exact configured post-logout redirect.",
+        "The approval-context identifier is locator-only; all authoritative context fields are resolved server-side and displayed from ProductOwnerApprovalContext including task repository identity full product commit implementation execution Architect review and result identity while raw approval nonce never appears in URL form HTML JSON logs or client state.",
+        "The plaintext server-generated approval nonce is retained only in bounded protected server memory for its exact approval transaction and expiry then passed directly to ProductOwnerConfirmationService; it is never recreated accepted from the client or made reusable after use logout expiry or restart.",
+        "State-changing confirmation requires the authenticated opaque session exact approval transaction unpredictable session-bound single-use CSRF token exact configured Origin approved Content-Type bounded request size and current unexpired approval context; cross-origin missing duplicated malformed and replayed submissions fail closed.",
+        "The adapter constructs ProductOwnerConfirmationCommand with server-resolved context and nonce server-generated command or idempotency identity a fixed first-party client identity and an opaque server session proof then invokes ProductOwnerConfirmationService as the only confirmation core; it never writes the Decision Journal directly.",
+        "Authentication and authorization ports validate the opaque session and current Keycloak authorization; Product Owner role and active-session authorization are revalidated through Keycloak token introspection at confirmation and again when ProductOwnerDecisionConsumer authorizes consumption so revocation or introspection failure blocks transition.",
+        "Introspection validates active client and subject binding issuer audience authorized-party expiry role and assurance against the original verified session; cached or self-asserted browser claims cannot satisfy consumption-time authorization and no previous token may authorize after logout revocation expiry or session loss.",
+        "HTTPS is mandatory for public origin callback issuer and browser traffic; startup rejects insecure non-loopback deployment configuration and the deployment contract requires trusted private CA hostname validation end-to-end TLS or an explicitly trusted reverse proxy with sanitized forwarded headers and an allowlisted proxy boundary.",
+        "Approval pages and responses apply no-store cache control no-referrer policy nosniff deny framing and a restrictive CSP with default-src none form-action self frame-ancestors none base-uri none plus safe output encoding; untrusted task review and reason text cannot inject HTML script headers redirects logs or commands.",
+        "Redirects are fixed or exact allowlisted local paths; open redirects path traversal duplicate parameters oversized requests method override unexpected fields unsupported media types host-header abuse and error-oracle detail are rejected with bounded generic responses.",
+        "Rate limits bound login callback confirmation and failure attempts by safe server-side transaction and network identity without treating headers from untrusted proxies as identity; exhaustion and Keycloak timeout DNS TLS JWKS discovery introspection or secret-provider failure never degrade to approval.",
+        "Audit emits bounded sanitized events for login initiation authentication success or failure authorization confirmation result logout expiry revocation and dependency failure with correlation identities or digests only; tokens codes secrets nonces cookie values raw claims raw task content and sensitive errors are absent.",
+        "Positive tests prove exact issuer-subject identity successful code plus PKCE plus TOTP login authoritative server-side display ACCEPT and REQUEST_REWORK recording through ProductOwnerConfirmationService idempotent retry safe logout expiry restart reauthentication and consumer-time introspection while the watcher remains the sole lifecycle consumer.",
+        "Adversarial tests reject forged or unsigned tokens algorithm confusion wrong issuer audience authorized party subject role or assurance expired not-yet-valid stale-auth tokens JWKS substitution unknown key replayed state nonce code callback and PKCE mismatch.",
+        "Adversarial HTTP tests reject client-supplied identity role context bindings operation outside the closed vocabulary approval nonce command identity duplicate changed payload CSRF omission or replay cross-origin request login CSRF session fixation cookie theft after logout GET confirmation open redirect host-header spoof clickjacking cache leakage XSS CRLF log injection request smuggling-shaped duplicate fields oversized bodies and malformed encodings.",
+        "Adversarial authority tests prove ChatGPT service credentials locator possession Keycloak login without the dedicated client role Codex Architect watcher and middleware cannot confirm; role revocation session revocation introspection outage secret-provider outage restart race concurrent ACCEPT versus REQUEST_REWORK stale approval context and context expiry produce no unauthorized Decision Journal record or lifecycle transition.",
+        "Static guards prove adapter modules do not import or call AIDPControlPlane run_once AIDPLifecycleOnce lifecycle projection mutation ProductOwnerDecisionConsumer.consume Codex Architect Git mutation task mutation runtime Decision Journal persistence or Approval Context issuance mutation except constructing the approved confirmation command and invoking ProductOwnerConfirmationService.confirm.",
+        "Focused adapter tests Product Owner confirmation and acceptance regressions full tests-orchestration regression compileall import dependency checks forbidden-call scan secret scan exact Scope Guard and git diff check all pass and execution publishes review evidence only as READY_FOR_ARCHITECT without Product Owner self-approval."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-09-04T12:00:00+02:00"
+    },
+    "received_at": "2026-09-04T12:00:00+02:00"
+  }
+}
