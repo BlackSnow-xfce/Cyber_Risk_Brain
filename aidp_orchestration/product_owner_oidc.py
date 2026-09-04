@@ -26,6 +26,12 @@ class ProtectedSecretProvider(Protocol):
     def client_secret(self, client_id: str) -> str: ...
 
 
+class SecurityAuditSink(Protocol):
+    """Receives bounded event names and correlation digests, never authentication data."""
+
+    def __call__(self, event: str, correlation: str) -> None: ...
+
+
 class OIDCTransport(Protocol):
     def get_json(self, url: str) -> Mapping[str, object]: ...
     def post_form(self, url: str, form: Mapping[str, str], *, client_secret: str) -> Mapping[str, object]: ...
@@ -70,6 +76,7 @@ class ProductOwnerOIDCConfig:
     post_logout_redirect_uri: str
     repository_identity: str
     policy_version: str
+    post_logout_allowed_paths: tuple[str, ...] = ("/signed-out",)
     role: str = "aidp-product-owner"
     algorithms: tuple[str, ...] = ("RS256",)
     clock_skew_seconds: int = 60
@@ -82,6 +89,14 @@ class ProductOwnerOIDCConfig:
             raise ValueError("OIDC and browser endpoints require HTTPS")
         if self.issuer.endswith("/") or not all((self.client_id, self.audience, self.repository_identity, self.policy_version)):
             raise ValueError("OIDC bindings must be exact and explicit")
+        redirect = urlsplit(self.redirect_uri)
+        logout = urlsplit(self.post_logout_redirect_uri)
+        if (
+            (redirect.scheme, redirect.netloc) != (logout.scheme, logout.netloc)
+            or logout.path not in self.post_logout_allowed_paths
+            or any(not path.startswith("/") or ".." in path or "?" in path or "#" in path for path in self.post_logout_allowed_paths)
+        ):
+            raise ValueError("post-logout redirect is not exactly allowlisted")
         if (
             not self.algorithms
             or len(set(self.algorithms)) != len(self.algorithms)
@@ -116,11 +131,13 @@ class KeycloakOIDCClient:
     """Authorization-code/PKCE client and confirmation-time authority ports."""
 
     def __init__(self, config: ProductOwnerOIDCConfig, *, secrets_provider: ProtectedSecretProvider,
-                 transport: OIDCTransport | None = None, clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
+                 transport: OIDCTransport | None = None, clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+                 audit: SecurityAuditSink | None = None) -> None:
         if secrets_provider is None:
             raise ValueError("a protected secret provider is required")
         self.config, self.secret_provider = config, secrets_provider
         self.transport, self.clock = transport or RequestsOIDCTransport(), clock
+        self.audit = audit or (lambda event, correlation: None)
         self._metadata: Mapping[str, object] | None = None
         self._jwks: Mapping[str, object] | None = None
         self._active_sessions: dict[str, OIDCSessionProof] = {}
@@ -146,10 +163,14 @@ class KeycloakOIDCClient:
         if not code or len(code) > 4096 or self.clock() - transaction.created_at > timedelta(minutes=5):
             raise OIDCError("authentication failed")
         metadata = self._discovery()
-        tokens = self.transport.post_form(self._exact_https(metadata, "token_endpoint"), {
-            "grant_type": "authorization_code", "code": code, "client_id": self.config.client_id,
-            "redirect_uri": self.config.redirect_uri, "code_verifier": transaction.code_verifier,
-        }, client_secret=self._secret())
+        try:
+            tokens = self.transport.post_form(self._exact_https(metadata, "token_endpoint"), {
+                "grant_type": "authorization_code", "code": code, "client_id": self.config.client_id,
+                "redirect_uri": self.config.redirect_uri, "code_verifier": transaction.code_verifier,
+            }, client_secret=self._secret())
+        except Exception as exc:
+            self._audit("dependency_failure", transaction.state)
+            raise OIDCError("authentication failed") from exc
         id_token, access_token = tokens.get("id_token"), tokens.get("access_token")
         if not isinstance(id_token, str) or not isinstance(access_token, str):
             raise OIDCError("authentication failed")
@@ -168,9 +189,11 @@ class KeycloakOIDCClient:
             raise PermissionError("session binding changed")
         self._active_sessions[proof.session_id] = proof
         principal = hashlib.sha256(f"{self.config.issuer}\0{subject}".encode()).hexdigest()
-        return AuthenticatedProductOwner(principal, self.config.issuer, subject,
+        authenticated = AuthenticatedProductOwner(principal, self.config.issuer, subject,
             hashlib.sha256(proof.session_id.encode()).hexdigest(), auth_time,
             "oidc-code-pkce-totp", str(claims.get("acr")), proof.session_id)
+        self._audit("authentication_success", proof.session_id)
+        return authenticated
 
     def authorize(self, principal: AuthenticatedProductOwner, context: ProductOwnerApprovalContext,
                   operation: ProductOwnerOperation, *, at: datetime) -> ProductOwnerAuthorizationEvidence:
@@ -184,19 +207,31 @@ class KeycloakOIDCClient:
         subject, _ = self._identity_claims(claims)
         if subject != principal.subject:
             raise PermissionError("subject binding changed")
-        return ProductOwnerAuthorizationEvidence(
+        evidence = ProductOwnerAuthorizationEvidence(
             hashlib.sha256(f"{principal.principal_id}\0{context.approval_context_id}\0{operation.value}\0{at.isoformat()}".encode()).hexdigest(),
             principal.principal_id, operation, context.task_id, context.repository_identity,
             context.policy_version, at, min(context.expires_at, at + timedelta(minutes=5)),
         )
+        self._audit("authorization_success", proof.session_id)
+        return evidence
 
     def revoke_session(self, session_id: str) -> None:
         self._active_sessions.pop(session_id, None)
+        self._audit("revocation", session_id)
 
     def _introspect(self, proof: OIDCSessionProof) -> Mapping[str, object]:
         endpoint = self._exact_https(self._discovery(), "introspection_endpoint")
-        claims = self.transport.post_form(endpoint, {"token": proof.access_token, "client_id": self.config.client_id}, client_secret=self._secret())
+        try:
+            claims = self.transport.post_form(
+                endpoint,
+                {"token": proof.access_token, "client_id": self.config.client_id},
+                client_secret=self._secret(),
+            )
+        except Exception as exc:
+            self._audit("dependency_failure", proof.session_id)
+            raise PermissionError("authorization dependency unavailable") from exc
         if claims.get("active") is not True:
+            self._audit("authorization_failure", proof.session_id)
             raise PermissionError("inactive session")
         self._validate_common(claims)
         self._require_role_and_assurance(claims)
@@ -270,21 +305,41 @@ class KeycloakOIDCClient:
 
     def _discovery(self) -> Mapping[str, object]:
         if self._metadata is None:
-            self._metadata = self.transport.get_json(self.config.issuer + "/.well-known/openid-configuration")
+            try:
+                self._metadata = self.transport.get_json(self.config.issuer + "/.well-known/openid-configuration")
+            except Exception as exc:
+                self._audit("dependency_failure", self.config.issuer)
+                raise OIDCError("identity dependency unavailable") from exc
             if self._metadata.get("issuer") != self.config.issuer:
                 raise OIDCError("identity dependency is misconfigured")
         return self._metadata
 
     def _get_jwks(self, *, refresh: bool) -> Mapping[str, object]:
         if refresh or self._jwks is None:
-            self._jwks = self.transport.get_json(self._exact_https(self._discovery(), "jwks_uri"))
+            try:
+                self._jwks = self.transport.get_json(self._exact_https(self._discovery(), "jwks_uri"))
+            except Exception as exc:
+                self._audit("dependency_failure", self.config.issuer)
+                raise OIDCError("identity dependency unavailable") from exc
         return self._jwks
 
     def _secret(self) -> str:
-        secret = self.secret_provider.client_secret(self.config.client_id)
+        try:
+            secret = self.secret_provider.client_secret(self.config.client_id)
+        except Exception as exc:
+            self._audit("dependency_failure", self.config.client_id)
+            raise OIDCError("protected credential unavailable") from exc
         if not isinstance(secret, str) or not secret.strip():
             raise OIDCError("protected credential unavailable")
         return secret
+
+    def _audit(self, event: str, correlation_source: str) -> None:
+        correlation = hashlib.sha256(correlation_source.encode()).hexdigest()[:32]
+        try:
+            self.audit(event[:48], correlation)
+        except Exception:
+            # Audit integration cannot become an authentication bypass or leak errors.
+            pass
 
     def _exact_https(self, metadata: Mapping[str, object], field: str) -> str:
         value = metadata.get(field)

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import secrets
+import threading
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Deque, Iterable, Mapping
 from urllib.parse import parse_qs
 
 from .contracts import ProductOwnerAcceptanceStatus, ProductOwnerOperation
@@ -22,13 +26,50 @@ _SECURITY_HEADERS = [
 ]
 
 
+class _RateLimiter:
+    """Small process-local fixed-window limiter keyed only by trusted WSGI peer data."""
+
+    def __init__(self, *, limit: int = 10, window: timedelta = timedelta(minutes=1),
+                 maximum_keys: int = 4096,
+                 clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
+        if (
+            not 1 <= limit <= 100
+            or not timedelta(seconds=1) <= window <= timedelta(minutes=5)
+            or not 1 <= maximum_keys <= 16_384
+        ):
+            raise ValueError("unsafe rate-limit configuration")
+        self.limit, self.window, self.maximum_keys, self.clock = limit, window, maximum_keys, clock
+        self._attempts: dict[tuple[str, str], Deque[datetime]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def check(self, action: str, peer: str) -> None:
+        if not peer or len(peer) > 128 or any(character.isspace() for character in peer):
+            raise PermissionError("request rejected")
+        now = self.clock()
+        with self._lock:
+            stale = [key for key, values in self._attempts.items() if not values or now - values[-1] >= self.window]
+            for key in stale:
+                del self._attempts[key]
+            key = (action, peer)
+            if key not in self._attempts and len(self._attempts) >= self.maximum_keys:
+                raise PermissionError("request rejected")
+            attempts = self._attempts[key]
+            while attempts and now - attempts[0] >= self.window:
+                attempts.popleft()
+            if len(attempts) >= self.limit:
+                raise PermissionError("request rejected")
+            attempts.append(now)
+
+
 class ProductOwnerHTTPApplication:
     """WSGI adapter. It can only display, authenticate, confirm through the core, or logout."""
 
     def __init__(self, *, oidc: KeycloakOIDCClient, sessions: ProductOwnerWebSessionStore,
                  confirmation_service: ProductOwnerConfirmationService,
                  challenge_resolver: Callable[[str], ApprovalChallenge], public_origin: str,
-                 confirmation_path: str = "/product-owner/confirm", maximum_body_bytes: int = 8192) -> None:
+                 confirmation_path: str = "/product-owner/confirm", maximum_body_bytes: int = 8192,
+                 audit: Callable[[str, str], None] | None = None,
+                 rate_limiter: _RateLimiter | None = None) -> None:
         if not public_origin.startswith("https://") or public_origin.endswith("/"):
             raise ValueError("an exact HTTPS public origin is required")
         if not confirmation_path.startswith("/") or ".." in confirmation_path or maximum_body_bytes > 16_384:
@@ -39,11 +80,16 @@ class ProductOwnerHTTPApplication:
         self.oidc.set_session_validator(lambda identifier: self.sessions.get(identifier, touch=False))
         self.challenge_resolver, self.public_origin = challenge_resolver, public_origin
         self.path, self.maximum_body_bytes = confirmation_path, maximum_body_bytes
+        self.audit = audit or (lambda event, correlation: None)
+        self.rate_limiter = rate_limiter or _RateLimiter()
 
     def __call__(self, environ: Mapping[str, object], start_response: Callable[..., object]) -> Iterable[bytes]:
         try:
             status, headers, body = self._dispatch(environ)
         except (KeyError, OSError, RuntimeError, TypeError, ValueError, PermissionError, OIDCError):
+            path = environ.get("PATH_INFO")
+            event = "authentication_failure" if path == self.path + "/callback" else "request_failure"
+            self._audit(event, self._peer(environ))
             status, headers, body = HTTPStatus.BAD_REQUEST, [], b"Request rejected"
         response_headers = _SECURITY_HEADERS + [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(body)))] + headers
         start_response(f"{status.value} {status.phrase}", response_headers)
@@ -98,13 +144,16 @@ class ProductOwnerHTTPApplication:
         return HTTPStatus.OK, headers, self._html(body)
 
     def _login(self, environ: Mapping[str, object]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+        self._rate_limit("login", environ)
         self._require_empty_query(environ)
         session = self._require_session(environ)
         transaction = new_oidc_transaction()
         session.oidc_transaction = transaction
+        self._audit("login_initiation", session.session_id)
         return HTTPStatus.SEE_OTHER, [("Location", self.oidc.authorization_url(transaction))], b""
 
     def _callback(self, environ: Mapping[str, object]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+        self._rate_limit("callback", environ)
         query = self._parameters(str(environ.get("QUERY_STRING", "")), {"code", "state"})
         code, state = self._one(query, "code", maximum=4096), self._one(query, "state", maximum=256)
         session = self._require_session(environ)
@@ -113,10 +162,12 @@ class ProductOwnerHTTPApplication:
         if transaction is None or not secrets.compare_digest(transaction.state, state):
             raise PermissionError
         authenticated = self.sessions.rotate_authenticated(session.session_id, self.oidc.exchange_code(code=code, transaction=transaction))
+        self._audit("authentication_success", authenticated.session_id)
         location = f"{self.path}?context={authenticated.approval_context.approval_context_id}"
         return HTTPStatus.SEE_OTHER, [("Location", location), ("Set-Cookie", self._cookie(authenticated.session_id))], b""
 
     def _confirm(self, environ: Mapping[str, object]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+        self._rate_limit("confirmation", environ)
         self._require_origin(environ)
         form = self._form(environ)
         if set(form) - {"csrf", "operation", "reason"}:
@@ -130,6 +181,8 @@ class ProductOwnerHTTPApplication:
         if len(reasons) > 1:
             raise PermissionError
         reason = reasons[0] if reasons and reasons[0].strip() else None
+        if reason is not None and len(reason) > 2048:
+            raise PermissionError
         if operation is ProductOwnerOperation.ACCEPT and reason is not None:
             raise PermissionError
         command = ProductOwnerConfirmationCommand(
@@ -138,6 +191,7 @@ class ProductOwnerHTTPApplication:
             "first-party-product-owner-web", session.proof,
         )
         result = self.service.confirm(command)
+        self._audit("confirmation_result", session.session_id)
         session.csrf_tokens.clear()
         safe_status = html.escape(result.status.value)
         code = HTTPStatus.OK if result.status in {ProductOwnerAcceptanceStatus.ACCEPTED_PENDING_CONSUMPTION, ProductOwnerAcceptanceStatus.ALREADY_APPLIED} else HTTPStatus.FORBIDDEN
@@ -152,6 +206,7 @@ class ProductOwnerHTTPApplication:
         self.sessions.consume_csrf(session.session_id, self._one(form, "csrf", maximum=256))
         self.oidc.revoke_session(session.session_id)
         self.sessions.revoke(session.session_id)
+        self._audit("logout", session.session_id)
         return HTTPStatus.SEE_OTHER, [("Location", self.oidc.config.post_logout_redirect_uri),
             ("Set-Cookie", f"{self.sessions.COOKIE_NAME}=; {self.sessions.cookie_attributes}; Max-Age=0")], b""
 
@@ -215,6 +270,21 @@ class ProductOwnerHTTPApplication:
 
     def _cookie(self, identifier: str) -> str:
         return f"{self.sessions.COOKIE_NAME}={identifier}; {self.sessions.cookie_attributes}"
+
+    def _rate_limit(self, action: str, environ: Mapping[str, object]) -> None:
+        self.rate_limiter.check(action, self._peer(environ))
+
+    @staticmethod
+    def _peer(environ: Mapping[str, object]) -> str:
+        peer = environ.get("REMOTE_ADDR")
+        return peer if isinstance(peer, str) else ""
+
+    def _audit(self, event: str, source: str) -> None:
+        correlation = hashlib.sha256(source.encode()).hexdigest()[:32]
+        try:
+            self.audit(event[:48], correlation)
+        except Exception:
+            pass
 
     @staticmethod
     def _html(fragment: str) -> bytes:

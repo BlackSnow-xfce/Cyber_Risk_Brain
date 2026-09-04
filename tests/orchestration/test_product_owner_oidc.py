@@ -66,6 +66,8 @@ def test_authorization_url_is_code_flow_with_pkce_and_transaction_binding() -> N
         {"issuer": "http://id.example/realms/aidp"},
         {"redirect_uri": "https://user@aidp.example/callback"},
         {"post_logout_redirect_uri": "https://aidp.example/out?next=evil"},
+        {"post_logout_redirect_uri": "https://evil.example/signed-out"},
+        {"post_logout_redirect_uri": "https://aidp.example/not-allowlisted"},
         {"algorithms": ("HS256",)},
         {"clock_skew_seconds": 61},
     ],

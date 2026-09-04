@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pytest
 
-from aidp_orchestration.product_owner_http import ProductOwnerHTTPApplication
+from aidp_orchestration.product_owner_http import ProductOwnerHTTPApplication, _RateLimiter
 
 
 def bare_application() -> ProductOwnerHTTPApplication:
@@ -42,3 +42,27 @@ def test_parameter_parser_rejects_duplicates_and_unexpected_fields() -> None:
         ProductOwnerHTTPApplication._one({"csrf": ["a", "b"]}, "csrf", maximum=32)
     with pytest.raises(PermissionError):
         ProductOwnerHTTPApplication._parameters("context=ok&role=owner", {"context"})
+
+
+def test_rate_limiter_uses_trusted_peer_and_fails_closed() -> None:
+    limiter = _RateLimiter(limit=2)
+    limiter.check("login", "192.0.2.1")
+    limiter.check("login", "192.0.2.1")
+    with pytest.raises(PermissionError):
+        limiter.check("login", "192.0.2.1")
+    limiter.check("callback", "192.0.2.1")
+    with pytest.raises(PermissionError):
+        limiter.check("login", "")
+
+
+def test_peer_identity_ignores_forwarded_headers() -> None:
+    assert ProductOwnerHTTPApplication._peer({
+        "REMOTE_ADDR": "192.0.2.10", "HTTP_X_FORWARDED_FOR": "203.0.113.7",
+    }) == "192.0.2.10"
+
+
+def test_rate_limiter_has_bounded_identity_storage() -> None:
+    limiter = _RateLimiter(maximum_keys=1)
+    limiter.check("login", "192.0.2.1")
+    with pytest.raises(PermissionError):
+        limiter.check("login", "192.0.2.2")
