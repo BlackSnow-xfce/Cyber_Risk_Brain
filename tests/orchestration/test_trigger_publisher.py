@@ -19,17 +19,17 @@ from aidp_orchestration.trigger_publisher import (
 )
 
 
-def _contract() -> ArchitectTaskContract:
+def _contract(task_id: str = "TASK-E2E-WRITER-0001") -> ArchitectTaskContract:
     return ArchitectTaskContract(
-        "TASK-E2E-WRITER-0001", "Probe", "IMPLEMENTATION", "a" * 40,
+        task_id, "Probe", "IMPLEMENTATION", "a" * 40,
         ("tests/orchestration/probe.txt",), ("no product files",),
         ("git diff --check",), ("probe exists",), False,
         datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
-def _write_inbox(root: Path, contract_id: str = "contract-1") -> None:
-    contract = _contract()
+def _write_inbox(root: Path, contract_id: str = "contract-1", task_id: str = "TASK-E2E-WRITER-0001") -> None:
+    contract = _contract(task_id)
     value = {
         "contract_inbox_item": {
             "contract_id": contract_id, "contract_type": "architect_task",
@@ -86,6 +86,23 @@ class FakePublisher:
 def test_empty_inbox_is_no_action(tmp_path: Path):
     watcher = AIDPWatchOnce(AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=FakeControlPlane(), publisher=FakePublisher(), runtime_root=tmp_path / "runtime", execution_lock_active=lambda: False)
     assert watcher.run_once().status is TriggerStatus.NO_ACTION
+
+
+def test_contract_namespace_routes_to_only_the_matching_repository(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    _write_inbox(runtime, "infra-contract", "AIDP-INFRA-0002")
+    product = AIDPWatchOnce(
+        AIDPRepository(tmp_path), writer=FakeWriter(), control_plane=FakeControlPlane(),
+        publisher=FakePublisher(), runtime_root=runtime, execution_lock_active=lambda: False,
+    )
+    infrastructure = AIDPWatchOnce(
+        AIDPRepository(tmp_path, task_namespace="infrastructure"), writer=FakeWriter(),
+        control_plane=FakeControlPlane(), publisher=FakePublisher(), runtime_root=runtime,
+        execution_lock_active=lambda: False,
+    )
+    assert product.run_once().status is TriggerStatus.NO_ACTION
+    assert infrastructure.run_once().status is TriggerStatus.PUBLISHED
+    assert ConsumptionStore(runtime).current("infra-contract") is ConsumptionState.REVIEW_PUBLISHED
 
 
 def test_contract_is_consumed_exactly_once_across_restart(tmp_path: Path):

@@ -237,6 +237,7 @@ class AIDPWatchOnce:
                 return TriggerResult(TriggerStatus.NO_ACTION, None, None)
             candidates = tuple(
                 candidate for candidate in items
+                if self.repository.accepts_task_id(candidate.contract.task_id)
                 if self.consumption.current(candidate.contract_id)
                 not in {ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}
             )

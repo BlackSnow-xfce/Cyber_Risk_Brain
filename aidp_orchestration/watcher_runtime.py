@@ -145,6 +145,7 @@ class AIDPLocalWatcherRuntime:
         clock: Callable[[], datetime] = utc_now,
         ingress: IngressBoundary | None = None,
         lifecycle: LifecycleBoundary | None = None,
+        infrastructure_lifecycle: LifecycleBoundary | None = None,
         heartbeat: SanitizedWatcherHeartbeatPublisher | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
@@ -157,6 +158,7 @@ class AIDPLocalWatcherRuntime:
         self.clock = clock
         self.ingress = ingress
         self.lifecycle = lifecycle
+        self.infrastructure_lifecycle = infrastructure_lifecycle
         self.heartbeat = heartbeat
 
     def run(self) -> WatchRuntimeResult:
@@ -191,8 +193,21 @@ class AIDPLocalWatcherRuntime:
                         )
                 lifecycle_result: LifecycleResult | None = None
                 try:
+                    infrastructure_result = (
+                        self.infrastructure_lifecycle.run_once()
+                        if self.infrastructure_lifecycle is not None else None
+                    )
                     if self.lifecycle is not None:
-                        lifecycle_result = self.lifecycle.run_once()
+                        product_result = self.lifecycle.run_once()
+                        lifecycle_result = (
+                            infrastructure_result
+                            if infrastructure_result is not None
+                            and infrastructure_result.status is not LifecycleStatus.NO_ACTION
+                            else product_result
+                        )
+                        trigger_result = _trigger_from_lifecycle(lifecycle_result)
+                    elif infrastructure_result is not None:
+                        lifecycle_result = infrastructure_result
                         trigger_result = _trigger_from_lifecycle(lifecycle_result)
                     else:
                         trigger_result = self.watcher.run_once()

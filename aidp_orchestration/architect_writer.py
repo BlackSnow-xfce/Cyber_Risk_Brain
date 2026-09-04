@@ -74,6 +74,11 @@ class ArchitectContractWriter:
 
     def decide_task(self, contract: ArchitectTaskContract) -> WriterDecision:
         branch, head = self.repository.branch, self.repository.head
+        if not self.repository.accepts_task_id(contract.task_id):
+            return WriterDecision(
+                WriterAction.BLOCKED, contract.task_id, branch, head,
+                "contract namespace does not match target repository",
+            )
         if head != contract.expected_head:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "contract expected_head is stale")
         unknown = self.validator_registry.unknown(contract.validation_requirements)
@@ -143,6 +148,11 @@ class ArchitectContractWriter:
 
     def decide_rework(self, contract: ReworkContract) -> WriterDecision:
         branch, head = self.repository.branch, self.repository.head
+        if not self.repository.accepts_task_id(contract.task_id):
+            return WriterDecision(
+                WriterAction.BLOCKED, contract.task_id, branch, head,
+                "contract namespace does not match target repository",
+            )
         if head != contract.expected_head:
             return WriterDecision(WriterAction.BLOCKED, contract.task_id, branch, head, "rework expected_head is stale")
         cleanliness = worktree_admission_reason(self.worktree_changed_files)

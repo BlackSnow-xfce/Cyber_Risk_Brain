@@ -14,7 +14,7 @@ from aidp_orchestration.contracts import (
 from aidp_orchestration.repository import AIDPRepository
 
 
-def write_repo(tmp_path: Path, *, ready: tuple[str, ...] = (), review: tuple[str, ...] = (), status: str = "READY") -> AIDPRepository:
+def write_repo(tmp_path: Path, *, ready: tuple[str, ...] = (), review: tuple[str, ...] = (), status: str = "READY", task_namespace: str = "product") -> AIDPRepository:
     (tmp_path / ".ai" / "tasks" / "ready").mkdir(parents=True)
     (tmp_path / ".ai" / "tasks" / "review").mkdir(parents=True)
     (tmp_path / ".ai" / "handoff").mkdir(parents=True)
@@ -39,7 +39,7 @@ def write_repo(tmp_path: Path, *, ready: tuple[str, ...] = (), review: tuple[str
         f"Status: {'WAITING' if ready else 'OPEN'}\nTask: {task_id or 'NONE'}\n",
         encoding="utf-8",
     )
-    repo = AIDPRepository(tmp_path)
+    repo = AIDPRepository(tmp_path, task_namespace=task_namespace)
     repo._git = lambda *args: "main" if args == ("branch", "--show-current") else "base-commit"
     return repo
 
@@ -49,9 +49,26 @@ def test_exactly_one_ready_task_is_ready_for_codex(tmp_path: Path) -> None:
 
 
 def test_exact_infrastructure_namespace_is_discovered_without_broadening(tmp_path: Path) -> None:
-    assert write_repo(tmp_path, ready=("AIDP-INFRA-0001",)).inspect().state is AIDPState.READY_FOR_CODEX
-    repo = write_repo(tmp_path / "invalid", ready=("AIDP-INFRA-00001",))
+    assert write_repo(
+        tmp_path, ready=("AIDP-INFRA-0001",), task_namespace="infrastructure",
+    ).inspect().state is AIDPState.READY_FOR_CODEX
+    repo = write_repo(
+        tmp_path / "invalid", ready=("AIDP-INFRA-00001",),
+        task_namespace="infrastructure",
+    )
     assert repo.inspect().state is AIDPState.WAITING
+
+
+def test_task_namespaces_are_repository_isolated(tmp_path: Path) -> None:
+    product = write_repo(tmp_path, ready=("TASK-9000", "AIDP-INFRA-0001"))
+    infrastructure = AIDPRepository(tmp_path, task_namespace="infrastructure")
+    infrastructure._git = product._git
+    assert product.inspect().task_id == "TASK-9000"
+    assert infrastructure.inspect().state is AIDPState.BLOCKED
+    assert infrastructure.accepts_task_id("AIDP-INFRA-0001")
+    assert not infrastructure.accepts_task_id("TASK-9000")
+    with pytest.raises(ValueError, match="namespace"):
+        infrastructure.build_execution_request("TASK-9000")
 
 
 def test_review_task_is_ready_for_architect(tmp_path: Path) -> None:

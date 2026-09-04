@@ -34,12 +34,13 @@ def test_watch_cli_forwards_configured_execution_timeout(
             observed["timeout_seconds"] = timeout_seconds
 
     class Runtime:
-        def __init__(self, repository, *, watcher, interval_seconds, ingress, lifecycle):
+        def __init__(self, repository, *, watcher, interval_seconds, ingress, lifecycle, infrastructure_lifecycle):
             observed["runtime_repository"] = repository.root
             observed["watcher"] = watcher
             observed["interval_seconds"] = interval_seconds
             observed["ingress"] = ingress
             observed["lifecycle"] = lifecycle
+            observed["infrastructure_lifecycle"] = infrastructure_lifecycle
 
         def run(self):
             return type("Result", (), {"status": type("Status", (), {"value": "STOPPED"})()})()
@@ -245,3 +246,34 @@ def test_single_runtime_routes_through_lifecycle_without_competing_watcher(tmp_p
     assert lifecycle.calls == 1 and watcher.calls == 0
     payload = json.loads(events[0])["watch_iteration"]
     assert payload["lifecycle_status"] == "NO_ACTION"
+
+
+def test_infrastructure_lifecycle_runs_independently_of_product_gate(tmp_path: Path):
+    class Lifecycle:
+        def __init__(self, result):
+            self.result = result
+            self.calls = 0
+
+        def run_once(self):
+            self.calls += 1
+            return self.result
+
+    product = Lifecycle(LifecycleResult(
+        LifecycleStatus.NO_ACTION, "TASK-0131", AIDPState.WAITING_FOR_PRODUCT_OWNER, "gate",
+    ))
+    infrastructure = Lifecycle(LifecycleResult(
+        LifecycleStatus.ADVANCED, "AIDP-INFRA-0002", AIDPState.READY_FOR_ARCHITECT,
+        "infrastructure execution published",
+    ))
+    events = []
+    runtime = AIDPLocalWatcherRuntime(
+        AIDPRepository(tmp_path), watcher=SequenceWatcher([]), lifecycle=product,
+        infrastructure_lifecycle=infrastructure, interval_seconds=5,
+        sleeper=StopAfter(1), event_sink=events.append,
+        lock=WatcherRuntimeLock(tmp_path / "watch.lock"),
+    )
+    assert runtime.run().status is WatchRuntimeStatus.STOPPED
+    assert product.calls == infrastructure.calls == 1
+    payload = json.loads(events[0])["watch_iteration"]
+    assert payload["trigger_status"] == "PUBLISHED"
+    assert payload["lifecycle_status"] == "ADVANCED"

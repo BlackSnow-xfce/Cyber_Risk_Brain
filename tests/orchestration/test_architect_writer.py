@@ -127,6 +127,14 @@ def test_productive_infrastructure_namespace_is_exactly_authorized() -> None:
     assert contract.task_id == "AIDP-INFRA-0001"
 
 
+def test_writer_rejects_contract_namespace_mismatch(tmp_path: Path) -> None:
+    repo = make_repository(tmp_path)
+    contract = task_contract(repo, task_id="AIDP-INFRA-0001")
+    result = writer(repo).materialize_task(contract)
+    assert result.decision.action is WriterAction.BLOCKED
+    assert result.failure_reason == "contract namespace does not match target repository"
+
+
 @pytest.mark.parametrize("task_id", (
     "TASK-12", "task-9001", "TASK-ABCD", "", "AIDP-INFRA-001", "AIDP-INFRA-00001",
     "AIDP-INFRA-E2E-0001", "AIDP-OTHER-0001", "aidp-infra-0001",

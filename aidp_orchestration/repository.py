@@ -31,9 +31,20 @@ _KEY = re.compile(r"^(?P<key>[a-z_]+):\s*(?P<value>.*)$")
 class AIDPRepository:
     """Inspects state and creates requests without mutating the repository."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, task_namespace: str = "product"):
+        if task_namespace not in {"product", "infrastructure"}:
+            raise ValueError("task namespace must be product or infrastructure")
         self.root = root.resolve()
         self.ai_root = self.root / ".ai"
+        self.task_namespace = task_namespace
+
+    def accepts_task_id(self, task_id: str) -> bool:
+        pattern = (
+            r"AIDP-INFRA-\d{4}"
+            if self.task_namespace == "infrastructure"
+            else r"TASK-(?:\d{4}|E2E-(?:(?:WRITER|TRIGGER)-)?\d{4})"
+        )
+        return re.fullmatch(pattern, task_id) is not None
 
     @property
     def branch(self) -> str:
@@ -47,10 +58,11 @@ class AIDPRepository:
         directory = self.ai_root / "tasks" / state_dir
         if not directory.exists():
             return ()
-        candidates = (*directory.glob("TASK-*.md"), *directory.glob("AIDP-INFRA-*.md"))
+        pattern = "AIDP-INFRA-*.md" if self.task_namespace == "infrastructure" else "TASK-*.md"
+        candidates = tuple(directory.glob(pattern))
         return tuple(sorted(
             path for path in candidates
-            if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:(?:WRITER|TRIGGER)-)?\d{4})|AIDP-INFRA-\d{4})", path.stem)
+            if self.accepts_task_id(path.stem)
         ))
 
     def inspect(self) -> OrchestrationDecision:
@@ -108,6 +120,8 @@ class AIDPRepository:
         return OrchestrationDecision(None, AIDPState.WAITING, None, branch, commit, (), utc_now())
 
     def build_execution_request(self, task_id: str, *, rework_count: int = 0) -> CodexExecutionRequest:
+        if not self.accepts_task_id(task_id):
+            raise ValueError("task namespace does not match target repository")
         candidates = [path for path in (*self.task_paths("ready"), *self.task_paths("review")) if path.stem == task_id]
         if len(candidates) != 1:
             raise ValueError("exactly one active task is required")

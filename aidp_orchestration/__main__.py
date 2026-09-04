@@ -26,6 +26,7 @@ from .executor import CodexExecutionService, serialize_execution_result
 from .repository import AIDPRepository
 from .lifecycle import AIDPLifecycleOnce
 from .runner import AIDPRunner, serialize_runner_result
+from .runtime import LocalRuntimeStore
 from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
     serialize_writer_control_plane_acceptance_result,
@@ -67,14 +68,18 @@ def main() -> int:
     )
     parser.add_argument("--product-branch", help="authoritative Product branch for autonomous Architect review")
     parser.add_argument("--infrastructure-root", type=Path, help="excluded infrastructure development worktree")
+    parser.add_argument("--infrastructure-branch", help="authoritative AIDP infrastructure lifecycle branch")
     parser.add_argument("--architect-contract-root", type=Path, help="excluded Architect contract worktree")
     args = parser.parse_args()
     if args.architect_contract_branch and not args.watch:
         parser.error("--architect-contract-branch is only valid with --watch")
     if args.autonomous_architect and not args.watch:
         parser.error("--autonomous-architect is only valid with --watch")
-    if args.autonomous_architect and (not args.product_branch or args.infrastructure_root is None or args.architect_contract_root is None):
-        parser.error("autonomous Architect review requires product branch and both excluded worktree roots")
+    if args.autonomous_architect and (
+        not args.product_branch or args.infrastructure_root is None
+        or not args.infrastructure_branch or args.architect_contract_root is None
+    ):
+        parser.error("autonomous Architect review requires product and infrastructure branches and both worktree roots")
     if args.watch and args.watch_interval < MINIMUM_WATCH_INTERVAL_SECONDS:
         parser.error(f"--watch-interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
     repository = AIDPRepository(args.root)
@@ -89,21 +94,47 @@ def main() -> int:
             parser.error(str(exc))
         watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout)
         lifecycle = None
+        infrastructure_lifecycle = None
         if args.autonomous_architect:
+            source_root = Path(__file__).resolve().parents[1]
             guard = ProductWorktreeIdentityGuard(
                 args.root, expected_branch=args.product_branch,
-                excluded_roots=(args.infrastructure_root, args.architect_contract_root),
+                excluded_roots=(source_root, args.infrastructure_root, args.architect_contract_root),
             )
             architect = ArchitectReviewCoordinator(
                 product_root=args.root, identity_guard=guard, timeout_seconds=args.timeout,
             )
             lifecycle = AIDPLifecycleOnce(repository, codex=watcher, architect=architect)
+            infrastructure_repository = AIDPRepository(
+                args.infrastructure_root, task_namespace="infrastructure",
+            )
+            infrastructure_watcher = AIDPWatchOnce(
+                infrastructure_repository,
+                runtime_root=LocalRuntimeStore.for_repository(args.root).root,
+                timeout_seconds=args.timeout,
+            )
+            infrastructure_guard = ProductWorktreeIdentityGuard(
+                args.infrastructure_root,
+                expected_branch=args.infrastructure_branch,
+                excluded_roots=(source_root, args.root, args.architect_contract_root),
+            )
+            infrastructure_architect = ArchitectReviewCoordinator(
+                product_root=args.infrastructure_root,
+                identity_guard=infrastructure_guard,
+                timeout_seconds=args.timeout,
+            )
+            infrastructure_lifecycle = AIDPLifecycleOnce(
+                infrastructure_repository,
+                codex=infrastructure_watcher,
+                architect=infrastructure_architect,
+            )
         result = AIDPLocalWatcherRuntime(
             repository,
             watcher=watcher,
             interval_seconds=args.watch_interval,
             ingress=ingress,
             lifecycle=lifecycle,
+            infrastructure_lifecycle=infrastructure_lifecycle,
         ).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2

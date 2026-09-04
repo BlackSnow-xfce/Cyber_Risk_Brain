@@ -4,10 +4,12 @@ param()
 $ErrorActionPreference = "Stop"
 
 $orchestrationRoot = "D:\CyberRiskBrain-orchestration-execution"
+$infrastructureRoot = "D:\CyberRiskBrain-aidp-infrastructure"
 $productRoot = "D:\CyberRiskBrain"
 $architectRoot = "D:\CyberRiskBrain-architect-contracts"
 $python = "D:\CyberRiskBrain\venv\Scripts\python.exe"
 $productBranch = "aidp/task-0111-live-acceptance"
+$infrastructureBranch = "aidp/infrastructure-lifecycle"
 $contractBranch = "aidp/architect-contracts"
 $runtimeRoot = Join-Path $env:LOCALAPPDATA "PredatorAI\AIDP"
 $logRoot = Join-Path $runtimeRoot "logs"
@@ -34,6 +36,7 @@ try {
     Set-Location -LiteralPath $orchestrationRoot
     Write-Host "PredatorAI AIDP VISIBLE AUTONOMOUS WATCHER" -ForegroundColor Cyan
     Write-Host "Orchestration: $orchestrationRoot"
+    Write-Host "Infrastructure: $infrastructureRoot [$infrastructureBranch]"
     Write-Host "Product:       $productRoot"
     Write-Host "Contracts:     $architectRoot [$contractBranch]"
     Write-Host "Lifecycle:     autonomous Codex + visible Architect review"
@@ -54,7 +57,8 @@ try {
                 --architect-contract-branch $contractBranch `
                 --autonomous-architect `
                 --product-branch $productBranch `
-                --infrastructure-root $orchestrationRoot `
+                --infrastructure-root $infrastructureRoot `
+                --infrastructure-branch $infrastructureBranch `
                 --architect-contract-root $architectRoot 2>&1 |
                 ForEach-Object {
                     $line = [string]$_
