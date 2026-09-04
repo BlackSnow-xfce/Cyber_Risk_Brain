@@ -1,6 +1,6 @@
-# Handoff - Architecture Review TASK-0112
+# Handoff - Architecture Review AIDP-INFRA-0002
 
 Status: WAITING
-Task: TASK-0112
+Task: AIDP-INFRA-0002
 Task Status: READY
 Reviewer: Architect
