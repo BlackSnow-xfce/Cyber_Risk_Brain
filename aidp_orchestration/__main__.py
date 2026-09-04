@@ -108,9 +108,10 @@ def main() -> int:
             infrastructure_repository = AIDPRepository(
                 args.infrastructure_root, task_namespace="infrastructure",
             )
+            authority_inbox_root = LocalRuntimeStore.for_repository(args.root).root
             infrastructure_watcher = AIDPWatchOnce(
                 infrastructure_repository,
-                runtime_root=LocalRuntimeStore.for_repository(args.root).root,
+                runtime_root=authority_inbox_root,
                 timeout_seconds=args.timeout,
                 allow_test_failure_retry=True,
             )
@@ -128,6 +129,7 @@ def main() -> int:
                 infrastructure_repository,
                 codex=infrastructure_watcher,
                 architect=infrastructure_architect,
+                authority_inbox_root=authority_inbox_root,
             )
         result = AIDPLocalWatcherRuntime(
             repository,

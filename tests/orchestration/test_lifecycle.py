@@ -295,11 +295,12 @@ def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path)
             raise AssertionError(args)
 
     store = LocalRuntimeStore(tmp_path / "runtime")
+    authority_inbox_root = tmp_path / "authority-runtime"
     authority = ArchitectTaskContract(
         "TASK-9000", "title", "phase", "1" * 40, ("a.py",), ("no product",),
         ("pytest",), ("pass",), True, NOW,
     )
-    LocalContractInbox(store.root).persist(ContractInboxItem("authority", authority, NOW))
+    LocalContractInbox(authority_inbox_root).persist(ContractInboxItem("authority", authority, NOW))
     prior_request = _request()
     prior_result = _result(prior_request, ArchitectReviewDisposition.FAIL)
     store.persist_architect_result(prior_result)
@@ -331,7 +332,7 @@ def test_review_request_binds_exact_preceding_rework_contract_identity(tmp_path)
     }}), encoding="utf-8")
     lifecycle = AIDPLifecycleOnce(
         RequestRepo(), codex=object(), architect=Architect(prior_result), runtime_store=store,
-        projection=Projection(), clock=lambda: NOW,
+        projection=Projection(), authority_inbox_root=authority_inbox_root, clock=lambda: NOW,
     )
     built = lifecycle._build_request("TASK-9000")
     assert built.review_iteration == 1

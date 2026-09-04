@@ -51,6 +51,7 @@ class AIDPLifecycleOnce:
         projection: LifecycleProjection | None = None,
         request_factory=None,
         product_owner_acceptance: ProductOwnerAcceptanceBoundary | None = None,
+        authority_inbox_root: Path | None = None,
         clock=utc_now,
     ) -> None:
         self.repository = repository
@@ -60,6 +61,7 @@ class AIDPLifecycleOnce:
         self.projection = projection or LifecycleProjection(repository.root)
         self.request_factory = request_factory or self._build_request
         self.product_owner_acceptance = product_owner_acceptance
+        self.authority_inbox_root = authority_inbox_root or self.runtime.root
         self.clock = clock
 
     def run_once(self) -> LifecycleResult:
@@ -311,7 +313,9 @@ class AIDPLifecycleOnce:
         )
         contract_id = contract.canonical_id(result.review_result_id)
         self.runtime.persist_rework_contract(contract_id, contract, result.review_result_id)
-        LocalContractInbox(self.runtime.root).persist(ContractInboxItem(contract_id, contract, result.created_at))
+        LocalContractInbox(self.authority_inbox_root).persist(
+            ContractInboxItem(contract_id, contract, result.created_at),
+        )
 
     def _build_request(self, task_id: str) -> ArchitectReviewRequest:
         envelopes = []
@@ -323,7 +327,7 @@ class AIDPLifecycleOnce:
             raise ValueError("review envelope is missing")
         _, envelope_path, envelope = sorted(envelopes, key=lambda value: value[0])[-1]
         contracts = [
-            item for item in LocalContractInbox(self.runtime.root).pending()
+            item for item in LocalContractInbox(self.authority_inbox_root).pending()
             if isinstance(item.contract, ArchitectTaskContract) and item.contract.task_id == task_id
         ]
         if len(contracts) != 1:
