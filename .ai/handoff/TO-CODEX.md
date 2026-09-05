@@ -1,6 +1,6 @@
 # Handoff - Architect to Codex
 
-Status: WAITING
+Status: OPEN
 Current AIDP Task: AIDP-INFRA-0002
-Current Phase: REVIEW / WAITING
-Task Status: REVIEW
+Current Phase: REVIEW / REWORK REQUIRED
+Task Status: REVIEW / REWORK REQUIRED

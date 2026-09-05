@@ -8,7 +8,7 @@ product_owner_gate: true
 ---
 # AIDP-INFRA-0002 - First-Party Keycloak OIDC Product Owner Confirmation Adapter
 
-Status: REVIEW
+Status: REVIEW / REWORK REQUIRED
 
 ## Acceptance Criteria
 
