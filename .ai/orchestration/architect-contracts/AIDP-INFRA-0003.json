@@ -1,0 +1,74 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "186150754ded5720763e58e5ceaffa5008915732a01ca52472ecdec591d78add",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "AIDP-INFRA-0003",
+      "title": "Unattended Execution Supervision Recovery and Independent Lane Observability",
+      "phase": "AIDP INFRASTRUCTURE GOVERNANCE",
+      "expected_head": "7d2751ea9ca5a103649e3248ad7487278dc3c3bd",
+      "allowed_scope": [
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/executor.py",
+        "aidp_orchestration/runner.py",
+        "aidp_orchestration/runtime.py",
+        "aidp_orchestration/trigger_publisher.py",
+        "aidp_orchestration/watcher_runtime.py",
+        "aidp_orchestration/external_status.py",
+        "aidp_orchestration/__main__.py",
+        "tests/orchestration/test_executor.py",
+        "tests/orchestration/test_runner.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_trigger_publisher.py",
+        "tests/orchestration/test_watcher_runtime.py",
+        "tests/orchestration/test_external_status_projection.py",
+        "tests/orchestration/test_external_status_security.py"
+      ],
+      "prohibited_actions": [
+        "Do not modify any file outside the exact fifteen allowed paths",
+        "Do not modify reset clean stash commit or otherwise alter the current five-file AIDP-INFRA-0002 residual worktree during contract implementation",
+        "Do not rewrite delete truncate or bless existing ingress consumption execution review lifecycle or journal evidence",
+        "Do not retry scope violations authority failures namespace mismatches repository mismatches contract mutations or unconfirmed child termination",
+        "Do not infer authority from PID presence dirty paths diagnostic output or client supplied execution state",
+        "Do not weaken repository-specific locks immutable contract validation expected-HEAD validation scope enforcement validator enforcement or cross-repository isolation",
+        "Do not expose secrets tokens prompts process arguments protected filesystem paths raw logs or authentication material through heartbeat status audit or external projection",
+        "Do not add HTTP MCP ChatGPT Keycloak Product Owner confirmation task creation or generic command capability",
+        "Do not invoke Codex Architect lifecycle transitions or Product Owner decisions from status projection",
+        "Do not modify D:/CyberRiskBrain TASK-0131 TASK-0132 product handoffs or product lifecycle state and do not create TASK-0133",
+        "Do not perform Product Owner acceptance and do not manually invoke Codex or Architect"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "The implementation changes at most the exact fifteen allowed paths and all other paths remain byte-identical; scope validation is evaluated against the selected infrastructure repository.",
+        "Before any child launch an immutable execution-attempt record is durably persisted and binds execution ID, immutable contract ID, task ID, AIDP-INFRA namespace, configured repository identity, expected HEAD, canonical scope digest, attempt ordinal, retry budget, and start time.",
+        "A sanitized child identity is appended when launch establishes it and binds at least PID plus independently captured process start identity; PID alone never proves continuity and raw command lines or prompts are never persisted.",
+        "A repository-scoped RUNNING heartbeat is durably and atomically updated independently of the blocking Codex wait at a bounded interval and binds attempt ID, monotonic sequence, prior heartbeat digest, observed time, and sanitized progress state.",
+        "Closed machine-readable execution states distinguish RUNNING, SUCCESS, TEST_FAILED, TIMED_OUT, PROCESS_CRASHED, PROCESS_DISAPPEARED, ABANDONED_DIRTY_WORKTREE, SCOPE_VIOLATION, AUTHORITY_FAILURE, and HUMAN_ACTION_REQUIRED without converting diagnostic evidence into success authority.",
+        "Timeout, crash, or disappearance handling terminates only the repository-scoped process tree, proves termination including PID start-identity continuity, and fails closed as HUMAN_ACTION_REQUIRED when termination cannot be proven.",
+        "After proven termination the executor performs Git inspection while excluding no changed path, records exact lexically sorted dirty paths, computes a versioned canonical SHA-256 residual diff or tree digest, evaluates allowed and prohibited scope, and persists immutable terminal evidence even when Codex produced no usable output.",
+        "Scope violation, authority failure, namespace mismatch, repository mismatch, immutable contract mismatch, expected-HEAD lineage mismatch, rework-authority mismatch, residual mutation, and unconfirmed termination are terminal and never automatically retried.",
+        "One bounded autonomous recovery is permitted only for an explicitly recoverable timeout, proven process crash, proven process disappearance, or abandoned authorized dirty worktree and only when every immutable authority and residual binding remains exact.",
+        "Recovery persists append-only authorization evidence before launch and creates a fresh execution ID; the original execution, result, attempt, heartbeat, consumption, audit, and review evidence remain unchanged.",
+        "A second recoverable failure for the same contract lineage exhausts the budget and projects HUMAN_ACTION_REQUIRED without another launch.",
+        "Watcher restart recovery distinguishes a genuinely running child from stale PID, PID reuse, disappeared child, stale heartbeat, and stale execution lock using durable attempt evidence and OS process-start identity; ambiguous evidence fails closed.",
+        "Duplicate watcher or recovery races are serialized by the repository-specific consistency boundary so at most one fresh recovery execution can be authorized.",
+        "Product and infrastructure lane observations are composed independently; infrastructure BLOCKED, TIMED_OUT, stalled, or HUMAN_ACTION_REQUIRED state remains visible and cannot be replaced or masked by product Product Owner hard-gate NO_ACTION.",
+        "The sanitized status model exposes only lane, task ID, lifecycle state, execution state, bounded last-progress age or timestamp, watcher health, blocker category, and human-action-required boolean and never exposes authority identifiers beyond explicitly approved public task or execution correlation IDs.",
+        "Status generation remains observation-only and cannot launch execution, consume decisions, mutate lifecycle, alter Git, or recover work.",
+        "Runtime persistence failures for attempt registration, heartbeat, terminal evidence, residual binding, retry accounting, lock state, or status projection fail closed and never leave an unreported executable state.",
+        "Positive tests prove durable pre-launch registration, heartbeat during a blocked child call, successful terminalization, timeout termination, post-termination inspection, exact residual recovery, fresh execution identity, preserved history, and independent lane projection.",
+        "Adversarial tests prove timeout terminate and kill escalation, unconfirmed termination, crash and disappearance, restart with live child, stale PID and PID reuse, stale heartbeat, stale lock, residual mutation, unauthorized dirty path, authority scope repository namespace and contract substitution, retry exhaustion, duplicate recovery race, corrupted persistence, and product-lane masking all fail closed.",
+        "Mutation guards prove zero writes to D:/CyberRiskBrain and no modification of the five current AIDP-INFRA-0002 residual files while implementing and validating this remediation.",
+        "Focused tests, security and mutation guards, full python -m pytest tests/orchestration, Python compile and import checks, exact fifteen-path scope guard, forbidden-boundary checks, sensitive-output checks, and git diff --check all pass before review evidence is published.",
+        "Recovery of the current incident is unavailable until independent implementation approval and a separately authorized recovery operation binds failed execution 381f8c6d-8db2-447d-bfc3-da6b61ddad75, rework contract 4ece65a0224b1a3978b266d6663b10eeef27479180f7c9b4300599414dc684f8, start HEAD 7d2751ea9ca5a103649e3248ad7487278dc3c3bd, Architect result fadfb7535c9ced7b5ca68970557bffbf23bc9d7ed9f87de8cafabb3712f7a40c, the exact five approved residual paths, and residual-diff-v1 SHA-256 ecfe59b8f3efc7e656528829a5b08a9d946b7fefaaeaf17c52c794a4405e5efa.",
+        "Any current-worktree recovery binding mismatch projects HUMAN_ACTION_REQUIRED; no reset, clean, stash, manual commit, manual Codex continuation, automatic blessing, or diagnostic-evidence promotion is permitted."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-09-05T12:45:00+02:00"
+    },
+    "received_at": "2026-09-05T12:45:00+02:00"
+  }
+}
