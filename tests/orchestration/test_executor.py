@@ -50,6 +50,9 @@ class FakeGit:
     def changed_files(self) -> tuple[str, ...]:
         return self.changed
 
+    def residual_digest(self) -> str:
+        return "a" * 64
+
 
 class FakeRunner:
     def __init__(self, outcomes: list[ProcessOutcome]):
@@ -462,12 +465,22 @@ def test_default_lock_is_git_internal_and_locally_exclusive(tmp_path: Path) -> N
 
 @pytest.mark.parametrize(
     ("outcome", "expected"),
-    ((ProcessOutcome(7, "", "failure"), ExecutionStatus.ERROR), (ProcessOutcome(None, "", "", timed_out=True), ExecutionStatus.ERROR), (ProcessOutcome(0, "not json", ""), ExecutionStatus.ERROR)),
+        ((ProcessOutcome(7, "", "failure"), ExecutionStatus.PROCESS_CRASHED), (ProcessOutcome(None, "", "", timed_out=True), ExecutionStatus.TIMED_OUT), (ProcessOutcome(0, "not json", ""), ExecutionStatus.ERROR)),
 )
 def test_process_failures_are_not_success(tmp_path: Path, outcome: ProcessOutcome, expected: ExecutionStatus) -> None:
     result = service(tmp_path, FakeRunner([outcome])).execute(request(tmp_path))
     assert result.status is expected
     assert not result.is_review_ready
+
+
+def test_timeout_records_authorized_residual_and_proven_termination(tmp_path: Path) -> None:
+    git = FakeGit(clean=False, changed=("aidp_orchestration/executor.py",))
+    outcome = ProcessOutcome(None, "", "", timed_out=True, process_identity="pid:7:started_ns:9")
+    result = service(tmp_path, FakeRunner([outcome]), git).execute(request(tmp_path))
+    assert result.status is ExecutionStatus.ABANDONED_DIRTY_WORKTREE
+    assert result.changed_files == ("aidp_orchestration/executor.py",)
+    assert result.residual_digest == "a" * 64
+    assert result.process_termination_confirmed is True
 
 
 def test_readiness_predicate_code_is_preserved_in_execution_result(tmp_path: Path) -> None:
@@ -514,7 +527,7 @@ def test_lock_is_released_after_process_error(tmp_path: Path) -> None:
         lock=ExecutionLock(lock_path),
         launcher=CodexLauncher(("codex-test.exe",)),
     ).execute(request(tmp_path))
-    assert result.status is ExecutionStatus.ERROR
+    assert result.status is ExecutionStatus.PROCESS_CRASHED
     assert not lock_path.exists()
 
 

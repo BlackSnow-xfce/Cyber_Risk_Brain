@@ -34,6 +34,13 @@ class ExecutionStatus(StrEnum):
     BLOCKED = "BLOCKED"
     STALE_EXECUTION = "STALE_EXECUTION"
     ERROR = "ERROR"
+    RUNNING = "RUNNING"
+    TIMED_OUT = "TIMED_OUT"
+    PROCESS_CRASHED = "PROCESS_CRASHED"
+    PROCESS_DISAPPEARED = "PROCESS_DISAPPEARED"
+    ABANDONED_DIRTY_WORKTREE = "ABANDONED_DIRTY_WORKTREE"
+    AUTHORITY_FAILURE = "AUTHORITY_FAILURE"
+    HUMAN_ACTION_REQUIRED = "HUMAN_ACTION_REQUIRED"
 
 
 class ScopeCompliance(StrEnum):
@@ -195,18 +202,68 @@ class CodexExecutionResult:
     status: ExecutionStatus
     failure_reason: str | None
     scope_compliance: ScopeCompliance
+    residual_digest: str | None = None
+    process_identity: str | None = None
+    process_termination_confirmed: bool | None = None
 
     def __post_init__(self) -> None:
         for name in ("execution_id", "task_id", "start_commit"):
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must not be empty")
+        if self.residual_digest is not None:
+            _sha256(self.residual_digest, "residual_digest")
+        if self.process_identity is not None:
+            _single_line(self.process_identity, "process_identity")
 
     @property
     def is_review_ready(self) -> bool:
         """SUCCESS means review-ready only; it never means approved."""
-
         return self.status is ExecutionStatus.SUCCESS and self.scope_compliance is ScopeCompliance.COMPLIANT
 
+
+@dataclass(frozen=True, slots=True)
+class ExecutionAttemptV1:
+    schema_version: str
+    execution_id: str
+    contract_id: str
+    task_id: str
+    namespace: str
+    repository_id: str
+    expected_head: str
+    scope_digest: str
+    attempt_ordinal: int
+    retry_budget: int
+    started_at: datetime
+    process_identity: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-execution-attempt-v1": raise ValueError("unsupported attempt schema")
+        for name in ("execution_id", "contract_id", "task_id", "namespace", "repository_id"):
+            _single_line(getattr(self, name), name)
+        _single_line(self.expected_head, "expected_head"); _sha256(self.scope_digest, "scope_digest")
+        if self.attempt_ordinal < 0 or self.retry_budget not in {0, 1}: raise ValueError("invalid recovery budget")
+        _aware(self.started_at, "started_at")
+        if self.process_identity is not None: _single_line(self.process_identity, "process_identity")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionHeartbeatV1:
+    schema_version: str
+    execution_id: str
+    sequence: int
+    observed_at: datetime
+    state: ExecutionStatus
+    previous_digest: str | None
+    heartbeat_digest: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-execution-heartbeat-v1": raise ValueError("unsupported execution heartbeat schema")
+        _single_line(self.execution_id, "execution_id"); _aware(self.observed_at, "observed_at")
+        if self.sequence < 0 or self.state is not ExecutionStatus.RUNNING: raise ValueError("invalid execution heartbeat")
+        if self.previous_digest is not None: _sha256(self.previous_digest, "previous_digest")
+        _sha256(self.heartbeat_digest, "heartbeat_digest")
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "heartbeat_digest"}
+        if canonical_digest(values) != self.heartbeat_digest: raise ValueError("execution heartbeat digest mismatch")
 
 @dataclass(frozen=True, slots=True)
 class AuditEvent:
@@ -911,6 +968,14 @@ class WatchIterationEvent:
     remote_contract_commit: str | None = None
     ingress_failure_reason: str | None = None
     lifecycle_status: LifecycleStatus | None = None
+    product_lifecycle_status: LifecycleStatus | None = None
+    product_task_id: str | None = None
+    product_state: AIDPState | None = None
+    product_reason: str | None = None
+    infrastructure_lifecycle_status: LifecycleStatus | None = None
+    infrastructure_task_id: str | None = None
+    infrastructure_state: AIDPState | None = None
+    infrastructure_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

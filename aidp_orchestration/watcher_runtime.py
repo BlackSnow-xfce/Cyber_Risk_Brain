@@ -192,6 +192,8 @@ class AIDPLocalWatcherRuntime:
                             failure_reason=f"ingress iteration failed: {exc.__class__.__name__}",
                         )
                 lifecycle_result: LifecycleResult | None = None
+                infrastructure_result: LifecycleResult | None = None
+                product_result: LifecycleResult | None = None
                 try:
                     infrastructure_result = (
                         self.infrastructure_lifecycle.run_once()
@@ -227,6 +229,14 @@ class AIDPLocalWatcherRuntime:
                     ingress_result.remote_commit if ingress_result else None,
                     ingress_result.failure_reason if ingress_result else None,
                     lifecycle_result.status if lifecycle_result else None,
+                    product_result.status if product_result else None,
+                    product_result.task_id if product_result else None,
+                    product_result.state if product_result else None,
+                    product_result.reason if product_result else None,
+                    infrastructure_result.status if infrastructure_result else None,
+                    infrastructure_result.task_id if infrastructure_result else None,
+                    infrastructure_result.state if infrastructure_result else None,
+                    infrastructure_result.reason if infrastructure_result else None,
                 )
                 try:
                     self.event_sink(serialize_watch_iteration_event(event))
