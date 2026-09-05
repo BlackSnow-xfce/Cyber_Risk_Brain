@@ -46,13 +46,22 @@ def test_parameter_parser_rejects_duplicates_and_unexpected_fields() -> None:
 
 def test_rate_limiter_uses_trusted_peer_and_fails_closed() -> None:
     limiter = _RateLimiter(limit=2)
-    limiter.check("login", "192.0.2.1")
-    limiter.check("login", "192.0.2.1")
+    limiter.check("login", "192.0.2.1", "transaction-a")
+    limiter.check("login", "192.0.2.1", "transaction-a")
     with pytest.raises(PermissionError):
-        limiter.check("login", "192.0.2.1")
-    limiter.check("callback", "192.0.2.1")
+        limiter.check("login", "192.0.2.1", "transaction-a")
+    limiter.check("callback", "192.0.2.1", "transaction-a")
     with pytest.raises(PermissionError):
-        limiter.check("login", "")
+        limiter.check("login", "", "transaction-a")
+
+
+def test_rate_limiter_cannot_be_bypassed_by_rotating_peer_addresses() -> None:
+    limiter = _RateLimiter(limit=2)
+    limiter.check("callback", "192.0.2.1", "transaction-a")
+    limiter.check("callback", "192.0.2.2", "transaction-a")
+    with pytest.raises(PermissionError):
+        limiter.check("callback", "192.0.2.3", "transaction-a")
+    limiter.check("callback", "192.0.2.3", "transaction-b")
 
 
 def test_peer_identity_ignores_forwarded_headers() -> None:
@@ -62,7 +71,7 @@ def test_peer_identity_ignores_forwarded_headers() -> None:
 
 
 def test_rate_limiter_has_bounded_identity_storage() -> None:
-    limiter = _RateLimiter(maximum_keys=1)
-    limiter.check("login", "192.0.2.1")
+    limiter = _RateLimiter(maximum_keys=2)
+    limiter.check("login", "192.0.2.1", "transaction-a")
     with pytest.raises(PermissionError):
-        limiter.check("login", "192.0.2.2")
+        limiter.check("login", "192.0.2.2", "transaction-b")

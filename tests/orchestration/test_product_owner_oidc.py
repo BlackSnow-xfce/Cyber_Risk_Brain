@@ -47,7 +47,10 @@ def config(**changes: object) -> ProductOwnerOIDCConfig:
 
 def test_authorization_url_is_code_flow_with_pkce_and_transaction_binding() -> None:
     transaction = new_oidc_transaction(now=NOW)
-    client = KeycloakOIDCClient(config(), secrets_provider=SecretProvider(), transport=DiscoveryTransport())
+    client = KeycloakOIDCClient(
+        config(), secrets_provider=SecretProvider(), transport=DiscoveryTransport(),
+        audit=lambda event, correlation: None,
+    )
 
     url = urlsplit(client.authorization_url(transaction))
     query = parse_qs(url.query)
@@ -75,3 +78,10 @@ def test_authorization_url_is_code_flow_with_pkce_and_transaction_binding() -> N
 def test_configuration_rejects_insecure_or_ambiguous_bindings(change: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         config(**change)
+
+
+def test_oidc_client_requires_a_deployable_audit_sink() -> None:
+    with pytest.raises(ValueError):
+        KeycloakOIDCClient(
+            config(), secrets_provider=SecretProvider(), transport=DiscoveryTransport(), audit=None,  # type: ignore[arg-type]
+        )

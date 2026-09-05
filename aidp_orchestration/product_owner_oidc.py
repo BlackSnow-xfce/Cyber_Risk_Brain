@@ -132,12 +132,12 @@ class KeycloakOIDCClient:
 
     def __init__(self, config: ProductOwnerOIDCConfig, *, secrets_provider: ProtectedSecretProvider,
                  transport: OIDCTransport | None = None, clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-                 audit: SecurityAuditSink | None = None) -> None:
-        if secrets_provider is None:
-            raise ValueError("a protected secret provider is required")
+                 audit: SecurityAuditSink) -> None:
+        if secrets_provider is None or audit is None:
+            raise ValueError("protected secret and audit providers are required")
         self.config, self.secret_provider = config, secrets_provider
         self.transport, self.clock = transport or RequestsOIDCTransport(), clock
-        self.audit = audit or (lambda event, correlation: None)
+        self.audit = audit
         self._metadata: Mapping[str, object] | None = None
         self._jwks: Mapping[str, object] | None = None
         self._active_sessions: dict[str, OIDCSessionProof] = {}
@@ -337,9 +337,8 @@ class KeycloakOIDCClient:
         correlation = hashlib.sha256(correlation_source.encode()).hexdigest()[:32]
         try:
             self.audit(event[:48], correlation)
-        except Exception:
-            # Audit integration cannot become an authentication bypass or leak errors.
-            pass
+        except Exception as exc:
+            raise OIDCError("security audit unavailable") from exc
 
     def _exact_https(self, metadata: Mapping[str, object], field: str) -> str:
         value = metadata.get(field)
