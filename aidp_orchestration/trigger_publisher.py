@@ -323,7 +323,10 @@ class AIDPWatchOnce:
             lifecycle_state = execution_state
             runner = getattr(self.control_plane, "runner", None)
             if runner is not None and hasattr(runner, "authorize_contract_context"):
-                runner.authorize_contract_context(item.contract_id, attempt_ordinal=1, retry_budget=0)
+                runner.authorize_contract_context(
+                    item.contract_id, attempt_ordinal=1, retry_budget=0,
+                    allowed_scope=(item.contract.allowed_rework_scope if isinstance(item.contract, ReworkContract) else None),
+                )
             control_result = self.control_plane.run_once()
             if original_changed_reader is not None:
                 self.control_plane.worktree_changed_files = original_changed_reader

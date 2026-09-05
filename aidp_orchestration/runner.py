@@ -6,6 +6,7 @@ import json
 import threading
 from dataclasses import asdict
 from datetime import datetime
+from dataclasses import replace
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -60,14 +61,17 @@ class AIDPRunner:
             timeout_seconds=timeout_seconds,
         )
         self.runtime_store = runtime_store or LocalRuntimeStore.for_repository(repository.root)
-        self._contract_context: tuple[str, int, int] | None = None
+        self._contract_context: tuple[str, int, int, tuple[str, ...] | None] | None = None
 
-    def authorize_contract_context(self, contract_id: str, *, attempt_ordinal: int, retry_budget: int) -> None:
-        self._contract_context = (contract_id, attempt_ordinal, retry_budget)
+    def authorize_contract_context(self, contract_id: str, *, attempt_ordinal: int, retry_budget: int,
+                                   allowed_scope: tuple[str, ...] | None = None) -> None:
+        self._contract_context = (contract_id, attempt_ordinal, retry_budget, allowed_scope)
 
     def run_ready(self, contract_id: str | None = None, *, attempt_ordinal: int = 0, retry_budget: int = 1) -> RunnerResult:
         if contract_id is None and self._contract_context is not None:
-            contract_id, attempt_ordinal, retry_budget = self._contract_context
+            contract_id, attempt_ordinal, retry_budget, recovery_scope = self._contract_context
+        else:
+            recovery_scope = None
         self._contract_context = None
         try:
             decision = self.repository.inspect()
@@ -102,6 +106,8 @@ class AIDPRunner:
                 raise ValueError("executable inspection has no task")
             rework_count = 1 if decision.state is AIDPState.REWORK_REQUIRED else 0
             request = self.repository.build_execution_request(decision.task_id, rework_count=rework_count)
+            if recovery_scope is not None:
+                request = replace(request, allowed_scope=recovery_scope)
         except Exception as exc:
             reason = f"runner failed closed: {exc.__class__.__name__}"
             self._audit_safely(decision.state, decision.state, None, reason, decision, None)
