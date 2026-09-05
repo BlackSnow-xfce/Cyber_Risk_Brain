@@ -277,3 +277,7 @@ def test_infrastructure_lifecycle_runs_independently_of_product_gate(tmp_path: P
     payload = json.loads(events[0])["watch_iteration"]
     assert payload["trigger_status"] == "PUBLISHED"
     assert payload["lifecycle_status"] == "ADVANCED"
+    assert payload["product_task_id"] == "TASK-0131"
+    assert payload["product_state"] == "WAITING_FOR_PRODUCT_OWNER"
+    assert payload["infrastructure_task_id"] == "AIDP-INFRA-0002"
+    assert payload["infrastructure_state"] == "READY_FOR_ARCHITECT"

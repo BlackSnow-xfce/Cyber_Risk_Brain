@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -313,6 +314,12 @@ class GitInspector:
             paths.update(self._read_null_paths(*command))
         return tuple(sorted(paths))
 
+    def residual_digest(self) -> str:
+        payload = subprocess.check_output(
+            ("git", "diff", "--binary", "--no-ext-diff", "--no-renames"), cwd=self.root,
+        )
+        return hashlib.sha256(payload).hexdigest()
+
     def _read_null_paths(self, *args: str) -> tuple[str, ...]:
         output = subprocess.check_output(args, cwd=self.root)
         if not output:
@@ -429,11 +436,11 @@ class CodexExecutionService:
                 timeout_seconds=self.timeout_seconds,
             )
             if outcome.timed_out:
-                return self._result(request, start_commit, ExecutionStatus.ERROR, "Codex process timed out", ScopeCompliance.NOT_EVALUATED)
+                return self._terminated_result(request, start_commit, git, ExecutionStatus.TIMED_OUT, "Codex process timed out", outcome.process_identity)
             if outcome.error:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, outcome.error, ScopeCompliance.NOT_EVALUATED)
             if outcome.returncode != 0:
-                return self._result(request, start_commit, ExecutionStatus.ERROR, f"Codex exited with code {outcome.returncode}", ScopeCompliance.NOT_EVALUATED)
+                return self._terminated_result(request, start_commit, git, ExecutionStatus.PROCESS_CRASHED, f"Codex exited with code {outcome.returncode}", outcome.process_identity)
             if not _valid_json_lines(outcome.stdout):
                 return self._result(request, start_commit, ExecutionStatus.ERROR, "Codex returned malformed JSONL", ScopeCompliance.NOT_EVALUATED)
 
@@ -484,6 +491,25 @@ class CodexExecutionService:
             )
         finally:
             lock.release()
+
+    def _terminated_result(self, request, start_commit, git, status, reason, process_identity):
+        try:
+            changed = git.changed_files()
+            scope = AIDPRepository(Path(request.repository)).validate_scope(request, changed)
+            digest = git.residual_digest() if hasattr(git, "residual_digest") else hashlib.sha256(b"").hexdigest()
+            resulting = git.head()
+        except Exception as exc:
+            return self._result(request, start_commit, ExecutionStatus.HUMAN_ACTION_REQUIRED,
+                                f"post-termination inspection failed: {exc.__class__.__name__}",
+                                ScopeCompliance.NOT_EVALUATED, process_identity=process_identity,
+                                termination_confirmed=True)
+        if scope is not ScopeCompliance.COMPLIANT:
+            status, reason = ExecutionStatus.SCOPE_VIOLATION, "terminated execution changed files outside authorized scope"
+        elif changed:
+            status = ExecutionStatus.ABANDONED_DIRTY_WORKTREE
+        return self._result(request, start_commit, status, reason, scope, changed, resulting,
+                            residual_digest=digest, process_identity=process_identity,
+                            termination_confirmed=True)
 
     def _preflight(self, request: CodexExecutionRequest, root: Path, git: GitInspector) -> None:
         if root != Path(request.repository).resolve():
@@ -549,8 +575,11 @@ class CodexExecutionService:
         changed: tuple[str, ...] = (),
         resulting: str | None = None,
         validations: tuple[ValidationResult, ...] = (),
+        *, residual_digest: str | None = None, process_identity: str | None = None,
+        termination_confirmed: bool | None = None,
     ) -> CodexExecutionResult:
-        return CodexExecutionResult(request.execution_id, request.task_id, start_commit, resulting, changed, validations, status, reason, scope)
+        return CodexExecutionResult(request.execution_id, request.task_id, start_commit, resulting, changed, validations, status, reason, scope,
+                                    residual_digest, process_identity, termination_confirmed)
 
 
 class _StaleExecution(RuntimeError):

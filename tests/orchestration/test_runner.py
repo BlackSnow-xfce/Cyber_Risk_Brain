@@ -132,11 +132,16 @@ def test_execution_result_is_persisted_with_required_fields(tmp_path: Path) -> N
     result = runner.run_ready()
     payload = json.loads((store.root / "results" / "execution-1.json").read_text(encoding="utf-8"))
     persisted = payload["codex_execution_result"]
+    assert (store.root / "execution-attempts" / "execution-1.json").is_file()
+    assert store.execution_heartbeat("execution-1").state is ExecutionStatus.RUNNING
     assert payload["timestamp"]
     assert persisted == {
         "changed_files": ["aidp_orchestration/runner.py"],
         "execution_id": "execution-1",
-        "failure_reason": None,
+            "failure_reason": None,
+            "process_identity": None,
+            "process_termination_confirmed": None,
+            "residual_digest": None,
         "resulting_commit": "base",
         "scope_compliance": "COMPLIANT",
         "start_commit": "base",

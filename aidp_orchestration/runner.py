@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
@@ -17,7 +18,7 @@ from .contracts import (
     OrchestrationDecision,
     RunnerResult,
     RunnerStatus,
-    ExecutionStatus,
+    ExecutionStatus, ExecutionAttemptV1, ExecutionHeartbeatV1, canonical_digest,
     ScopeCompliance,
     utc_now,
 )
@@ -34,6 +35,8 @@ class RuntimeStore(Protocol):
     def persist_result(self, result: CodexExecutionResult) -> Path: ...
 
     def append_audit(self, event: AuditEvent) -> Path: ...
+    def persist_execution_attempt(self, attempt: ExecutionAttemptV1) -> Path: ...
+    def persist_execution_heartbeat(self, heartbeat: ExecutionHeartbeatV1) -> Path: ...
 
 
 class AIDPRunner:
@@ -57,8 +60,15 @@ class AIDPRunner:
             timeout_seconds=timeout_seconds,
         )
         self.runtime_store = runtime_store or LocalRuntimeStore.for_repository(repository.root)
+        self._contract_context: tuple[str, int, int] | None = None
 
-    def run_ready(self) -> RunnerResult:
+    def authorize_contract_context(self, contract_id: str, *, attempt_ordinal: int, retry_budget: int) -> None:
+        self._contract_context = (contract_id, attempt_ordinal, retry_budget)
+
+    def run_ready(self, contract_id: str | None = None, *, attempt_ordinal: int = 0, retry_budget: int = 1) -> RunnerResult:
+        if contract_id is None and self._contract_context is not None:
+            contract_id, attempt_ordinal, retry_budget = self._contract_context
+        self._contract_context = None
         try:
             decision = self.repository.inspect()
         except (OSError, RuntimeError) as exc:
@@ -97,6 +107,35 @@ class AIDPRunner:
             self._audit_safely(decision.state, decision.state, None, reason, decision, None)
             return RunnerResult(RunnerStatus.ERROR, decision.task_id, decision.state, None, reason)
 
+        if contract_id is None:
+            contract_id = canonical_digest({"task_id": request.task_id, "expected_head": request.expected_head, "scope": request.allowed_scope})
+        attempt = ExecutionAttemptV1(
+            "aidp-execution-attempt-v1", request.execution_id, contract_id, request.task_id,
+            getattr(self.repository, "task_namespace", "product"), canonical_digest(str(self.repository.root.resolve()).lower()),
+            request.expected_head, canonical_digest({"allowed": request.allowed_scope, "prohibited": request.prohibited_actions}),
+            attempt_ordinal, retry_budget, utc_now(),
+        )
+        try:
+            self.runtime_store.persist_execution_attempt(attempt)
+        except Exception as exc:
+            reason = f"execution attempt persistence failed: {exc.__class__.__name__}"
+            return RunnerResult(RunnerStatus.ERROR, decision.task_id, decision.state, None, reason)
+        stop_heartbeat = threading.Event()
+        heartbeat_failure: list[str] = []
+        def publish_heartbeat() -> None:
+            sequence, previous = 0, None
+            while not stop_heartbeat.is_set():
+                values = dict(schema_version="aidp-execution-heartbeat-v1", execution_id=request.execution_id,
+                              sequence=sequence, observed_at=utc_now(), state=ExecutionStatus.RUNNING,
+                              previous_digest=previous)
+                heartbeat = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+                try: self.runtime_store.persist_execution_heartbeat(heartbeat)
+                except Exception as exc:
+                    heartbeat_failure.append(exc.__class__.__name__); return
+                previous, sequence = heartbeat.heartbeat_digest, sequence + 1
+                stop_heartbeat.wait(5.0)
+        heartbeat_thread = threading.Thread(target=publish_heartbeat, daemon=True)
+        heartbeat_thread.start()
         shutdown_requested = False
         try:
             execution_result = self.execution_service.execute(request)
@@ -105,6 +144,10 @@ class AIDPRunner:
             execution_result = self._unexpected_result(request, decision.commit, "execution interrupted: KeyboardInterrupt")
         except Exception as exc:
             execution_result = self._unexpected_result(request, decision.commit, f"unexpected executor failure: {exc.__class__.__name__}")
+        finally:
+            stop_heartbeat.set(); heartbeat_thread.join(timeout=6.0)
+        if heartbeat_failure:
+            execution_result = self._unexpected_result(request, decision.commit, "execution heartbeat persistence failed")
 
         try:
             self.runtime_store.persist_result(execution_result)

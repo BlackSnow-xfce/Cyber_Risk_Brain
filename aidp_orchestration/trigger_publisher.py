@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 from dataclasses import asdict
 from datetime import datetime
@@ -257,10 +258,21 @@ class AIDPWatchOnce:
                 if (
                     self.consumption.current(candidate.contract_id)
                     not in {ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}
-                    or self._test_failure_retry_is_authorized(candidate)
+                    or self._recovery_is_authorized(candidate)
                 )
             )
             if not candidates:
+                blocked = tuple(candidate for candidate in items
+                                if self.repository.accepts_task_id(candidate.contract.task_id)
+                                and self.consumption.current(candidate.contract_id) is ConsumptionState.BLOCKED)
+                if blocked and self.repository.task_namespace == "infrastructure":
+                    candidate = blocked[-1]
+                    result = LocalRuntimeStore.for_repository(self.repository.root).latest_execution_result(candidate.contract.task_id)
+                    state = result.status.value if result is not None else "BLOCKED"
+                    return TriggerResult(
+                        TriggerStatus.BLOCKED, candidate.contract_id, ConsumptionState.BLOCKED,
+                        failure_reason=f"HUMAN_ACTION_REQUIRED: terminal infrastructure execution {state}",
+                    )
                 return TriggerResult(TriggerStatus.NO_ACTION, None, None)
             if len(candidates) != 1:
                 return TriggerResult(TriggerStatus.BLOCKED, None, None, failure_reason="contract inbox is ambiguous")
@@ -279,11 +291,11 @@ class AIDPWatchOnce:
             if self.execution_lock_active():
                 return TriggerResult(TriggerStatus.BLOCKED, item.contract_id, None, failure_reason="local execution lock is active")
             if recovering:
-                if not self._test_failure_retry_is_authorized(item):
+                if not self._recovery_is_authorized(item):
                     return TriggerResult(TriggerStatus.NO_ACTION, None, None)
                 self.consumption.append(
                     item.contract_id, ConsumptionState.RECOVERY_AUTHORIZED,
-                    "one infrastructure TEST_FAILED recovery authorized",
+                    "one bounded infrastructure recovery authorized",
                 )
                 lifecycle_state = ConsumptionState.RECOVERY_AUTHORIZED
             else:
@@ -297,6 +309,10 @@ class AIDPWatchOnce:
                     self.publisher.commit_materialization(writer_result)
                 self.consumption.append(item.contract_id, ConsumptionState.MATERIALIZED, "contract materialized")
                 lifecycle_state = ConsumptionState.MATERIALIZED
+            original_changed_reader = None
+            if recovering and hasattr(self.control_plane, "worktree_changed_files"):
+                original_changed_reader = self.control_plane.worktree_changed_files
+                self.control_plane.worktree_changed_files = lambda: ()
             decision = self.control_plane.decide()
             if decision.action is not ControlPlaneAction.EXECUTE:
                 return self._block(item.contract_id, ConsumptionState.MATERIALIZED, f"control plane decided {decision.action.value}", writer_result)
@@ -305,7 +321,12 @@ class AIDPWatchOnce:
             )
             self.consumption.append(item.contract_id, execution_state, "control plane authorized execution")
             lifecycle_state = execution_state
+            runner = getattr(self.control_plane, "runner", None)
+            if runner is not None and hasattr(runner, "authorize_contract_context"):
+                runner.authorize_contract_context(item.contract_id, attempt_ordinal=1, retry_budget=0)
             control_result = self.control_plane.run_once()
+            if original_changed_reader is not None:
+                self.control_plane.worktree_changed_files = original_changed_reader
             publish_result = self.publisher.publish(control_result, decision.branch)
             if publish_result.push_status != "PUSHED":
                 blocked = self._block(item.contract_id, ConsumptionState.EXECUTING, publish_result.failure_reason or "publication failed", writer_result, control_result, publish_result)
@@ -325,6 +346,9 @@ class AIDPWatchOnce:
             if item is not None and lifecycle_state not in {None, ConsumptionState.BLOCKED, ConsumptionState.REVIEW_PUBLISHED}:
                 return self._block_safely(item.contract_id, lifecycle_state, reason, writer_result, control_result, publish_result)
             return TriggerResult(TriggerStatus.ERROR, None, None, failure_reason=reason)
+        finally:
+            if 'original_changed_reader' in locals() and original_changed_reader is not None:
+                self.control_plane.worktree_changed_files = original_changed_reader
 
     def _block(self, contract_id: str, state: ConsumptionState, reason: str, writer_result=None, control_result=None, publish_result=None) -> TriggerResult:
         self.consumption.append(contract_id, ConsumptionState.BLOCKED, reason)
@@ -346,6 +370,54 @@ class AIDPWatchOnce:
         ).strip()
         resolved = Path(lock_path) if Path(lock_path).is_absolute() else self.repository.root / lock_path
         return resolved.exists()
+
+    def _recovery_is_authorized(self, item: ContractInboxItem) -> bool:
+        return self._test_failure_retry_is_authorized(item) or self._abandoned_rework_recovery_is_authorized(item)
+
+    def _abandoned_rework_recovery_is_authorized(self, item: ContractInboxItem) -> bool:
+        if (not self.allow_test_failure_retry or self.repository.task_namespace != "infrastructure"
+                or not isinstance(item.contract, ReworkContract)):
+            return False
+        # One-time bootstrap authority frozen by contract 18615075... . Future incidents
+        # require a separately persisted typed recovery authorization.
+        expected = {
+            "contract_id": "4ece65a0224b1a3978b266d6663b10eeef27479180f7c9b4300599414dc684f8",
+            "execution_id": "381f8c6d-8db2-447d-bfc3-da6b61ddad75",
+            "head": "7d2751ea9ca5a103649e3248ad7487278dc3c3bd",
+            "architect_result": "fadfb7535c9ced7b5ca68970557bffbf23bc9d7ed9f87de8cafabb3712f7a40c",
+            "residual_digest": "ecfe59b8f3efc7e656528829a5b08a9d946b7fefaaeaf17c52c794a4405e5efa",
+        }
+        try:
+            events = self.consumption.events(item.contract_id)
+            if (item.contract_id != expected["contract_id"] or not events
+                    or events[-1].state is not ConsumptionState.BLOCKED
+                    or any(event.state is ConsumptionState.RECOVERY_AUTHORIZED for event in events)):
+                return False
+            decision = self.repository.inspect()
+            if (decision.task_id != item.contract.task_id or decision.state is not AIDPState.REWORK_REQUIRED
+                    or decision.commit != expected["head"] or item.contract.expected_head != expected["head"]):
+                return False
+            result = LocalRuntimeStore.for_repository(self.repository.root).latest_execution_result(item.contract.task_id)
+            if (result is None or result.execution_id != expected["execution_id"]
+                    or result.start_commit != expected["head"]
+                    or result.status not in {ExecutionStatus.ERROR, ExecutionStatus.TIMED_OUT, ExecutionStatus.ABANDONED_DIRTY_WORKTREE}
+                    or result.failure_reason != "Codex process timed out"):
+                return False
+            changed = GitInspector(self.repository.root).changed_files()
+            if changed != tuple(sorted(item.contract.allowed_rework_scope)):
+                return False
+            payload = subprocess.check_output(
+                ("git", "diff", "--binary", "--no-ext-diff", "--", *changed), cwd=self.repository.root,
+            )
+            if hashlib.sha256(payload).hexdigest() != expected["residual_digest"]:
+                return False
+            runtime = LocalRuntimeStore.for_repository(self.repository.root).root
+            if not (runtime / "architect-review-results" / f"{expected['architect_result']}.json").is_file():
+                return False
+            request = self.repository.build_execution_request(item.contract.task_id, rework_count=item.contract.review_iteration)
+            return self.repository.validate_scope(request, changed) is ScopeCompliance.COMPLIANT
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
+            return False
 
     def _test_failure_retry_is_authorized(self, item: ContractInboxItem) -> bool:
         if (

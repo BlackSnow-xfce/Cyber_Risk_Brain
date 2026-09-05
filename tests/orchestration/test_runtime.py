@@ -1,19 +1,38 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
 from aidp_orchestration.architect_review import create_review_request, create_review_result
 from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, CodexExecutionResult, ExecutionStatus,
-    ReworkContract, ScopeCompliance, ValidationResult,
+    ReworkContract, ScopeCompliance, ValidationResult, ExecutionAttemptV1,
+    ExecutionHeartbeatV1, canonical_digest,
 )
 from aidp_orchestration.runtime import LocalRuntimeStore
 
 
 NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+
+def test_execution_attempt_is_immutable_and_heartbeat_is_chained(tmp_path) -> None:
+    store = LocalRuntimeStore(tmp_path)
+    attempt = ExecutionAttemptV1("aidp-execution-attempt-v1", "exec", "contract", "AIDP-INFRA-0002",
+                                 "infrastructure", "repo", "1" * 40, "2" * 64, 0, 1, NOW)
+    store.persist_execution_attempt(attempt)
+    store.persist_execution_attempt(attempt)
+    values = dict(schema_version="aidp-execution-heartbeat-v1", execution_id="exec", sequence=0,
+                  observed_at=NOW, state=ExecutionStatus.RUNNING, previous_digest=None)
+    first = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+    store.persist_execution_heartbeat(first)
+    values.update(sequence=1, observed_at=NOW + timedelta(seconds=5), previous_digest=first.heartbeat_digest)
+    second = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+    store.persist_execution_heartbeat(second)
+    assert store.execution_heartbeat("exec") == second
+    with pytest.raises(ValueError, match="replay or rollback"):
+        store.persist_execution_heartbeat(first)
 
 
 def test_latest_execution_result_preserves_authoritative_failure_evidence(tmp_path) -> None:

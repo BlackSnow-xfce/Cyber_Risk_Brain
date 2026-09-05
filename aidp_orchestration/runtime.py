@@ -17,7 +17,8 @@ from .contracts import (
     ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
     ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
     ExternalStatusProjectionV1, ExternalWatcherHealth, ExternalWatcherOutcome,
-    WatcherHeartbeatV1, ExecutionStatus, ScopeCompliance, ValidationResult,
+    WatcherHeartbeatV1, ExecutionAttemptV1, ExecutionHeartbeatV1,
+    ExecutionStatus, ScopeCompliance, ValidationResult,
     canonical_digest, utc_now,
 )
 
@@ -45,6 +46,36 @@ class LocalRuntimeStore:
         with path.open("x", encoding="utf-8") as stream:
             stream.write(_json(payload) + "\n")
         return path
+
+    def persist_execution_attempt(self, attempt: ExecutionAttemptV1) -> Path:
+        path = self.root / "execution-attempts" / f"{attempt.execution_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        serialized = _json({"execution_attempt": attempt}) + "\n"
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as stream: stream.write(serialized)
+        except FileExistsError:
+            if path.read_text(encoding="utf-8") != serialized: raise RuntimeError("execution attempt identity collision") from None
+        return path
+
+    def persist_execution_heartbeat(self, heartbeat: ExecutionHeartbeatV1) -> Path:
+        path = self.root / "execution-heartbeats" / f"{heartbeat.execution_id}.json"
+        previous = self.execution_heartbeat(heartbeat.execution_id)
+        if previous is None:
+            if heartbeat.sequence != 0 or heartbeat.previous_digest is not None: raise ValueError("first execution heartbeat is invalid")
+        elif heartbeat.sequence != previous.sequence + 1 or heartbeat.previous_digest != previous.heartbeat_digest or heartbeat.observed_at < previous.observed_at:
+            raise ValueError("execution heartbeat replay or rollback")
+        return self._atomic_projection(path, _json({"execution_heartbeat": heartbeat}))
+
+    def execution_heartbeat(self, execution_id: str) -> ExecutionHeartbeatV1 | None:
+        path = self.root / "execution-heartbeats" / f"{execution_id}.json"
+        if not path.exists(): return None
+        value = self._read_exact(path, "execution_heartbeat")
+        return ExecutionHeartbeatV1(
+            schema_version=_string(value,"schema_version"), execution_id=_string(value,"execution_id"),
+            sequence=_integer(value,"sequence"), observed_at=datetime.fromisoformat(_string(value,"observed_at")),
+            state=ExecutionStatus(_string(value,"state")), previous_digest=value.get("previous_digest"),
+            heartbeat_digest=_string(value,"heartbeat_digest"),
+        )
 
     def latest_execution_result(self, task_id: str) -> CodexExecutionResult | None:
         directory = self.root / "results"
@@ -75,6 +106,9 @@ class LocalRuntimeStore:
                 status=ExecutionStatus(_string(value, "status")),
                 failure_reason=(str(value["failure_reason"]) if value.get("failure_reason") is not None else None),
                 scope_compliance=ScopeCompliance(_string(value, "scope_compliance")),
+                residual_digest=(str(value["residual_digest"]) if value.get("residual_digest") is not None else None),
+                process_identity=(str(value["process_identity"]) if value.get("process_identity") is not None else None),
+                process_termination_confirmed=(value.get("process_termination_confirmed") if isinstance(value.get("process_termination_confirmed"), bool) else None),
             )
             if len(result.validation_results) != len(validations):
                 raise ValueError("execution validation evidence is malformed")
@@ -707,6 +741,13 @@ def _string(value: dict[str, object], name: str) -> str:
     item = value.get(name)
     if not isinstance(item, str):
         raise ValueError(f"{name} must be a string")
+    return item
+
+
+def _integer(value: dict[str, object], name: str) -> int:
+    item = value.get(name)
+    if not isinstance(item, int) or isinstance(item, bool):
+        raise ValueError(f"{name} must be an integer")
     return item
 
 
