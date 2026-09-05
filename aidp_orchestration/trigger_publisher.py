@@ -16,7 +16,8 @@ from .contracts import (
     AIDPState, ArchitectTaskContract, ConsumptionEvent, ConsumptionState,
     ContractInboxItem, ControlPlaneAction, ControlPlaneResult, ExecutionStatus,
     PublishResult, ReworkContract, ReviewEnvelope, ScopeCompliance, TriggerResult,
-    TriggerStatus, WriterAction, WriterResult, utc_now,
+    TriggerStatus, WriterAction, WriterResult, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
+    canonical_digest, utc_now,
 )
 from .control_plane import AIDPControlPlane
 from .executor import GitInspector
@@ -293,6 +294,11 @@ class AIDPWatchOnce:
             if recovering:
                 if not self._recovery_is_authorized(item):
                     return TriggerResult(TriggerStatus.NO_ACTION, None, None)
+                typed_authority = self._typed_recovery_authorization(item)
+                if typed_authority is not None:
+                    LocalRuntimeStore.for_repository(self.repository.root).claim_recovery_authorization(
+                        typed_authority.authorization_id, typed_authority.failed_execution_id,
+                    )
                 self.consumption.append(
                     item.contract_id, ConsumptionState.RECOVERY_AUTHORIZED,
                     "one bounded infrastructure recovery authorized",
@@ -375,7 +381,90 @@ class AIDPWatchOnce:
         return resolved.exists()
 
     def _recovery_is_authorized(self, item: ContractInboxItem) -> bool:
-        return self._test_failure_retry_is_authorized(item) or self._abandoned_rework_recovery_is_authorized(item)
+        return bool(
+            self._typed_recovery_authorization(item)
+            or self._test_failure_retry_is_authorized(item)
+            or self._abandoned_rework_recovery_is_authorized(item)
+        )
+
+    def _typed_recovery_authorization(
+        self, item: ContractInboxItem,
+    ) -> RecoveryAuthorizationV1 | LegacyRecoveryAuthorizationV1 | None:
+        if not self.allow_test_failure_retry or self.repository.task_namespace != "infrastructure":
+            return None
+        try:
+            events = self.consumption.events(item.contract_id)
+            if (not events or events[-1].state is not ConsumptionState.BLOCKED
+                    or any(event.state is ConsumptionState.RECOVERY_AUTHORIZED for event in events)):
+                return None
+            runtime = LocalRuntimeStore.for_repository(self.repository.root)
+            result = runtime.latest_execution_result(item.contract.task_id)
+            decision = self.repository.inspect()
+            changed = GitInspector(self.repository.root).changed_files()
+            digest = GitInspector(self.repository.root).residual_digest()
+            if result is None or not changed:
+                return None
+            matches: list[RecoveryAuthorizationV1 | LegacyRecoveryAuthorizationV1] = []
+            for authority in runtime.recovery_authorizations():
+                common = (
+                    authority.task_id == item.contract.task_id
+                and authority.failed_execution_id == result.execution_id
+                and authority.expected_head == item.contract.expected_head == decision.commit
+                and authority.start_head == result.start_commit
+                and authority.authorizer_identity == item.contract_id
+                and authority.retry_budget == 1
+                and decision.task_id == item.contract.task_id
+                and not runtime.recovery_authorization_claimed(authority.authorization_id)
+                )
+                if not common:
+                    continue
+                if isinstance(authority, RecoveryAuthorizationV1):
+                    if (
+                        authority.terminal_status is result.status
+                        and authority.failure_classification == result.failure_reason
+                        and authority.residual_paths == changed == result.changed_files
+                        and authority.residual_digest == digest == result.residual_digest
+                        and authority.authorizing_evidence_id == canonical_digest(result)
+                    ):
+                        matches.append(authority)
+                    continue
+                if not isinstance(item.contract, ReworkContract):
+                    continue
+                attempt = runtime.execution_attempt(result.execution_id)
+                heartbeat = runtime.execution_heartbeat(result.execution_id)
+                if (
+                    result.status is ExecutionStatus.ERROR
+                    and result.failure_reason == "execution heartbeat persistence failed"
+                    and result.resulting_commit is None
+                    and result.changed_files == ()
+                    and result.validation_results == ()
+                    and result.scope_compliance is ScopeCompliance.NOT_EVALUATED
+                    and result.residual_digest is None
+                    and result.process_identity is None
+                    and result.process_termination_confirmed is None
+                    and authority.terminal_result_digest == canonical_digest(result)
+                    and attempt.execution_id == result.execution_id
+                    and attempt.task_id == result.task_id
+                    and attempt.contract_id == item.contract_id
+                    and attempt.expected_head == authority.expected_head
+                    and authority.execution_attempt_digest == canonical_digest(attempt)
+                    and heartbeat is not None
+                    and heartbeat.execution_id == result.execution_id
+                    and authority.latest_heartbeat_digest == heartbeat.heartbeat_digest
+                    and authority.residual_paths == changed
+                    and authority.residual_digest == digest
+                    and authority.prior_rework_authority_id != authority.authorization_id
+                    and runtime.rework_contract_id(
+                        item.contract.task_id, item.contract.review_iteration,
+                        expected_head=item.contract.expected_head,
+                    ) == item.contract_id
+                    and item.contract.canonical_id(authority.prior_rework_authority_id) == item.contract_id
+                    and changed == tuple(sorted(item.contract.allowed_rework_scope))
+                ):
+                    matches.append(authority)
+            return matches[0] if len(matches) == 1 else None
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
+            return None
 
     def _abandoned_rework_recovery_is_authorized(self, item: ContractInboxItem) -> bool:
         if (not self.allow_test_failure_retry or self.repository.task_namespace != "infrastructure"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import threading
 from dataclasses import asdict
 from datetime import datetime
@@ -19,7 +20,8 @@ from .contracts import (
     OrchestrationDecision,
     RunnerResult,
     RunnerStatus,
-    ExecutionStatus, ExecutionAttemptV1, ExecutionHeartbeatV1, canonical_digest,
+    ExecutionStatus, ExecutionAttemptV1, ExecutionHeartbeatV1,
+    ExecutionSupervisionFailureV1, canonical_digest,
     ScopeCompliance,
     utc_now,
 )
@@ -29,7 +31,8 @@ from .runtime import LocalRuntimeStore
 
 
 class ExecutionService(Protocol):
-    def execute(self, request: CodexExecutionRequest) -> CodexExecutionResult: ...
+    def execute(self, request: CodexExecutionRequest,
+                supervision_event: threading.Event | None = None) -> CodexExecutionResult: ...
 
 
 class RuntimeStore(Protocol):
@@ -38,6 +41,7 @@ class RuntimeStore(Protocol):
     def append_audit(self, event: AuditEvent) -> Path: ...
     def persist_execution_attempt(self, attempt: ExecutionAttemptV1) -> Path: ...
     def persist_execution_heartbeat(self, heartbeat: ExecutionHeartbeatV1) -> Path: ...
+    def persist_supervision_failure(self, failure: ExecutionSupervisionFailureV1) -> Path: ...
 
 
 class AIDPRunner:
@@ -127,6 +131,7 @@ class AIDPRunner:
             reason = f"execution attempt persistence failed: {exc.__class__.__name__}"
             return RunnerResult(RunnerStatus.ERROR, decision.task_id, decision.state, None, reason)
         stop_heartbeat = threading.Event()
+        supervision_failure = threading.Event()
         heartbeat_failure: list[str] = []
         def publish_heartbeat() -> None:
             sequence, previous = 0, None
@@ -137,14 +142,35 @@ class AIDPRunner:
                 heartbeat = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
                 try: self.runtime_store.persist_execution_heartbeat(heartbeat)
                 except Exception as exc:
-                    heartbeat_failure.append(exc.__class__.__name__); return
+                    exception_class = exc.__class__.__name__
+                    heartbeat_failure.append(exception_class)
+                    values = dict(
+                        schema_version="aidp-execution-supervision-failure-v1",
+                        execution_id=request.execution_id,
+                        exception_class=exception_class,
+                        observed_at=utc_now(),
+                    )
+                    failure = ExecutionSupervisionFailureV1(
+                        failure_id=canonical_digest(values), **values,
+                    )
+                    try:
+                        self.runtime_store.persist_supervision_failure(failure)
+                    except Exception:
+                        pass
+                    supervision_failure.set()
+                    return
                 previous, sequence = heartbeat.heartbeat_digest, sequence + 1
                 stop_heartbeat.wait(5.0)
         heartbeat_thread = threading.Thread(target=publish_heartbeat, daemon=True)
         heartbeat_thread.start()
         shutdown_requested = False
         try:
-            execution_result = self.execution_service.execute(request)
+            parameters = inspect.signature(self.execution_service.execute).parameters
+            execution_result = (
+                self.execution_service.execute(request, supervision_event=supervision_failure)
+                if "supervision_event" in parameters
+                else self.execution_service.execute(request)
+            )
         except KeyboardInterrupt:
             shutdown_requested = True
             execution_result = self._unexpected_result(request, decision.commit, "execution interrupted: KeyboardInterrupt")
@@ -153,7 +179,11 @@ class AIDPRunner:
         finally:
             stop_heartbeat.set(); heartbeat_thread.join(timeout=6.0)
         if heartbeat_failure:
-            execution_result = self._unexpected_result(request, decision.commit, "execution heartbeat persistence failed")
+            execution_result = replace(
+                execution_result,
+                status=ExecutionStatus.SUPERVISION_FAILED,
+                failure_reason=f"execution heartbeat persistence failed: {heartbeat_failure[0]}",
+            )
 
         try:
             self.runtime_store.persist_result(execution_result)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -237,3 +239,64 @@ def test_keyboard_interrupt_is_persisted_before_shutdown_is_requested(tmp_path: 
     assert result.execution_result.status is ExecutionStatus.ERROR
     assert (store.root / "results/execution-1.json").is_file()
     assert (store.root / "audit.jsonl").is_file()
+
+
+def test_heartbeat_failure_cancels_active_execution_and_preserves_truthful_evidence(tmp_path: Path) -> None:
+    class FailingHeartbeatStore(LocalRuntimeStore):
+        def persist_execution_heartbeat(self, heartbeat):
+            raise OSError("secret must not persist")
+
+    class CooperativeService:
+        def execute(self, request, supervision_event=None):
+            assert supervision_event.wait(1.0)
+            return CodexExecutionResult(
+                request.execution_id, request.task_id, request.expected_head, "resulting-head",
+                ("aidp_orchestration/runner.py",),
+                (ValidationResult("pytest", True, "exit_code=0"),),
+                ExecutionStatus.ABANDONED_DIRTY_WORKTREE, "terminated after supervision loss",
+                ScopeCompliance.COMPLIANT, "a" * 64, "pid:7:started_ns:9", True,
+            )
+
+    repository = FakeRepository(tmp_path, AIDPState.READY_FOR_CODEX)
+    store = FailingHeartbeatStore(tmp_path / "runtime")
+    started = time.monotonic()
+    result = AIDPRunner(repository, execution_service=CooperativeService(), runtime_store=store).run_ready()
+    assert time.monotonic() - started < 2.0
+    execution = result.execution_result
+    assert execution.status is ExecutionStatus.SUPERVISION_FAILED
+    assert execution.failure_reason == "execution heartbeat persistence failed: OSError"
+    assert execution.changed_files == ("aidp_orchestration/runner.py",)
+    assert execution.validation_results == (ValidationResult("pytest", True, "exit_code=0"),)
+    assert execution.resulting_commit == "resulting-head"
+    assert execution.residual_digest == "a" * 64
+    assert execution.process_identity == "pid:7:started_ns:9"
+    assert execution.process_termination_confirmed is True
+    evidence = tuple((store.root / "execution-supervision-failures").glob("*.json"))
+    assert len(evidence) == 1
+    persisted = evidence[0].read_text(encoding="utf-8")
+    assert '"exception_class":"OSError"' in persisted
+    assert "secret must not persist" not in persisted
+    assert result.intended_next_state is AIDPState.BLOCKED
+
+
+def test_heartbeat_failure_concurrent_with_finalization_is_fail_closed(tmp_path: Path) -> None:
+    release = threading.Event()
+
+    class ConcurrentStore(LocalRuntimeStore):
+        def persist_execution_heartbeat(self, heartbeat):
+            assert release.wait(1.0)
+            raise RuntimeError("private detail")
+
+    class ConcurrentService:
+        def execute(self, request, supervision_event=None):
+            release.set()
+            supervision_event.wait(1.0)
+            return successful_result(request)
+
+    repository = FakeRepository(tmp_path, AIDPState.READY_FOR_CODEX)
+    store = ConcurrentStore(tmp_path / "runtime")
+    result = AIDPRunner(repository, execution_service=ConcurrentService(), runtime_store=store).run_ready()
+    assert result.execution_result.status is ExecutionStatus.SUPERVISION_FAILED
+    assert not result.execution_result.is_review_ready
+    assert result.execution_result.changed_files == ("aidp_orchestration/runner.py",)
+    assert result.execution_result.failure_reason.endswith("RuntimeError")

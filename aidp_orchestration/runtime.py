@@ -18,6 +18,7 @@ from .contracts import (
     ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
     ExternalStatusProjectionV1, ExternalWatcherHealth, ExternalWatcherOutcome,
     WatcherHeartbeatV1, ExecutionAttemptV1, ExecutionHeartbeatV1,
+    ExecutionSupervisionFailureV1, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
     ExecutionStatus, ScopeCompliance, ValidationResult,
     canonical_digest, utc_now,
 )
@@ -65,6 +66,155 @@ class LocalRuntimeStore:
         elif heartbeat.sequence != previous.sequence + 1 or heartbeat.previous_digest != previous.heartbeat_digest or heartbeat.observed_at < previous.observed_at:
             raise ValueError("execution heartbeat replay or rollback")
         return self._atomic_projection(path, _json({"execution_heartbeat": heartbeat}))
+
+    def persist_supervision_failure(self, failure: ExecutionSupervisionFailureV1) -> Path:
+        return self._persist_immutable(
+            self.root / "execution-supervision-failures" / f"{failure.failure_id}.json",
+            _json({"execution_supervision_failure": failure}), failure.failure_id,
+        )
+
+    def persist_recovery_authorization(
+        self, authorization: RecoveryAuthorizationV1 | LegacyRecoveryAuthorizationV1,
+    ) -> Path:
+        return self._persist_immutable(
+            self.root / "recovery-authorizations" / f"{authorization.authorization_id}.json",
+            _json({"recovery_authorization": authorization}), authorization.authorization_id,
+        )
+
+    def recovery_authorizations(
+        self,
+    ) -> tuple[RecoveryAuthorizationV1 | LegacyRecoveryAuthorizationV1, ...]:
+        directory = self.root / "recovery-authorizations"
+        if not directory.exists():
+            return ()
+        return tuple(self._recovery_authorization(path) for path in sorted(directory.glob("*.json")))
+
+    def claim_recovery_authorization(self, authorization_id: str, execution_id: str) -> Path:
+        _identity(authorization_id, "authorization_id")
+        path = self.root / "recovery-authorization-claims" / f"{authorization_id}.json"
+        if path.exists():
+            raise RuntimeError("recovery authorization replay")
+        return self._persist_immutable(path, _json({"recovery_authorization_claim": {
+            "authorization_id": authorization_id,
+            "execution_id": execution_id,
+            "claimed_at": utc_now(),
+        }}), authorization_id)
+
+    def recovery_authorization_claimed(self, authorization_id: str) -> bool:
+        _identity(authorization_id, "authorization_id")
+        return (self.root / "recovery-authorization-claims" / f"{authorization_id}.json").is_file()
+
+    def _recovery_authorization(
+        self, path: Path,
+    ) -> RecoveryAuthorizationV1 | LegacyRecoveryAuthorizationV1:
+        value = self._read_exact(path, "recovery_authorization")
+        if value.get("schema_version") == "aidp-legacy-recovery-authorization-v1":
+            required = {
+                "schema_version", "authorization_id", "task_id", "failed_execution_id",
+                "expected_head", "start_head", "terminal_result_digest",
+                "execution_attempt_digest", "latest_heartbeat_digest", "residual_paths", "residual_digest",
+                "prior_rework_authority_id", "authorizer_identity", "retry_budget", "created_at",
+            }
+            if set(value) != required:
+                raise ValueError("legacy recovery authorization fields do not match schema")
+            authorization = LegacyRecoveryAuthorizationV1(
+                schema_version=_string(value, "schema_version"),
+                authorization_id=_string(value, "authorization_id"),
+                task_id=_string(value, "task_id"),
+                failed_execution_id=_string(value, "failed_execution_id"),
+                expected_head=_string(value, "expected_head"),
+                start_head=_string(value, "start_head"),
+                terminal_result_digest=_string(value, "terminal_result_digest"),
+                execution_attempt_digest=_string(value, "execution_attempt_digest"),
+                latest_heartbeat_digest=_string(value, "latest_heartbeat_digest"),
+                residual_paths=_string_tuple(value.get("residual_paths")),
+                residual_digest=_string(value, "residual_digest"),
+                prior_rework_authority_id=_string(value, "prior_rework_authority_id"),
+                authorizer_identity=_string(value, "authorizer_identity"),
+                retry_budget=_integer(value, "retry_budget"),
+                created_at=datetime.fromisoformat(_string(value, "created_at")),
+            )
+            if path.stem != authorization.authorization_id:
+                raise ValueError("recovery authorization filename identity mismatch")
+            return authorization
+        required = {
+            "schema_version", "authorization_id", "task_id", "failed_execution_id",
+            "terminal_status", "failure_classification", "expected_head", "start_head",
+            "residual_paths", "residual_digest", "authorizing_evidence_id",
+            "authorizer_identity", "retry_budget", "created_at",
+        }
+        if set(value) != required:
+            raise ValueError("recovery authorization fields do not match schema")
+        authorization = RecoveryAuthorizationV1(
+            schema_version=_string(value, "schema_version"),
+            authorization_id=_string(value, "authorization_id"),
+            task_id=_string(value, "task_id"),
+            failed_execution_id=_string(value, "failed_execution_id"),
+            terminal_status=ExecutionStatus(_string(value, "terminal_status")),
+            failure_classification=_string(value, "failure_classification"),
+            expected_head=_string(value, "expected_head"),
+            start_head=_string(value, "start_head"),
+            residual_paths=_string_tuple(value.get("residual_paths")),
+            residual_digest=_string(value, "residual_digest"),
+            authorizing_evidence_id=_string(value, "authorizing_evidence_id"),
+            authorizer_identity=_string(value, "authorizer_identity"),
+            retry_budget=_integer(value, "retry_budget"),
+            created_at=datetime.fromisoformat(_string(value, "created_at")),
+        )
+        if path.stem != authorization.authorization_id:
+            raise ValueError("recovery authorization filename identity mismatch")
+        return authorization
+
+    def execution_attempt(self, execution_id: str) -> ExecutionAttemptV1:
+        if not execution_id.strip() or "\n" in execution_id or "\r" in execution_id:
+            raise ValueError("execution_id must be a non-empty single line")
+        value = self._read_exact(
+            self.root / "execution-attempts" / f"{execution_id}.json", "execution_attempt",
+        )
+        required = {
+            "schema_version", "execution_id", "contract_id", "task_id", "namespace",
+            "repository_id", "expected_head", "scope_digest", "attempt_ordinal",
+            "retry_budget", "started_at", "process_identity",
+        }
+        if set(value) != required:
+            raise ValueError("execution attempt fields do not match schema")
+        attempt = ExecutionAttemptV1(
+            schema_version=_string(value, "schema_version"),
+            execution_id=_string(value, "execution_id"),
+            contract_id=_string(value, "contract_id"),
+            task_id=_string(value, "task_id"),
+            namespace=_string(value, "namespace"),
+            repository_id=_string(value, "repository_id"),
+            expected_head=_string(value, "expected_head"),
+            scope_digest=_string(value, "scope_digest"),
+            attempt_ordinal=_integer(value, "attempt_ordinal"),
+            retry_budget=_integer(value, "retry_budget"),
+            started_at=datetime.fromisoformat(_string(value, "started_at")),
+            process_identity=(str(value["process_identity"]) if value.get("process_identity") is not None else None),
+        )
+        if attempt.execution_id != execution_id:
+            raise ValueError("execution attempt filename identity mismatch")
+        return attempt
+
+    def supervision_failure(self, failure_id: str) -> ExecutionSupervisionFailureV1:
+        _identity(failure_id, "failure_id")
+        value = self._read_exact(
+            self.root / "execution-supervision-failures" / f"{failure_id}.json",
+            "execution_supervision_failure",
+        )
+        required = {"schema_version", "failure_id", "execution_id", "exception_class", "observed_at"}
+        if set(value) != required:
+            raise ValueError("supervision failure fields do not match schema")
+        failure = ExecutionSupervisionFailureV1(
+            schema_version=_string(value, "schema_version"),
+            failure_id=_string(value, "failure_id"),
+            execution_id=_string(value, "execution_id"),
+            exception_class=_string(value, "exception_class"),
+            observed_at=datetime.fromisoformat(_string(value, "observed_at")),
+        )
+        if failure.failure_id != failure_id:
+            raise ValueError("supervision failure filename identity mismatch")
+        return failure
 
     def execution_heartbeat(self, execution_id: str) -> ExecutionHeartbeatV1 | None:
         path = self.root / "execution-heartbeats" / f"{execution_id}.json"

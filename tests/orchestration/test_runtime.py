@@ -5,11 +5,12 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
+import aidp_orchestration.runtime as runtime_module
 from aidp_orchestration.architect_review import create_review_request, create_review_result
 from aidp_orchestration.contracts import (
     ArchitectFinding, ArchitectReviewDisposition, ArchitectReviewProvenance, CodexExecutionResult, ExecutionStatus,
     ReworkContract, ScopeCompliance, ValidationResult, ExecutionAttemptV1,
-    ExecutionHeartbeatV1, canonical_digest,
+    ExecutionHeartbeatV1, RecoveryAuthorizationV1, canonical_digest,
 )
 from aidp_orchestration.runtime import LocalRuntimeStore
 
@@ -33,6 +34,69 @@ def test_execution_attempt_is_immutable_and_heartbeat_is_chained(tmp_path) -> No
     assert store.execution_heartbeat("exec") == second
     with pytest.raises(ValueError, match="replay or rollback"):
         store.persist_execution_heartbeat(first)
+
+
+def _recovery_authorization(**changes) -> RecoveryAuthorizationV1:
+    values = dict(
+        schema_version="aidp-recovery-authorization-v1",
+        task_id="AIDP-INFRA-0002", failed_execution_id="failed-execution",
+        terminal_status=ExecutionStatus.SUPERVISION_FAILED,
+        failure_classification="execution heartbeat persistence failed: OSError",
+        expected_head="1" * 40, start_head="1" * 40,
+        residual_paths=("aidp_orchestration/runner.py",), residual_digest="2" * 64,
+        authorizing_evidence_id="3" * 64, authorizer_identity="contract-id",
+        retry_budget=1, created_at=NOW,
+    )
+    values.update(changes)
+    return RecoveryAuthorizationV1(
+        authorization_id=canonical_digest(values), **values,
+    )
+
+
+def test_recovery_authority_is_immutable_canonical_and_one_shot(tmp_path) -> None:
+    store = LocalRuntimeStore(tmp_path)
+    authority = _recovery_authorization()
+    path = store.persist_recovery_authorization(authority)
+    assert store.persist_recovery_authorization(authority) == path
+    assert store.recovery_authorizations() == (authority,)
+    store.claim_recovery_authorization(authority.authorization_id, "retry-execution")
+    assert store.recovery_authorization_claimed(authority.authorization_id)
+    with pytest.raises(RuntimeError, match="replay"):
+        store.claim_recovery_authorization(authority.authorization_id, "replay")
+
+
+@pytest.mark.parametrize("mutation", ("digest", "head", "paths", "budget", "timestamp", "filename"))
+def test_recovery_authority_rejects_tampering_and_invalid_budget(tmp_path, mutation) -> None:
+    store = LocalRuntimeStore(tmp_path)
+    authority = _recovery_authorization()
+    path = store.persist_recovery_authorization(authority)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    payload = value["recovery_authorization"]
+    if mutation == "digest": payload["residual_digest"] = "4" * 64
+    elif mutation == "head": payload["expected_head"] = "5" * 40
+    elif mutation == "paths": payload["residual_paths"] = ["other.py"]
+    elif mutation == "budget": payload["retry_budget"] = 0
+    elif mutation == "timestamp": payload["created_at"] = "2026-09-01T00:00:00"
+    elif mutation == "filename": path = path.rename(path.with_name(f"{'f' * 64}.json"))
+    if mutation != "filename":
+        path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(ValueError):
+        store.recovery_authorizations()
+
+
+def test_heartbeat_atomic_projection_failure_preserves_previous_record(tmp_path, monkeypatch) -> None:
+    store = LocalRuntimeStore(tmp_path)
+    values = dict(schema_version="aidp-execution-heartbeat-v1", execution_id="exec", sequence=0,
+                  observed_at=NOW, state=ExecutionStatus.RUNNING, previous_digest=None)
+    first = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+    store.persist_execution_heartbeat(first)
+    values.update(sequence=1, observed_at=NOW + timedelta(seconds=5), previous_digest=first.heartbeat_digest)
+    second = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+    monkeypatch.setattr(runtime_module.os, "replace", lambda *_: (_ for _ in ()).throw(OSError("injected")))
+    with pytest.raises(OSError, match="injected"):
+        store.persist_execution_heartbeat(second)
+    assert store.execution_heartbeat("exec") == first
+    assert not (store.root / "execution-heartbeats/exec.json.tmp").exists()
 
 
 def test_latest_execution_result_preserves_authoritative_failure_evidence(tmp_path) -> None:

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ from aidp_orchestration.contracts import (
 from aidp_orchestration.executor import (
     CodexExecutionService,
     ExecutionLock,
+    GitInspector,
     ProcessOutcome,
     SubprocessRunner,
     WindowsVisibleCodexRunner,
@@ -481,6 +483,45 @@ def test_timeout_records_authorized_residual_and_proven_termination(tmp_path: Pa
     assert result.changed_files == ("aidp_orchestration/executor.py",)
     assert result.residual_digest == "a" * 64
     assert result.process_termination_confirmed is True
+
+
+def test_supervision_cancellation_preserves_residual_and_process_identity(tmp_path: Path) -> None:
+    signal = threading.Event()
+    signal.set()
+
+    class SupervisedRunner:
+        def run(self, args, *, cwd, timeout_seconds, cancellation_event=None):
+            assert cancellation_event is signal
+            return ProcessOutcome(
+                1, '{"partial":true}\n', "", error="execution supervision cancelled",
+                process_identity="pid:7:started_ns:9",
+            )
+
+    git = FakeGit(clean=False, changed=("aidp_orchestration/executor.py",))
+    result = service(tmp_path, SupervisedRunner(), git).execute(
+        request(tmp_path), supervision_event=signal,
+    )
+    assert result.status is ExecutionStatus.SUPERVISION_FAILED
+    assert result.failure_reason == "execution supervision failed"
+    assert result.changed_files == ("aidp_orchestration/executor.py",)
+    assert result.residual_digest == "a" * 64
+    assert result.process_identity == "pid:7:started_ns:9"
+    assert result.process_termination_confirmed is True
+
+
+def test_residual_digest_binds_untracked_content(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.name", "AIDP Test"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.email", "aidp@example.invalid"), cwd=tmp_path, check=True)
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=tmp_path, check=True)
+    residual = tmp_path / "residual.txt"
+    residual.write_text("first\n", encoding="utf-8")
+    first = GitInspector(tmp_path).residual_digest()
+    residual.write_text("second\n", encoding="utf-8")
+    assert GitInspector(tmp_path).residual_digest() != first
 
 
 def test_readiness_predicate_code_is_preserved_in_execution_result(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import inspect
 import os
 import subprocess
 import sys
@@ -57,9 +58,13 @@ class SubprocessRunner:
             raise ValueError("max_capture_bytes must be positive")
         self.max_capture_bytes = max_capture_bytes
 
-    def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
-        if self.max_capture_bytes is not None:
-            return self._run_bounded(args, cwd=cwd, timeout_seconds=timeout_seconds)
+    def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float,
+            cancellation_event: threading.Event | None = None) -> ProcessOutcome:
+        if self.max_capture_bytes is not None or cancellation_event is not None:
+            return self._run_bounded(
+                args, cwd=cwd, timeout_seconds=timeout_seconds,
+                cancellation_event=cancellation_event,
+            )
         process_started_at = datetime.now(timezone.utc)
         try:
             completed = subprocess.run(
@@ -94,7 +99,8 @@ class SubprocessRunner:
             process_started_at=process_started_at, process_completed_at=process_completed_at,
         )
 
-    def _run_bounded(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
+    def _run_bounded(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float,
+                     cancellation_event: threading.Event | None = None) -> ProcessOutcome:
         started_ns = time.time_ns()
         try:
             process = subprocess.Popen(
@@ -105,7 +111,7 @@ class SubprocessRunner:
             return ProcessOutcome(None, "", "", error=f"process error: {exc.__class__.__name__}")
         process_started_at = datetime.now(timezone.utc)
         identity = f"pid:{process.pid}:started_ns:{started_ns}"
-        limit = self.max_capture_bytes or 1
+        limit = self.max_capture_bytes
         buffers = {"stdout": bytearray(), "stderr": bytearray()}
         overflow = threading.Event()
 
@@ -114,10 +120,12 @@ class SubprocessRunner:
                 chunk = stream.read(8192)
                 if not chunk:
                     return
-                remaining = limit - len(buffers[name])
-                if remaining > 0:
+                remaining = None if limit is None else limit - len(buffers[name])
+                if remaining is None:
+                    buffers[name].extend(chunk)
+                elif remaining > 0:
                     buffers[name].extend(chunk[:remaining])
-                if len(chunk) > remaining:
+                if remaining is not None and len(chunk) > remaining:
                     overflow.set()
                     return
 
@@ -129,12 +137,18 @@ class SubprocessRunner:
             reader.start()
         deadline = time.monotonic() + timeout_seconds
         timed_out = False
+        cancelled = False
         while process.poll() is None and not overflow.is_set():
+            if cancellation_event is not None and cancellation_event.is_set():
+                cancelled = True
+                break
             if time.monotonic() >= deadline:
                 timed_out = True
                 break
             time.sleep(0.01)
-        if overflow.is_set() or timed_out:
+        if cancellation_event is not None and cancellation_event.is_set():
+            cancelled = True
+        if overflow.is_set() or timed_out or cancelled:
             process.terminate()
             try:
                 process.wait(timeout=1.0)
@@ -160,6 +174,12 @@ class SubprocessRunner:
                 error=stdout_error or stderr_error or "timeout", process_identity=identity,
                 process_started_at=process_started_at, process_completed_at=process_completed_at,
             )
+        if cancelled:
+            return ProcessOutcome(
+                process.returncode, stdout, stderr, error="execution supervision cancelled",
+                process_identity=identity, process_started_at=process_started_at,
+                process_completed_at=process_completed_at,
+            )
         return ProcessOutcome(
             process.returncode, stdout, stderr, error=stdout_error or stderr_error,
             process_identity=identity,
@@ -181,7 +201,8 @@ class WindowsVisibleCodexRunner:
         self.popen = popen
         self.relay_root_resolver = relay_root_resolver or _authoritative_relay_root
 
-    def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutcome:
+    def run(self, args: Sequence[str], *, cwd: Path, timeout_seconds: float,
+            cancellation_event: threading.Event | None = None) -> ProcessOutcome:
         if self.platform != "nt":
             return ProcessOutcome(None, "", "", error="visible Codex console is only supported on Windows")
         try:
@@ -214,11 +235,26 @@ class WindowsVisibleCodexRunner:
             started_at = time.monotonic()
             ready_reader.start()
             try:
-                ready_reader.join(timeout_seconds)
+                if cancellation_event is None:
+                    ready_reader.join(timeout_seconds)
+                else:
+                    deadline = started_at + timeout_seconds
+                    while ready_reader.is_alive() and not cancellation_event.is_set():
+                        ready_reader.join(min(0.05, max(0.0, deadline - time.monotonic())))
+                        if time.monotonic() >= deadline:
+                            break
             except KeyboardInterrupt:
                 process.kill()
                 process.wait()
                 raise
+            if cancellation_event is not None and cancellation_event.is_set():
+                process.kill()
+                process.wait()
+                return ProcessOutcome(
+                    process.returncode, "", "", error="execution supervision cancelled",
+                    process_identity=process_identity, process_started_at=process_started_at,
+                    process_completed_at=datetime.now(timezone.utc),
+                )
             if ready_reader.is_alive():
                 process.kill()
                 process.wait()
@@ -237,7 +273,31 @@ class WindowsVisibleCodexRunner:
                 )
             remaining_timeout = max(0.0, timeout_seconds - (time.monotonic() - started_at))
             try:
-                stdout_value, stderr_value = process.communicate(timeout=remaining_timeout)
+                if cancellation_event is None:
+                    stdout_value, stderr_value = process.communicate(timeout=remaining_timeout)
+                else:
+                    deadline = time.monotonic() + remaining_timeout
+                    while True:
+                        if cancellation_event.is_set():
+                            process.kill()
+                            stdout_value, stderr_value = process.communicate()
+                            return ProcessOutcome(
+                                process.returncode,
+                                _decode_process_output(stdout_value, "stdout")[0],
+                                _decode_process_output(stderr_value, "stderr")[0],
+                                error="execution supervision cancelled",
+                                process_identity=process_identity,
+                                process_started_at=process_started_at,
+                                process_completed_at=datetime.now(timezone.utc),
+                            )
+                        try:
+                            stdout_value, stderr_value = process.communicate(
+                                timeout=min(0.05, max(0.0, deadline - time.monotonic())),
+                            )
+                            break
+                        except subprocess.TimeoutExpired:
+                            if time.monotonic() >= deadline:
+                                raise
             except subprocess.TimeoutExpired:
                 process.kill()
                 stdout_value, stderr_value = process.communicate()
@@ -315,10 +375,20 @@ class GitInspector:
         return tuple(sorted(paths))
 
     def residual_digest(self) -> str:
-        payload = subprocess.check_output(
-            ("git", "diff", "--binary", "--no-ext-diff", "--no-renames"), cwd=self.root,
+        tracked = subprocess.check_output(
+            ("git", "diff", "HEAD", "--binary", "--no-ext-diff", "--no-renames"), cwd=self.root,
         )
-        return hashlib.sha256(payload).hexdigest()
+        digest = hashlib.sha256(b"aidp-residual-v1\0" + tracked)
+        untracked = self._read_null_paths("git", "ls-files", "--others", "--exclude-standard", "-z")
+        for relative in sorted(untracked):
+            path = self.root / relative
+            content = os.readlink(path).encode("utf-8") if path.is_symlink() else path.read_bytes()
+            encoded_path = relative.encode("utf-8")
+            digest.update(len(encoded_path).to_bytes(8, "big"))
+            digest.update(encoded_path)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+        return digest.hexdigest()
 
     def _read_null_paths(self, *args: str) -> tuple[str, ...]:
         output = subprocess.check_output(args, cwd=self.root)
@@ -406,7 +476,8 @@ class CodexExecutionService:
         self.repository_root = repository_root.resolve() if repository_root is not None else None
         self.launcher = launcher
 
-    def execute(self, request: CodexExecutionRequest) -> CodexExecutionResult:
+    def execute(self, request: CodexExecutionRequest,
+                supervision_event: threading.Event | None = None) -> CodexExecutionResult:
         root = Path(request.repository).resolve()
         if self.repository_root is not None and root != self.repository_root:
             return self._result(request, request.expected_head, ExecutionStatus.BLOCKED, "request repository does not match execution boundary", ScopeCompliance.NOT_EVALUATED)
@@ -431,10 +502,15 @@ class CodexExecutionService:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
-            outcome = self.codex_runner.run(
-                self._codex_command(request, launcher), cwd=root,
-                timeout_seconds=self.timeout_seconds,
+            outcome = self._run_process(
+                self.codex_runner, self._codex_command(request, launcher), root,
+                supervision_event,
             )
+            if supervision_event is not None and supervision_event.is_set():
+                return self._terminated_result(
+                    request, start_commit, git, ExecutionStatus.SUPERVISION_FAILED,
+                    "execution supervision failed", outcome.process_identity,
+                )
             if outcome.timed_out:
                 return self._terminated_result(request, start_commit, git, ExecutionStatus.TIMED_OUT, "Codex process timed out", outcome.process_identity)
             if outcome.error:
@@ -492,6 +568,16 @@ class CodexExecutionService:
         finally:
             lock.release()
 
+    def _run_process(self, runner: ProcessRunner, args: Sequence[str], root: Path,
+                     supervision_event: threading.Event | None) -> ProcessOutcome:
+        parameters = inspect.signature(runner.run).parameters
+        if "cancellation_event" in parameters:
+            return runner.run(
+                args, cwd=root, timeout_seconds=self.timeout_seconds,
+                cancellation_event=supervision_event,
+            )
+        return runner.run(args, cwd=root, timeout_seconds=self.timeout_seconds)
+
     def _terminated_result(self, request, start_commit, git, status, reason, process_identity):
         try:
             changed = git.changed_files()
@@ -505,7 +591,7 @@ class CodexExecutionService:
                                 termination_confirmed=True)
         if scope is not ScopeCompliance.COMPLIANT:
             status, reason = ExecutionStatus.SCOPE_VIOLATION, "terminated execution changed files outside authorized scope"
-        elif changed:
+        elif changed and status is not ExecutionStatus.SUPERVISION_FAILED:
             status = ExecutionStatus.ABANDONED_DIRTY_WORKTREE
         return self._result(request, start_commit, status, reason, scope, changed, resulting,
                             residual_digest=digest, process_identity=process_identity,

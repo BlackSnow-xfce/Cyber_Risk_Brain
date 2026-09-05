@@ -41,6 +41,7 @@ class ExecutionStatus(StrEnum):
     ABANDONED_DIRTY_WORKTREE = "ABANDONED_DIRTY_WORKTREE"
     AUTHORITY_FAILURE = "AUTHORITY_FAILURE"
     HUMAN_ACTION_REQUIRED = "HUMAN_ACTION_REQUIRED"
+    SUPERVISION_FAILED = "SUPERVISION_FAILED"
 
 
 class ScopeCompliance(StrEnum):
@@ -244,6 +245,121 @@ class ExecutionAttemptV1:
         if self.attempt_ordinal < 0 or self.retry_budget not in {0, 1}: raise ValueError("invalid recovery budget")
         _aware(self.started_at, "started_at")
         if self.process_identity is not None: _single_line(self.process_identity, "process_identity")
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryAuthorizationV1:
+    schema_version: str
+    authorization_id: str
+    task_id: str
+    failed_execution_id: str
+    terminal_status: ExecutionStatus
+    failure_classification: str
+    expected_head: str
+    start_head: str
+    residual_paths: tuple[str, ...]
+    residual_digest: str
+    authorizing_evidence_id: str
+    authorizer_identity: str
+    retry_budget: int
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-recovery-authorization-v1":
+            raise ValueError("unsupported recovery authorization schema")
+        validate_task_id(self.task_id)
+        for name in ("failed_execution_id", "failure_classification", "authorizer_identity"):
+            _single_line(getattr(self, name), name)
+        if self.terminal_status in {ExecutionStatus.RUNNING, ExecutionStatus.SUCCESS}:
+            raise ValueError("recovery authority requires a terminal failure")
+        _git_identity(self.expected_head, "expected_head")
+        _git_identity(self.start_head, "start_head")
+        if not self.residual_paths or tuple(sorted(set(self.residual_paths))) != self.residual_paths:
+            raise ValueError("residual_paths must be unique, sorted and non-empty")
+        for path in self.residual_paths:
+            _single_line(path, "residual_path")
+            if Path(path).is_absolute() or ".." in Path(path).parts:
+                raise ValueError("residual path must be repository-relative")
+        _sha256(self.residual_digest, "residual_digest")
+        _sha256(self.authorizing_evidence_id, "authorizing_evidence_id")
+        if self.retry_budget != 1:
+            raise ValueError("recovery authority grants exactly one retry")
+        _aware(self.created_at, "created_at")
+        if self.authorization_id != self.expected_id():
+            raise ValueError("recovery authorization identity mismatch")
+
+    def expected_id(self) -> str:
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authorization_id"}
+        return canonical_digest(values)
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyRecoveryAuthorizationV1:
+    """One-shot authority bound to persisted evidence from a historical execution failure."""
+
+    schema_version: str
+    authorization_id: str
+    task_id: str
+    failed_execution_id: str
+    expected_head: str
+    start_head: str
+    terminal_result_digest: str
+    execution_attempt_digest: str
+    latest_heartbeat_digest: str
+    residual_paths: tuple[str, ...]
+    residual_digest: str
+    prior_rework_authority_id: str
+    authorizer_identity: str
+    retry_budget: int
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-legacy-recovery-authorization-v1":
+            raise ValueError("unsupported legacy recovery authorization schema")
+        validate_task_id(self.task_id)
+        for name in ("failed_execution_id", "authorizer_identity"):
+            _single_line(getattr(self, name), name)
+        for name in ("expected_head", "start_head"):
+            _git_identity(getattr(self, name), name)
+        for name in (
+            "terminal_result_digest", "execution_attempt_digest", "latest_heartbeat_digest", "residual_digest",
+            "prior_rework_authority_id",
+        ):
+            _sha256(getattr(self, name), name)
+        if not self.residual_paths or tuple(sorted(set(self.residual_paths))) != self.residual_paths:
+            raise ValueError("residual_paths must be unique, sorted and non-empty")
+        for path in self.residual_paths:
+            _single_line(path, "residual_path")
+            if Path(path).is_absolute() or ".." in Path(path).parts:
+                raise ValueError("residual path must be repository-relative")
+        if self.retry_budget != 1:
+            raise ValueError("legacy recovery authority grants exactly one retry")
+        _aware(self.created_at, "created_at")
+        if self.authorization_id != self.expected_id():
+            raise ValueError("legacy recovery authorization identity mismatch")
+
+    def expected_id(self) -> str:
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authorization_id"}
+        return canonical_digest(values)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionSupervisionFailureV1:
+    schema_version: str
+    failure_id: str
+    execution_id: str
+    exception_class: str
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-execution-supervision-failure-v1":
+            raise ValueError("unsupported supervision failure schema")
+        _single_line(self.execution_id, "execution_id")
+        _single_line(self.exception_class, "exception_class")
+        _aware(self.observed_at, "observed_at")
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "failure_id"}
+        if self.failure_id != canonical_digest(values):
+            raise ValueError("supervision failure identity mismatch")
 
 
 @dataclass(frozen=True, slots=True)
