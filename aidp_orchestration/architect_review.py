@@ -27,6 +27,7 @@ from .control_plane import scope_is_subset
 from .executor import SubprocessRunner, WindowsVisibleCodexRunner
 from .executor_types import ProcessRunner
 from .launcher import CodexLauncher, resolve_codex_launcher
+from .operator_stream import ActivitySink, emit_activity, emit_codex_jsonl, emit_process_output
 
 
 ARCHITECT_OUTPUT_SCHEMA_VERSION = "architect-review-result-v1"
@@ -116,6 +117,7 @@ class ArchitectReviewCoordinator:
         max_capture_bytes: int = MAX_CAPTURE_BYTES,
         clock: Callable[[], datetime] = utc_now,
         model: str = "configured-codex-model",
+        activity_sink: ActivitySink | None = None,
     ) -> None:
         if max_capture_bytes < 1:
             raise ValueError("max_capture_bytes must be positive")
@@ -131,9 +133,14 @@ class ArchitectReviewCoordinator:
         self.max_capture_bytes = max_capture_bytes
         self.clock = clock
         self.model = model
+        self.activity_sink = activity_sink
 
     def review(self, request: ArchitectReviewRequest, *, schema_path: Path) -> ArchitectReviewResult:
         started = self.clock()
+        emit_activity(
+            self.activity_sink, "ARCHITECT", "review_started", task_id=request.task_id,
+            execution_id=request.execution_id, review_iteration=request.review_iteration,
+        )
         identity = self.identity_guard.validate(expected_head=request.expected_current_head)
         if (
             identity["repository"] != str(self.product_root)
@@ -151,6 +158,7 @@ class ArchitectReviewCoordinator:
             (*launcher.argv_prefix, "exec", "--help"), cwd=self.product_root,
             timeout_seconds=min(self.timeout_seconds, 30.0),
         )
+        emit_process_output(self.activity_sink, "ARCHITECT", capability, command=(*launcher.argv_prefix, "exec", "--help"))
         required = ("--sandbox", "--ephemeral", "--ignore-user-config", "--output-schema", "--json")
         if capability.returncode != 0 or capability.error or any(flag not in capability.stdout for flag in required):
             return self._blocked(request, started, "Architect CLI capability validation failed", launcher)
@@ -160,6 +168,9 @@ class ArchitectReviewCoordinator:
             self._prompt(request),
         )
         outcome = self.runner.run(command, cwd=self.product_root, timeout_seconds=self.timeout_seconds)
+        emit_codex_jsonl(self.activity_sink, "ARCHITECT", outcome.stdout)
+        if outcome.stderr:
+            emit_activity(self.activity_sink, "ARCHITECT", "process_output", stream="stderr", text=outcome.stderr)
         if outcome.timed_out:
             return self._blocked(
                 request, started, "Architect process timed out", launcher, outcome.process_identity,
@@ -195,6 +206,10 @@ class ArchitectReviewCoordinator:
                 request, started, reason, launcher, outcome.process_identity,
                 outcome.process_started_at, outcome.process_completed_at,
             )
+        emit_activity(
+            self.activity_sink, "ARCHITECT", "review_result",
+            disposition=result.disposition.value, review_result_id=result.review_result_id,
+        )
         return result
 
     def _result_from_decision(
@@ -264,6 +279,7 @@ class ArchitectReviewCoordinator:
         process_started_at: datetime | None = None,
         process_completed_at: datetime | None = None,
     ) -> ArchitectReviewResult:
+        emit_activity(self.activity_sink, "ARCHITECT", "review_result", disposition="BLOCKED", reason=reason)
         provenance = ArchitectReviewProvenance(
             process_identity=process_identity or "unavailable",
             launcher_identity="unavailable" if launcher is None else " ".join(launcher.argv_prefix),

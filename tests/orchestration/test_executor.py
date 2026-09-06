@@ -394,6 +394,37 @@ def test_visible_runner_is_codex_only_and_validators_keep_headless_runner(tmp_pa
     assert len(validators.calls) == 1
 
 
+def test_real_codex_jsonl_file_changes_and_validation_stdout_reach_operator_stream(tmp_path: Path) -> None:
+    codex_output = "\n".join((
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Implementing the fix"}}),
+        json.dumps({"type": "item.completed", "item": {
+            "type": "command_execution", "command": "rg TODO aidp_orchestration",
+            "aggregated_output": "aidp_orchestration/executor.py:1:TODO", "status": "completed", "exit_code": 0,
+        }}),
+        json.dumps({"type": "item.completed", "item": {
+            "type": "file_change", "changes": [{"path": "aidp_orchestration/executor.py", "kind": "update"}],
+            "status": "completed",
+        }}),
+    ))
+    codex = FakeRunner([ProcessOutcome(0, codex_output, "")])
+    validators = FakeRunner([ProcessOutcome(1, "FAILED tests/orchestration/test_executor.py::test_live", "")])
+    events: list[str] = []
+    result = CodexExecutionService(
+        runner=validators, codex_runner=codex,
+        git=FakeGit(changed=("aidp_orchestration/executor.py",)),
+        lock=ExecutionLock(tmp_path / "execution.lock"),
+        launcher=CodexLauncher(("codex-test.exe",)), activity_sink=events.append,
+    ).execute(request(tmp_path))
+
+    activity = [json.loads(event)["operator_activity"] for event in events]
+    assert result.status is ExecutionStatus.TEST_FAILED
+    assert any(item["kind"] == "agent_message" and item["text"] == "Implementing the fix" for item in activity)
+    assert any(item["kind"] == "command_execution" and item["command"] == "rg TODO aidp_orchestration" for item in activity)
+    assert any(item["kind"] == "file_change" and "aidp_orchestration/executor.py" in item["paths"] for item in activity)
+    assert any(item["source"] == "VALIDATION" and "FAILED tests/orchestration" in item.get("text", "") for item in activity)
+    assert any(item["kind"] == "result_publication" and item["status"] == "TEST_FAILED" for item in activity)
+
+
 @pytest.mark.parametrize(
     ("git", "expected"),
     (

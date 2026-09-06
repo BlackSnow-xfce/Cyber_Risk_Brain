@@ -92,7 +92,8 @@ def main() -> int:
             ingress = ArchitectGitIngress(repository, branch=args.architect_contract_branch) if args.architect_contract_branch else None
         except ValueError as exc:
             parser.error(str(exc))
-        watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout)
+        watcher_options = {"activity_sink": print} if args.autonomous_architect else {}
+        watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout, **watcher_options)
         lifecycle = None
         infrastructure_lifecycle = None
         if args.autonomous_architect:
@@ -103,6 +104,7 @@ def main() -> int:
             )
             architect = ArchitectReviewCoordinator(
                 product_root=args.root, identity_guard=guard, timeout_seconds=args.timeout,
+                activity_sink=print,
             )
             lifecycle = AIDPLifecycleOnce(repository, codex=watcher, architect=architect)
             infrastructure_repository = AIDPRepository(
@@ -114,6 +116,7 @@ def main() -> int:
                 runtime_root=authority_inbox_root,
                 timeout_seconds=args.timeout,
                 allow_test_failure_retry=True,
+                activity_sink=print,
             )
             infrastructure_guard = ProductWorktreeIdentityGuard(
                 args.infrastructure_root,
@@ -124,6 +127,7 @@ def main() -> int:
                 product_root=args.infrastructure_root,
                 identity_guard=infrastructure_guard,
                 timeout_seconds=args.timeout,
+                activity_sink=print,
             )
             infrastructure_lifecycle = AIDPLifecycleOnce(
                 infrastructure_repository,

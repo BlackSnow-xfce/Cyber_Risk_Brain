@@ -22,6 +22,7 @@ from .contracts import (
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
 from .trigger_publisher import AIDPWatchOnce
+from .operator_stream import emit_activity
 
 
 MINIMUM_WATCH_INTERVAL_SECONDS = 5.0
@@ -240,6 +241,15 @@ class AIDPLocalWatcherRuntime:
                 )
                 try:
                     self.event_sink(serialize_watch_iteration_event(event))
+                    for lane, lifecycle_event in (
+                        ("infrastructure", infrastructure_result), ("product", product_result),
+                    ):
+                        if lifecycle_event is not None:
+                            emit_activity(
+                                self.event_sink, "AIDP", "lifecycle_transition", lane=lane,
+                                task_id=lifecycle_event.task_id, status=lifecycle_event.status.value,
+                                state=lifecycle_event.state.value, reason=lifecycle_event.reason,
+                            )
                 except Exception as exc:
                     return WatchRuntimeResult(WatchRuntimeStatus.BLOCKED, iteration, f"watch event sink failed: {exc.__class__.__name__}")
                 if self.heartbeat is not None:

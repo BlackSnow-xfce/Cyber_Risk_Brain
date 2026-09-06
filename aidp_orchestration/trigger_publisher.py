@@ -20,6 +20,7 @@ from .contracts import (
     canonical_digest, utc_now,
 )
 from .control_plane import AIDPControlPlane
+from .operator_stream import ActivitySink
 from .executor import GitInspector
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
@@ -229,14 +230,17 @@ class AIDPWatchOnce:
                  control_plane: ControlPlaneBoundary | None = None, publisher: PublisherBoundary | None = None,
                  runtime_root: Path | None = None, timeout_seconds: float = 900.0,
                  execution_lock_active: Callable[[], bool] | None = None,
-                 allow_test_failure_retry: bool = False):
+                 allow_test_failure_retry: bool = False,
+                 activity_sink: ActivitySink | None = None):
         root = runtime_root or LocalRuntimeStore.for_repository(repository.root).root
         self.inbox = LocalContractInbox(root)
         self.consumption = ConsumptionStore(root)
         self.repository = repository
         self.execution_lock_active = execution_lock_active or self._execution_lock_active
         self.writer = writer or ArchitectContractWriter(repository)
-        self.control_plane = control_plane or AIDPControlPlane(repository, timeout_seconds=timeout_seconds)
+        self.control_plane = control_plane or AIDPControlPlane(
+            repository, timeout_seconds=timeout_seconds, activity_sink=activity_sink,
+        )
         self.publisher = publisher or GitReviewPublisher(repository)
         self.allow_test_failure_retry = allow_test_failure_retry
 

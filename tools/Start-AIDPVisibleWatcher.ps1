@@ -13,12 +13,15 @@ $infrastructureBranch = "aidp/infrastructure-lifecycle"
 $contractBranch = "aidp/architect-contracts"
 $runtimeRoot = Join-Path $env:LOCALAPPDATA "PredatorAI\AIDP"
 $logRoot = Join-Path $runtimeRoot "logs"
+$temporaryRoot = Join-Path $orchestrationRoot ".tmp\visible-watcher"
 
 $Host.UI.RawUI.WindowTitle = "PredatorAI AIDP Visible Autonomous Watcher"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $env:PYTHONUTF8 = "1"
 $env:PYTHONUNBUFFERED = "1"
 $env:LOCAL_OPERATOR_MODE_ENABLED = "false"
+$env:TEMP = $temporaryRoot
+$env:TMP = $temporaryRoot
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "AIDP Python executable is unavailable: $python"
@@ -28,6 +31,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $orchestrationRoot "aidp_orchestrati
 }
 
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
 $transcript = Join-Path $logRoot ("visible-watcher-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
 $activityLog = Join-Path $logRoot "visible-watcher-activity.jsonl"
 Start-Transcript -LiteralPath $transcript -Append | Out-Null

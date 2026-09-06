@@ -9,6 +9,7 @@ from typing import Callable, Sequence
 
 from .contracts import ValidationResult
 from .executor_types import ProcessOutcome, ProcessRunner
+from .operator_stream import ActivitySink, emit_activity, emit_process_output
 
 
 ExecutableResolver = Callable[[str], str | None]
@@ -78,7 +79,8 @@ class ValidatorRegistry:
             and requirement.strip().lower() not in self._internal_validators
         )
 
-    def run(self, requirements: Sequence[str], *, root: Path, runner: ProcessRunner, timeout_seconds: float) -> tuple[ValidationResult, ...]:
+    def run(self, requirements: Sequence[str], *, root: Path, runner: ProcessRunner,
+            timeout_seconds: float, activity_sink: ActivitySink | None = None) -> tuple[ValidationResult, ...]:
         results: list[ValidationResult] = []
         for requirement in requirements:
             key = requirement.strip().lower()
@@ -104,6 +106,7 @@ class ValidatorRegistry:
                 results.append(ValidationResult(requirement, False, str(exc)))
                 continue
             outcome = runner.run(resolved, cwd=validator_cwd, timeout_seconds=timeout_seconds)
+            emit_process_output(activity_sink, "VALIDATION", outcome, command=resolved)
             passed = outcome.returncode == 0 and not outcome.timed_out and outcome.error is None
             detail = (
                 "passed"
@@ -115,4 +118,8 @@ class ValidatorRegistry:
                 else f"exit_code={outcome.returncode}"
             )
             results.append(ValidationResult(requirement, passed, detail))
+            emit_activity(
+                activity_sink, "VALIDATION", "result", name=requirement,
+                passed=passed, detail=detail,
+            )
         return tuple(results)

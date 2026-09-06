@@ -26,6 +26,7 @@ from .repository import AIDPRepository
 from .validators import ValidatorRegistry
 from .executor_types import ProcessOutcome, ProcessRunner
 from .launcher import CodexLauncher, resolve_codex_launcher
+from .operator_stream import ActivitySink, emit_activity, emit_codex_jsonl
 from .worktree import worktree_admission_reason
 _VISIBLE_READY_TOKEN = b"AIDP_VISIBLE_CONSOLE_READY_V2\n"
 _VISIBLE_ERROR_PREFIX = b"AIDP_VISIBLE_CONSOLE_ERROR_V2:"
@@ -460,6 +461,7 @@ class CodexExecutionService:
         repository_root: Path | None = None,
         timeout_seconds: float = 900.0,
         launcher: CodexLauncher | None = None,
+        activity_sink: ActivitySink | None = None,
     ):
         self.runner = runner or SubprocessRunner()
         self.codex_runner = codex_runner or (
@@ -475,6 +477,7 @@ class CodexExecutionService:
         self._lock = lock
         self.repository_root = repository_root.resolve() if repository_root is not None else None
         self.launcher = launcher
+        self.activity_sink = activity_sink
 
     def execute(self, request: CodexExecutionRequest,
                 supervision_event: threading.Event | None = None) -> CodexExecutionResult:
@@ -502,10 +505,17 @@ class CodexExecutionService:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
+            emit_activity(
+                self.activity_sink, "AIDP", "lifecycle_transition", task_id=request.task_id,
+                execution_id=request.execution_id, state="CODEX_EXECUTION_STARTED",
+            )
             outcome = self._run_process(
                 self.codex_runner, self._codex_command(request, launcher), root,
                 supervision_event,
             )
+            emit_codex_jsonl(self.activity_sink, "CODEX", outcome.stdout)
+            if outcome.stderr:
+                emit_activity(self.activity_sink, "CODEX", "process_output", stream="stderr", text=outcome.stderr)
             if supervision_event is not None and supervision_event.is_set():
                 return self._terminated_result(
                     request, start_commit, git, ExecutionStatus.SUPERVISION_FAILED,
@@ -523,6 +533,8 @@ class CodexExecutionService:
             try:
                 changed = git.changed_files()
                 resulting_commit = git.head()
+                for path in changed:
+                    emit_activity(self.activity_sink, "CODEX", "file_change", paths=(path,))
             except (OSError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"git inspection failed: {exc.__class__.__name__}", ScopeCompliance.NOT_EVALUATED)
             scope = AIDPRepository(root).validate_scope(request, changed)
@@ -541,6 +553,7 @@ class CodexExecutionService:
                     root=root,
                     runner=self.runner,
                     timeout_seconds=self.timeout_seconds,
+                    activity_sink=self.activity_sink,
                 )
                 if len(external_requirements) != len(request.validation_requirements):
                     validations = (*validations, ValidationResult(
@@ -555,7 +568,9 @@ class CodexExecutionService:
             except Exception as exc:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"validation execution failed: {exc.__class__.__name__}", scope, changed, resulting_commit)
             if not all(item.passed for item in validations):
+                emit_activity(self.activity_sink, "AIDP", "result_publication", status="TEST_FAILED", execution_id=request.execution_id)
                 return self._result(request, start_commit, ExecutionStatus.TEST_FAILED, "one or more validations failed", scope, changed, resulting_commit, validations)
+            emit_activity(self.activity_sink, "AIDP", "result_publication", status="SUCCESS", execution_id=request.execution_id)
             return self._result(request, start_commit, ExecutionStatus.SUCCESS, None, scope, changed, resulting_commit, validations)
         except Exception as exc:
             return self._result(

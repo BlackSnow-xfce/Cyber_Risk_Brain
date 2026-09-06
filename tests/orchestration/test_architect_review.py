@@ -172,6 +172,41 @@ def test_coordinator_is_headless_read_only_and_orchestrator_binds_result(tmp_pat
     assert reviewed.provenance.invocation_started_at != NOW
 
 
+def test_real_architect_jsonl_inspection_and_pass_reach_operator_stream(tmp_path: Path) -> None:
+    req = request(repository=str(tmp_path), git_common_dir="C:/repo/.git")
+    decision = {"disposition": "PASS", "findings": [], "allowed_rework_scope": [],
+                "required_validations": [], "failure_reason": None, "authority_claims": []}
+    class InspectingRunner(FakeRunner):
+        def run(self, args, *, cwd, timeout_seconds):
+            outcome = super().run(args, cwd=cwd, timeout_seconds=timeout_seconds)
+            if len(self.calls) == 2:
+                inspection = json.dumps({
+                    "type": "item.completed", "item": {"type": "mcp_tool_call", "status": "completed"},
+                })
+                return ProcessOutcome(
+                    outcome.returncode, f"{inspection}\n{outcome.stdout}", outcome.stderr,
+                    process_identity=outcome.process_identity,
+                    process_started_at=outcome.process_started_at,
+                    process_completed_at=outcome.process_completed_at,
+                )
+            return outcome
+
+    runner = InspectingRunner(decision)
+    events: list[str] = []
+    coordinator = ArchitectReviewCoordinator(
+        product_root=tmp_path, identity_guard=FakeGuard(tmp_path), runner=runner,
+        launcher=CodexLauncher(("codex.exe",)), clock=lambda: NOW, activity_sink=events.append,
+    )
+    reviewed = coordinator.review(req, schema_path=tmp_path / "schema.json")
+
+    activity = [json.loads(event)["operator_activity"] for event in events]
+    assert reviewed.disposition is ArchitectReviewDisposition.PASS
+    assert any(item["source"] == "ARCHITECT" and item["kind"] == "agent_message" for item in activity)
+    assert any(item["source"] == "ARCHITECT" and item["kind"] == "inspection" for item in activity)
+    assert any(item["source"] == "ARCHITECT" and item["kind"] == "process_output" for item in activity)
+    assert any(item["kind"] == "review_result" and item["disposition"] == "PASS" for item in activity)
+
+
 def test_timeout_and_malformed_output_are_blocked(tmp_path: Path):
     req = request(repository=str(tmp_path), git_common_dir="C:/repo/.git")
     schema = tmp_path / "schema.json"

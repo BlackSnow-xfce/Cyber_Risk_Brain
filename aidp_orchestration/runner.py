@@ -26,6 +26,7 @@ from .contracts import (
     utc_now,
 )
 from .executor import CodexExecutionService
+from .operator_stream import ActivitySink
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
 
@@ -58,11 +59,13 @@ class AIDPRunner:
         execution_service: ExecutionService | None = None,
         runtime_store: RuntimeStore | None = None,
         timeout_seconds: float = 900.0,
+        activity_sink: ActivitySink | None = None,
     ):
         self.repository = repository
         self.execution_service = execution_service or CodexExecutionService(
             repository_root=repository.root,
             timeout_seconds=timeout_seconds,
+            activity_sink=activity_sink,
         )
         self.runtime_store = runtime_store or LocalRuntimeStore.for_repository(repository.root)
         self._contract_context: tuple[str, int, int, tuple[str, ...] | None] | None = None

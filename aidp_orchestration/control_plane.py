@@ -26,6 +26,7 @@ from .contracts import (
 from .executor import GitInspector
 from .repository import AIDPRepository
 from .runner import AIDPRunner
+from .operator_stream import ActivitySink
 from .runtime import LocalRuntimeStore
 from .validators import ValidatorRegistry
 from .worktree import cleanliness_adapter, worktree_admission_reason
@@ -111,6 +112,7 @@ class AIDPControlPlane:
         is_worktree_clean: Callable[[], bool] | None = None,
         worktree_changed_files: Callable[[], tuple[str, ...]] | None = None,
         timeout_seconds: float = 900.0,
+        activity_sink: ActivitySink | None = None,
     ):
         runtime_root = (
             LocalRuntimeStore.for_repository(repository.root).root
@@ -118,7 +120,9 @@ class AIDPControlPlane:
             else None
         )
         self.repository = repository
-        self.runner = runner or AIDPRunner(repository, timeout_seconds=timeout_seconds)
+        self.runner = runner or AIDPRunner(
+            repository, timeout_seconds=timeout_seconds, activity_sink=activity_sink,
+        )
         self.contract_store = contract_store or LocalReworkContractStore(_required_root(runtime_root))
         self.architect_inbox = architect_inbox or LocalArchitectInbox(_required_root(runtime_root))
         self.validator_registry = validator_registry or ValidatorRegistry()
