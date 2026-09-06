@@ -1,0 +1,64 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0004-product-owner-git-ingress-v1",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "AIDP-INFRA-0004",
+      "title": "Product Owner Git Decision Ingress and Visible Acceptance Status",
+      "phase": "AIDP INFRASTRUCTURE GOVERNANCE",
+      "expected_head": "74e4f2bde21c519e4031bbfe4ec9ac1adc43b781",
+      "allowed_scope": [
+        "aidp_orchestration/product_owner_git_ingress.py",
+        "aidp_orchestration/product_owner_confirmation.py",
+        "aidp_orchestration/product_owner_acceptance.py",
+        "aidp_orchestration/lifecycle.py",
+        "aidp_orchestration/watcher_runtime.py",
+        "aidp_orchestration/external_status.py",
+        "aidp_orchestration/__main__.py",
+        "tools/Start-AIDPVisibleWatcher.ps1",
+        "tests/orchestration/test_product_owner_git_ingress.py",
+        "tests/orchestration/test_product_owner_confirmation.py",
+        "tests/orchestration/test_product_owner_acceptance.py",
+        "tests/orchestration/test_lifecycle.py",
+        "tests/orchestration/test_watcher_runtime.py",
+        "tests/orchestration/test_external_status_projection.py"
+      ],
+      "prohibited_actions": [
+        "Do not bypass ProductOwnerConfirmationService or ProductOwnerDecisionConsumer",
+        "Do not infer Product Owner authority from chat text task files branch presence commit message or unsigned free-form Git content",
+        "Do not write DONE directly and do not weaken WAITING_FOR_PRODUCT_OWNER fail-closed behavior",
+        "Do not accept a decision without exact binding to one live approval context nonce task product commit Architect PASS lifecycle version operation and repository identity",
+        "Do not weaken replay protection idempotency authorization expiry stale-context rejection or append-only decision journals",
+        "Do not expose authentication proofs nonces secrets tokens prompts or raw command arguments in logs or status projection",
+        "Do not create a generic remote command execution channel",
+        "Do not mutate product source files as part of transport ingestion except through the existing Product Owner lifecycle projection after successful authenticated consumption",
+        "Do not change risk scoring product features Executive UI Risk Manager UI or TASK-0132",
+        "Do not remove existing Architect Git ingress or autonomous Architect review behavior"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Add an explicit Git-backed Product Owner decision ingress using only the dedicated remote branch aidp/product-owner-decisions and one exact immutable JSON ingress directory under .ai/orchestration/product-owner-decisions.",
+        "The ingress is transport only and must feed the existing ApprovalContextIssuer ProductOwnerConfirmationService and ProductOwnerDecisionConsumer boundaries rather than changing lifecycle state itself.",
+        "A remote decision is accepted only after a fresh local ApprovalChallenge exists and the remote command binds its exact approval_context_id nonce task id operation product commit and Architect review identity.",
+        "Authentication and authorization remain independently verified fail-closed boundaries; Git transport metadata alone is insufficient unless an explicit verified and allowlisted repository identity adapter validates it.",
+        "Implement one concrete repository identity adapter suitable for the configured GitHub repository that verifies the authoritative origin repository and an allowlisted Product Owner identity or app-backed provenance before producing AuthenticatedProductOwner and ProductOwnerAuthorizationEvidence.",
+        "Malformed duplicated mutated nested stale expired replayed unauthorized wrong-task wrong-commit wrong-review wrong-repository wrong-operation or nonce-mismatched commands are rejected and never consumed.",
+        "The watcher polls Product Owner ingress while the product lane is WAITING_FOR_PRODUCT_OWNER without blocking the independent infrastructure lane.",
+        "After a valid ACCEPT command the existing ProductOwnerDecisionConsumer alone projects TASK-0131 or any later product task to DONE and pushes the product branch; REQUEST_REWORK continues to project PRODUCT_OWNER_REWORK_REQUESTED.",
+        "Status projection visibly distinguishes PO_CONFIRMATION_REQUIRED PO_DECISION_RECEIVED PO_DECISION_CONSUMING DONE BLOCKED and HUMAN_ACTION_REQUIRED and includes task id last progress timestamp blocker category and watcher health without sensitive data.",
+        "Start-AIDPVisibleWatcher displays concise live lane status and heartbeat changes so the operator can see whether Product Architect Codex or Product Owner is currently the blocking actor.",
+        "The implementation includes a safe one-time deployment or self-update path for the authoritative orchestration-execution checkout so an approved infrastructure implementation can become the runtime used by the scheduled watcher without manual copy-paste and without dirty-worktree overwrite.",
+        "Deployment fails closed if the orchestration-execution checkout is dirty diverged or not on the expected branch and never resets cleans stashes or force-updates it.",
+        "Positive E2E proves Git command publication to remote ingress through authenticated confirmation persistence consumption lifecycle projection push and visible status with no manual file copying.",
+        "Adversarial tests prove repository substitution author spoofing unsigned or unverifiable commit provenance stale context replay nonce reuse command mutation duplicate command and expired challenge all fail closed.",
+        "Full orchestration tests and git diff --check pass before Architect review."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-09-06T22:58:00+02:00"
+    },
+    "received_at": "2026-09-06T22:58:00+02:00"
+  }
+}
