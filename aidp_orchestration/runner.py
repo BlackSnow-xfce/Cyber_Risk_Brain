@@ -74,6 +74,55 @@ class AIDPRunner:
                                    allowed_scope: tuple[str, ...] | None = None) -> None:
         self._contract_context = (contract_id, attempt_ordinal, retry_budget, allowed_scope)
 
+    def execute_authorized(
+        self, request: CodexExecutionRequest, *, contract_id: str, namespace: str,
+    ) -> CodexExecutionResult:
+        """Execute an already-validated non-task authority with normal durable supervision."""
+        attempt = ExecutionAttemptV1(
+            "aidp-execution-attempt-v1", request.execution_id, contract_id, request.task_id,
+            namespace, canonical_digest(str(self.repository.root.resolve()).lower()),
+            request.expected_head,
+            canonical_digest({"allowed": request.allowed_scope, "prohibited": request.prohibited_actions}),
+            0, 0, utc_now(),
+        )
+        self.runtime_store.persist_execution_attempt(attempt)
+        stop_heartbeat, supervision_failure = threading.Event(), threading.Event()
+        heartbeat_failure: list[str] = []
+
+        def publish_heartbeat() -> None:
+            sequence, previous = 0, None
+            while not stop_heartbeat.is_set():
+                values = dict(
+                    schema_version="aidp-execution-heartbeat-v1", execution_id=request.execution_id,
+                    sequence=sequence, observed_at=utc_now(), state=ExecutionStatus.RUNNING,
+                    previous_digest=previous,
+                )
+                heartbeat = ExecutionHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
+                try:
+                    self.runtime_store.persist_execution_heartbeat(heartbeat)
+                except Exception as exc:
+                    heartbeat_failure.append(exc.__class__.__name__)
+                    supervision_failure.set()
+                    return
+                previous, sequence = heartbeat.heartbeat_digest, sequence + 1
+                stop_heartbeat.wait(5.0)
+
+        thread = threading.Thread(target=publish_heartbeat, daemon=True)
+        thread.start()
+        try:
+            result = self.execution_service.execute(request, supervision_event=supervision_failure)
+        except Exception as exc:
+            result = self._unexpected_result(request, request.expected_head, f"unexpected executor failure: {exc.__class__.__name__}")
+        finally:
+            stop_heartbeat.set(); thread.join(timeout=6.0)
+        if heartbeat_failure:
+            result = replace(
+                result, status=ExecutionStatus.SUPERVISION_FAILED,
+                failure_reason=f"execution heartbeat persistence failed: {heartbeat_failure[0]}",
+            )
+        self.runtime_store.persist_result(result)
+        return result
+
     def run_ready(self, contract_id: str | None = None, *, attempt_ordinal: int = 0, retry_budget: int = 1) -> RunnerResult:
         if contract_id is None and self._contract_context is not None:
             contract_id, attempt_ordinal, retry_budget, recovery_scope = self._contract_context

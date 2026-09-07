@@ -31,7 +31,7 @@ from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
     serialize_writer_control_plane_acceptance_result,
 )
-from .trigger_publisher import AIDPWatchOnce, serialize_trigger_result
+from .trigger_publisher import AIDPWatchOnce, ProductOwnerGateDependencyRunner, serialize_trigger_result
 from .trigger_publisher_acceptance import (
     TriggerPublisherAcceptanceHarness,
     serialize_trigger_publisher_acceptance_result,
@@ -105,6 +105,7 @@ def main() -> int:
         watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout, **watcher_options)
         lifecycle = None
         infrastructure_lifecycle = None
+        gate_dependency = None
         if args.autonomous_architect:
             source_root = Path(__file__).resolve().parents[1]
             guard = ProductWorktreeIdentityGuard(
@@ -144,6 +145,11 @@ def main() -> int:
                 architect=infrastructure_architect,
                 authority_inbox_root=authority_inbox_root,
             )
+            gate_dependency = ProductOwnerGateDependencyRunner(
+                infrastructure_repository, runtime_root=authority_inbox_root,
+                architect=infrastructure_architect, timeout_seconds=args.timeout,
+            )
+        runtime_options = {"gate_dependency": gate_dependency} if gate_dependency is not None else {}
         result = AIDPLocalWatcherRuntime(
             repository,
             watcher=watcher,
@@ -156,6 +162,7 @@ def main() -> int:
                 expected_interval_seconds=args.watch_interval,
             ),
             status_publisher=status_publisher,
+            **runtime_options,
         ).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2

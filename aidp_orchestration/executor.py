@@ -738,8 +738,17 @@ class CodexExecutionService:
 
     @staticmethod
     def _codex_command(request: CodexExecutionRequest, launcher: CodexLauncher) -> tuple[str, ...]:
-        prompt = (
-            "Execute only the repository task described by the provided task file.\n"
+        introduction = (
+            "Execute only the immutable Product Owner gate dependency authority described below. "
+            "The parent task file supplies context only and must not be modified.\n"
+            if request.authority_instructions
+            else "Execute only the repository task described by the provided task file.\n"
+        )
+        authority = (
+            "dependency_acceptance_criteria=" + " | ".join(request.authority_instructions) + "\n"
+            if request.authority_instructions else ""
+        )
+        prompt = introduction + (
             f"task_id={request.task_id}\n"
             f"task_path={request.task_path}\n"
             f"phase={request.phase}\n"
@@ -748,6 +757,7 @@ class CodexExecutionService:
             f"prohibited_actions={','.join(request.prohibited_actions)}\n"
             f"validation_requirements={','.join(request.validation_requirements)}\n"
             f"execution_id={request.execution_id}\n"
+            f"{authority}"
             "Repository contracts and the task file are authoritative; do not approve or create tasks."
         )
         return launcher.argv_prefix + (

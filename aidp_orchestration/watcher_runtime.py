@@ -18,6 +18,7 @@ from .contracts import (
     AIDPState, ArchitectIngressResult, IngressStatus, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
     WatchRuntimeStatus, ExternalWatcherHealth, ExternalWatcherOutcome,
     WatcherHeartbeatV1, canonical_digest, utc_now,
+    ProductOwnerGateDependencyResult, ProductOwnerGateDependencyState,
 )
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
@@ -39,6 +40,10 @@ class IngressBoundary(Protocol):
 
 class LifecycleBoundary(Protocol):
     def run_once(self) -> LifecycleResult: ...
+
+
+class GateDependencyBoundary(Protocol):
+    def run_once(self) -> ProductOwnerGateDependencyResult: ...
 
 
 class SanitizedWatcherHeartbeatPublisher:
@@ -186,6 +191,8 @@ class PersistentWatcherStatusPublisher:
 
     @staticmethod
     def _component(event: WatchIterationEvent, overall: str) -> str:
+        if event.contract_id is not None and event.contract_id not in {event.product_task_id, event.infrastructure_task_id}:
+            return "PRODUCT_OWNER_GATE_DEPENDENCY"
         if event.infrastructure_lifecycle_status in {
             LifecycleStatus.ADVANCED, LifecycleStatus.BLOCKED, LifecycleStatus.ESCALATION_REQUIRED,
         }:
@@ -317,6 +324,7 @@ class AIDPLocalWatcherRuntime:
         infrastructure_lifecycle: LifecycleBoundary | None = None,
         heartbeat: SanitizedWatcherHeartbeatPublisher | None = None,
         status_publisher: PersistentWatcherStatusPublisher | None = None,
+        gate_dependency: GateDependencyBoundary | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
             raise ValueError(f"watch interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
@@ -331,6 +339,7 @@ class AIDPLocalWatcherRuntime:
         self.infrastructure_lifecycle = infrastructure_lifecycle
         self.heartbeat = heartbeat
         self.status_publisher = status_publisher
+        self.gate_dependency = gate_dependency
 
     def run(self) -> WatchRuntimeResult:
         try:
@@ -366,6 +375,7 @@ class AIDPLocalWatcherRuntime:
                 infrastructure_result: LifecycleResult | None = None
                 product_result: LifecycleResult | None = None
                 try:
+                    dependency_result = self.gate_dependency.run_once() if self.gate_dependency is not None else None
                     infrastructure_result = (
                         self.infrastructure_lifecycle.run_once()
                         if self.infrastructure_lifecycle is not None else None
@@ -384,6 +394,14 @@ class AIDPLocalWatcherRuntime:
                         trigger_result = _trigger_from_lifecycle(lifecycle_result)
                     else:
                         trigger_result = self.watcher.run_once()
+                    if dependency_result is not None and dependency_result.state is not ProductOwnerGateDependencyState.NO_ACTION:
+                        trigger_result = TriggerResult(
+                            TriggerStatus.BLOCKED if dependency_result.state in {
+                                ProductOwnerGateDependencyState.BLOCKED,
+                                ProductOwnerGateDependencyState.BLOCKED_PENDING_PROVISIONING,
+                            } else TriggerStatus.PUBLISHED,
+                            dependency_result.authority_id, None, failure_reason=dependency_result.reason,
+                        )
                 except KeyboardInterrupt:
                     terminal_health, terminal_outcome = ExternalWatcherHealth.STOPPED, ExternalWatcherOutcome.STOPPED
                     return WatchRuntimeResult(WatchRuntimeStatus.STOPPED, iteration - 1)

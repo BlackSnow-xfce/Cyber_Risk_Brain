@@ -12,7 +12,8 @@ from enum import Enum
 from pathlib import Path
 
 from .contracts import (
-    ArchitectIngressResult, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract, IngressStatus, ReworkContract,
+    ArchitectIngressResult, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract, IngressStatus,
+    ProductOwnerGateDependencyAuthorityV1, ReworkContract,
     utc_now,
 )
 from .repository import AIDPRepository
@@ -136,10 +137,12 @@ class ArchitectGitIngress:
             values.append((path, blob, content))
         return tuple(values)
 
-    def _validate(self, contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1) -> None:
+    def _validate(self, contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1) -> None:
         if isinstance(contract, ArchitectReviewRecoveryAuthorityV1):
             return
-        requirements = contract.validation_requirements if isinstance(contract, ArchitectTaskContract) else contract.required_validations
+        requirements = contract.validation_requirements if isinstance(
+            contract, (ArchitectTaskContract, ProductOwnerGateDependencyAuthorityV1)
+        ) else contract.required_validations
         unknown = self.validator_registry.unknown(requirements)
         if unknown:
             raise ValueError(f"unknown validator: {unknown[0]}")

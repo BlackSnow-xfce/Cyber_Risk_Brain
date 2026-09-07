@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import hashlib
 import subprocess
+import tempfile
+from uuid import uuid4
 from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
@@ -13,15 +15,19 @@ from typing import Callable, Protocol
 
 from .architect_writer import ArchitectContractWriter
 from .contracts import (
-    AIDPState, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract, ConsumptionEvent, ConsumptionState,
-    ContractInboxItem, ControlPlaneAction, ControlPlaneResult, ExecutionStatus,
+    AIDPState, ArchitectReviewDisposition, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract,
+    CodexExecutionRequest, ConsumptionEvent, ConsumptionState, ContractInboxItem, ControlPlaneAction,
+    ControlPlaneResult, ExecutionStatus, ProductOwnerGateDependencyResult, ProductOwnerGateDependencyState,
     PublishResult, ReworkContract, ReviewEnvelope, ScopeCompliance, TriggerResult,
     TriggerStatus, WriterAction, WriterResult, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
+    ProductOwnerGateDependencyAuthorityV1,
     canonical_digest, utc_now,
 )
 from .control_plane import AIDPControlPlane
 from .operator_stream import ActivitySink
 from .executor import GitInspector
+from .architect_review import ArchitectReviewCoordinator, ProductWorktreeIdentityGuard, architect_result_schema, create_review_request
+from .runner import AIDPRunner
 from .repository import AIDPRepository
 from .runtime import LocalRuntimeStore
 from .lifecycle_projection import LifecycleProjection
@@ -40,6 +46,211 @@ class ControlPlaneBoundary(Protocol):
 class PublisherBoundary(Protocol):
     def commit_materialization(self, result: WriterResult) -> str: ...
     def publish(self, result: ControlPlaneResult, expected_branch: str) -> PublishResult: ...
+
+
+class ProductOwnerGateDependencyRunner:
+    """One-shot lane for the technical dependency of an already waiting PO gate."""
+
+    def __init__(
+        self, repository: AIDPRepository, *, runtime_root: Path,
+        architect: ArchitectReviewCoordinator, timeout_seconds: float = 900.0,
+    ) -> None:
+        self.repository = repository
+        self.inbox = LocalContractInbox(runtime_root)
+        self.store = LocalRuntimeStore.for_repository(repository.root)
+        self.architect = architect
+        self.timeout_seconds = timeout_seconds
+
+    def run_once(self) -> ProductOwnerGateDependencyResult:
+        all_candidates = tuple(item for item in self.inbox.pending() if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1))
+        claimed = tuple(item for item in all_candidates if self.store.product_owner_gate_dependency_claimed(item.contract_id))
+        candidates = tuple(item for item in all_candidates if item not in claimed)
+        if claimed:
+            item = claimed[-1]
+            return ProductOwnerGateDependencyResult(
+                item.contract_id, item.contract.dependency_id, ProductOwnerGateDependencyState.BLOCKED,
+                reason="claimed gate dependency authority is terminal or requires explicit recovery authority",
+            )
+        if not candidates:
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.NO_ACTION)
+        if len(candidates) != 1:
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED, reason="gate dependency authority is ambiguous")
+        item = candidates[0]
+        authority = item.contract
+        execution_id = str(uuid4())
+        try:
+            self._validate(authority)
+            parent_snapshot = self._parent_snapshot(authority.parent_task_id)
+            self.store.claim_product_owner_gate_dependency(authority, execution_id)
+            self.store.persist_product_owner_gate_dependency_status(
+                authority.authority_id, authority.dependency_id, "EXECUTING",
+                "one-shot dependency authority consumed", execution_id=execution_id,
+            )
+            workspace, dependency_branch = self._prepare_workspace(authority)
+            self._assert_parent_unchanged(authority, parent_snapshot)
+            workspace_repository = AIDPRepository(workspace, task_namespace="infrastructure")
+            task_path = workspace / self._parent_task_path(authority.parent_task_id).relative_to(self.repository.root)
+            request = CodexExecutionRequest(
+                task_id=authority.dependency_id, task_path=task_path,
+                repository=str(workspace), branch=dependency_branch,
+                base_commit=authority.expected_head, expected_head=authority.expected_head,
+                phase="PRODUCT_OWNER_GATE_DEPENDENCY", allowed_scope=authority.allowed_scope,
+                prohibited_actions=authority.prohibited_actions,
+                validation_requirements=authority.validation_requirements, created_at=utc_now(),
+                execution_id=execution_id, authority_instructions=authority.acceptance_criteria,
+            )
+            runner = AIDPRunner(workspace_repository, timeout_seconds=self.timeout_seconds)
+            result = runner.execute_authorized(
+                request, contract_id=authority.authority_id, namespace="product-owner-gate-dependency",
+            )
+            if result.status is not ExecutionStatus.SUCCESS or result.scope_compliance is not ScopeCompliance.COMPLIANT:
+                raise RuntimeError("dependency execution did not produce compliant success")
+            if not result.validation_results or any(not value.passed for value in result.validation_results):
+                raise RuntimeError("dependency validation did not pass")
+            if not result.changed_files:
+                raise RuntimeError("dependency execution produced no reviewable implementation")
+            self._assert_parent_unchanged(authority, parent_snapshot)
+            implementation_commit = self._commit_exact(workspace, result.changed_files, f"aidp({authority.dependency_id}): implement PO gate dependency")
+            self._assert_parent_unchanged(authority, parent_snapshot)
+            envelope = ReviewEnvelope(
+                authority.dependency_id, result.execution_id, dependency_branch, result.start_commit,
+                implementation_commit, result.status, tuple(sorted(result.changed_files)), result.scope_compliance,
+                result.validation_results, result.failure_reason, AIDPState.READY_FOR_ARCHITECT, utc_now(),
+            )
+            relative = f".ai/orchestration/gate-dependency-review/{authority.dependency_id}-{result.execution_id}.json"
+            envelope_path = workspace / relative
+            envelope_path.parent.mkdir(parents=True, exist_ok=True)
+            envelope_text = serialize_review_envelope(envelope) + "\n"
+            with envelope_path.open("x", encoding="utf-8", newline="\n") as stream: stream.write(envelope_text)
+            envelope_commit = self._commit_exact(workspace, (relative,), f"aidp({authority.dependency_id}): publish dependency review evidence")
+            self._git_at(workspace, "push", "origin", dependency_branch)
+            self._assert_parent_unchanged(authority, parent_snapshot)
+            architect = self._workspace_architect(workspace, dependency_branch)
+            identity = architect.identity_guard.validate(expected_head=envelope_commit)
+            request_values = dict(
+                task_id=authority.dependency_id, review_iteration=0, execution_id=result.execution_id,
+                repository=identity["repository"], git_common_dir=identity["git_common_dir"],
+                branch=identity["branch"], remote_url=identity["remote_url"],
+                authority_contract_id=authority.authority_id, authority_contract_digest=authority.expected_id(),
+                original_allowed_scope=authority.allowed_scope,
+                original_prohibited_actions=authority.prohibited_actions,
+                original_validation_requirements=authority.validation_requirements,
+                original_acceptance_criteria=authority.acceptance_criteria, product_owner_gate=True,
+                review_envelope_path=relative, review_envelope_digest=canonical_digest(json.loads(envelope_text)),
+                execution_status=result.status, start_commit=result.start_commit,
+                resulting_commit=implementation_commit, review_envelope_commit=envelope_commit,
+                changed_files=tuple(sorted(result.changed_files)), validation_results=result.validation_results,
+                scope_compliance=result.scope_compliance, expected_current_head=envelope_commit,
+                current_head=envelope_commit, reviewed_head=implementation_commit,
+                reviewed_tree_hash=self._git_at(workspace, "rev-parse", f"{implementation_commit}^{{tree}}"),
+                previous_review_result_id=None, previous_rework_contract_id=None,
+                previous_finding_fingerprints=(), created_at=utc_now(),
+            )
+            review_request = create_review_request(**request_values)
+            self.store.persist_architect_request(review_request)
+            schema_path = self.store.root / "schemas" / "gate-dependency-architect-result.json"
+            schema_path.parent.mkdir(parents=True, exist_ok=True)
+            schema_path.write_text(json.dumps(architect_result_schema(), sort_keys=True), encoding="utf-8")
+            architect_result = architect.review(review_request, schema_path=schema_path)
+            architect.revalidate(review_request)
+            self.store.persist_architect_result(architect_result)
+            self._assert_parent_unchanged(authority, parent_snapshot)
+            state = (
+                ProductOwnerGateDependencyState.BLOCKED_PENDING_PROVISIONING
+                if architect_result.disposition is ArchitectReviewDisposition.PASS
+                else ProductOwnerGateDependencyState.BLOCKED
+            )
+            reason = "independent review passed; administrator provisioning remains required" if state is ProductOwnerGateDependencyState.BLOCKED_PENDING_PROVISIONING else "independent review did not pass"
+            self.store.persist_product_owner_gate_dependency_status(
+                authority.authority_id, authority.dependency_id, state.value, reason,
+                execution_id=execution_id, architect_result_id=architect_result.review_result_id,
+            )
+            return ProductOwnerGateDependencyResult(authority.authority_id, authority.dependency_id, state, execution_id, architect_result.review_result_id, reason)
+        except Exception as exc:
+            reason = f"gate dependency blocked: {exc.__class__.__name__}"
+            try:
+                self.store.persist_product_owner_gate_dependency_status(
+                    authority.authority_id, authority.dependency_id, "BLOCKED", reason,
+                    execution_id=execution_id,
+                )
+            except Exception:
+                pass
+            return ProductOwnerGateDependencyResult(authority.authority_id, authority.dependency_id, ProductOwnerGateDependencyState.BLOCKED, execution_id, reason=reason)
+
+    def _validate(self, authority: ProductOwnerGateDependencyAuthorityV1) -> None:
+        decision = self.repository.inspect()
+        if self.repository.task_namespace != "infrastructure" or not self.repository.accepts_task_id(authority.parent_task_id):
+            raise ValueError("dependency parent namespace mismatch")
+        if decision.task_id != authority.parent_task_id or decision.state is not AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            raise ValueError("dependency parent is not the active Product Owner gate")
+        common = Path(self._git_at(self.repository.root, "rev-parse", "--git-common-dir"))
+        common = (self.repository.root / common).resolve() if not common.is_absolute() else common.resolve()
+        remote = self._git_at(self.repository.root, "remote", "get-url", "origin")
+        if authority.repository_id != canonical_digest(str(self.repository.root).lower()):
+            raise ValueError("dependency repository identity mismatch")
+        if authority.git_common_id != canonical_digest(str(common).lower()) or authority.repository_remote_id != canonical_digest(remote):
+            raise ValueError("dependency Git identity mismatch")
+        if self.repository.branch != authority.branch or self.repository.head != authority.expected_head:
+            raise ValueError("dependency repository lineage mismatch")
+        if utc_now() >= authority.expires_at:
+            raise ValueError("dependency authority expired")
+
+    def _parent_task_path(self, task_id: str) -> Path:
+        paths = tuple(path for path in self.repository.task_paths("review") if path.stem == task_id)
+        if len(paths) != 1: raise ValueError("dependency parent task is missing or ambiguous")
+        return paths[0]
+
+    def _parent_snapshot(self, task_id: str) -> str:
+        paths = (self._parent_task_path(task_id), self.repository.ai_root / "handoff" / "TO-CODEX.md", self.repository.ai_root / "handoff" / "TO-ARCHITECT.md")
+        return canonical_digest(tuple(
+            (str(path.relative_to(self.repository.root)), canonical_digest(path.read_bytes()))
+            for path in paths
+        ))
+
+    def _assert_parent_unchanged(self, authority: ProductOwnerGateDependencyAuthorityV1, snapshot: str) -> None:
+        if self._parent_snapshot(authority.parent_task_id) != snapshot:
+            raise RuntimeError("dependency execution attempted to modify parent authority")
+        decision = self.repository.inspect()
+        if decision.task_id != authority.parent_task_id or decision.state is not AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            raise RuntimeError("dependency execution changed parent lifecycle")
+        if self.repository.branch != authority.branch or self.repository.head != authority.expected_head:
+            raise RuntimeError("dependency execution changed parent branch or HEAD")
+
+    def _prepare_workspace(self, authority: ProductOwnerGateDependencyAuthorityV1) -> tuple[Path, str]:
+        workspace = Path(tempfile.gettempdir()).resolve() / "aidp-gate-dependency-workspaces" / authority.authority_id
+        if workspace.exists(): raise RuntimeError("gate dependency workspace already exists")
+        branch = f"aidp/gate-dependency-{authority.authority_id[:12]}"
+        self._git_at(self.repository.root, "worktree", "add", "-b", branch, str(workspace), authority.expected_head)
+        self._git_at(workspace, "push", "-u", "origin", branch)
+        return workspace, branch
+
+    def _workspace_architect(self, workspace: Path, branch: str) -> ArchitectReviewCoordinator:
+        original = self.architect
+        guard = ProductWorktreeIdentityGuard(
+            workspace, expected_branch=branch,
+            excluded_roots=(*original.identity_guard.excluded_roots, self.repository.root),
+            expected_remote_url=original.identity_guard.expected_remote_url,
+        )
+        return ArchitectReviewCoordinator(
+            product_root=workspace, identity_guard=guard, runner=original.runner,
+            launcher=original.launcher, timeout_seconds=original.timeout_seconds,
+            max_capture_bytes=original.max_capture_bytes, clock=original.clock,
+            model=original.model, activity_sink=original.activity_sink,
+        )
+
+    def _commit_exact(self, root: Path, paths: tuple[str, ...], message: str) -> str:
+        paths = tuple(sorted(paths))
+        git = GitInspector(root)
+        if git.changed_files() != paths: raise RuntimeError("dependency commit contains unauthorized paths")
+        self._git_at(root, "add", "--", *paths)
+        staged = tuple(filter(None, self._git_at(root, "diff", "--cached", "--name-only").splitlines()))
+        if tuple(sorted(staged)) != paths: raise RuntimeError("dependency staged paths differ from authority")
+        self._git_at(root, "commit", "-m", message)
+        return self._git_at(root, "rev-parse", "HEAD")
+
+    @staticmethod
+    def _git_at(root: Path, *args: str) -> str:
+        return subprocess.check_output(("git", *args), cwd=root, text=True, stderr=subprocess.STDOUT).strip()
 
 
 class LocalContractInbox:
@@ -89,7 +300,10 @@ class LocalContractInbox:
         contract = _architect_contract(contract_value) if contract_type == "architect_task" else (
             _rework_contract(contract_value) if contract_type == "rework" else (
                 _architect_review_recovery_authority(contract_value)
-                if contract_type == "architect_review_recovery" else None
+                if contract_type == "architect_review_recovery" else (
+                    _product_owner_gate_dependency_authority(contract_value)
+                    if contract_type == "product_owner_gate_dependency" else None
+                )
             )
         )
         if contract is None:
@@ -275,7 +489,8 @@ class AIDPWatchOnce:
             )
             if not candidates:
                 blocked = tuple(candidate for candidate in items
-                                if self.repository.accepts_task_id(candidate.contract.task_id)
+                                if isinstance(candidate.contract, (ArchitectTaskContract, ReworkContract))
+                                and self.repository.accepts_task_id(candidate.contract.task_id)
                                 and self.consumption.current(candidate.contract_id) is ConsumptionState.BLOCKED)
                 if blocked and self.repository.task_namespace == "infrastructure":
                     candidate = blocked[-1]
@@ -633,7 +848,8 @@ def serialize_contract_inbox_item(value: ContractInboxItem) -> str:
     contract_type = (
         "architect_task" if isinstance(value.contract, ArchitectTaskContract)
         else "rework" if isinstance(value.contract, ReworkContract)
-        else "architect_review_recovery"
+        else "architect_review_recovery" if isinstance(value.contract, ArchitectReviewRecoveryAuthorityV1)
+        else "product_owner_gate_dependency"
     )
     return _json({"contract_inbox_item": {
         "contract_id": value.contract_id,
@@ -692,6 +908,28 @@ def _architect_review_recovery_authority(v: dict[str, object]) -> ArchitectRevie
         review_envelope_digest=_string(v, "review_envelope_digest"), repository_id=_string(v, "repository_id"),
         branch=_string(v, "branch"), expected_lifecycle_state=AIDPState(_string(v, "expected_lifecycle_state")),
         issued_by=_string(v, "issued_by"), issued_at=datetime.fromisoformat(_string(v, "issued_at")),
+        expires_at=datetime.fromisoformat(_string(v, "expires_at")),
+    )
+
+
+def _product_owner_gate_dependency_authority(v: dict[str, object]) -> ProductOwnerGateDependencyAuthorityV1:
+    expected = {
+        "schema_version", "authority_id", "parent_task_id", "dependency_id", "purpose",
+        "repository_id", "git_common_id", "repository_remote_id", "branch", "expected_head", "allowed_scope", "prohibited_actions",
+        "validation_requirements", "acceptance_criteria", "issued_by", "issued_at", "expires_at",
+    }
+    if set(v) != expected:
+        raise ValueError("invalid ProductOwnerGateDependencyAuthorityV1 schema")
+    return ProductOwnerGateDependencyAuthorityV1(
+        schema_version=_string(v, "schema_version"), authority_id=_string(v, "authority_id"),
+        parent_task_id=_string(v, "parent_task_id"), dependency_id=_string(v, "dependency_id"),
+        purpose=_string(v, "purpose"), repository_id=_string(v, "repository_id"),
+        git_common_id=_string(v, "git_common_id"), repository_remote_id=_string(v, "repository_remote_id"),
+        branch=_string(v, "branch"), expected_head=_string(v, "expected_head"),
+        allowed_scope=_strings(v, "allowed_scope"), prohibited_actions=_strings(v, "prohibited_actions"),
+        validation_requirements=_strings(v, "validation_requirements"),
+        acceptance_criteria=_strings(v, "acceptance_criteria"), issued_by=_string(v, "issued_by"),
+        issued_at=datetime.fromisoformat(_string(v, "issued_at")),
         expires_at=datetime.fromisoformat(_string(v, "expires_at")),
     )
 

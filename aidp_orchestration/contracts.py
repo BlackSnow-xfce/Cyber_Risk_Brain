@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import fnmatch
 import unicodedata
 import hashlib
 import json
@@ -148,6 +149,17 @@ class ProductOwnerAcceptanceStatus(StrEnum):
     BLOCKED = "BLOCKED"
 
 
+class ProductOwnerGateDependencyState(StrEnum):
+    NO_ACTION = "NO_ACTION"
+    CLAIMED = "CLAIMED"
+    EXECUTING = "EXECUTING"
+    READY_FOR_ARCHITECT = "READY_FOR_ARCHITECT"
+    REVIEWING = "REVIEWING"
+    CONFIRMATION_INFRASTRUCTURE_READY = "CONFIRMATION_INFRASTRUCTURE_READY"
+    BLOCKED_PENDING_PROVISIONING = "BLOCKED_PENDING_PROVISIONING"
+    BLOCKED = "BLOCKED"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     name: str
@@ -181,6 +193,7 @@ class CodexExecutionRequest:
     created_at: datetime
     execution_id: str
     rework_count: int = 0
+    authority_instructions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("task_id", "repository", "branch", "base_commit", "expected_head", "phase", "execution_id"):
@@ -190,6 +203,8 @@ class CodexExecutionRequest:
             raise ValueError("execution scope and validations must be explicit")
         if self.rework_count < 0:
             raise ValueError("rework_count must not be negative")
+        if self.authority_instructions and any(not value.strip() or "\n" in value or "\r" in value for value in self.authority_instructions):
+            raise ValueError("authority instructions must be explicit single-line values")
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,6 +426,99 @@ class ArchitectReviewRecoveryAuthorityV1:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductOwnerGateDependencyAuthorityV1:
+    """One-shot authority for the technical dependency of one waiting PO gate."""
+
+    schema_version: str
+    authority_id: str
+    parent_task_id: str
+    dependency_id: str
+    purpose: str
+    repository_id: str
+    git_common_id: str
+    repository_remote_id: str
+    branch: str
+    expected_head: str
+    allowed_scope: tuple[str, ...]
+    prohibited_actions: tuple[str, ...]
+    validation_requirements: tuple[str, ...]
+    acceptance_criteria: tuple[str, ...]
+    issued_by: str
+    issued_at: datetime
+    expires_at: datetime
+
+    PURPOSE = "DEPLOY_PRODUCT_OWNER_CONFIRMATION_BOUNDARY"
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-product-owner-gate-dependency-authority-v1":
+            raise ValueError("unsupported Product Owner gate dependency authority schema")
+        validate_task_id(self.parent_task_id)
+        if re.fullmatch(r"AIDP-PO-DEP-\d{4}", self.dependency_id) is None:
+            raise ValueError("dependency_id is invalid")
+        if self.purpose != self.PURPOSE:
+            raise ValueError("unsupported Product Owner gate dependency purpose")
+        for name in ("branch", "issued_by"):
+            _single_line(getattr(self, name), name)
+        for name in ("repository_id", "git_common_id", "repository_remote_id"):
+            _sha256(getattr(self, name), name)
+        _git_identity(self.expected_head, "expected_head")
+        for name in ("allowed_scope", "prohibited_actions", "validation_requirements", "acceptance_criteria"):
+            values = getattr(self, name)
+            if not values or tuple(dict.fromkeys(values)) != values:
+                raise ValueError(f"{name} must be explicit and unique")
+            for value in values:
+                _single_line(value, name)
+        if tuple(sorted(self.allowed_scope)) != self.allowed_scope:
+            raise ValueError("allowed_scope must be sorted")
+        for path in self.allowed_scope:
+            normalized = Path(path)
+            if normalized.is_absolute() or ".." in normalized.parts or "\\" in path:
+                raise ValueError("allowed scope must be repository-relative")
+            if not any(fnmatch.fnmatch(path, pattern) for pattern in self.allowed_dependency_scope()):
+                raise ValueError("path is outside Product Owner gate dependency scope")
+            if path.startswith((".ai/", ".git/")) or path in {
+                "aidp_orchestration/acceptance.py", "aidp_orchestration/product_owner_confirmation.py",
+                "aidp_orchestration/contracts.py", "aidp_orchestration/control_plane.py",
+                "aidp_orchestration/lifecycle.py", "aidp_orchestration/runtime.py",
+            }:
+                raise ValueError("path crosses a protected authority boundary")
+        _aware(self.issued_at, "issued_at"); _aware(self.expires_at, "expires_at")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("gate dependency authority expiry is invalid")
+        if self.authority_id != self.expected_id():
+            raise ValueError("gate dependency authority identity mismatch")
+
+    def expected_id(self) -> str:
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authority_id"}
+        return canonical_digest(values)
+
+    @staticmethod
+    def allowed_dependency_scope() -> tuple[str, ...]:
+        return (
+            "aidp_orchestration/product_owner_http.py",
+            "aidp_orchestration/product_owner_oidc.py",
+            "aidp_orchestration/product_owner_web_session.py",
+            "aidp_orchestration/product_owner_deployment.py",
+            "aidp_orchestration/product_owner_service.py",
+            "deploy/product-owner-confirmation/**",
+            "tools/*ProductOwnerConfirmation*.ps1",
+            "tests/orchestration/test_product_owner_http*.py",
+            "tests/orchestration/test_product_owner_oidc*.py",
+            "tests/orchestration/test_product_owner_deployment*.py",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProductOwnerGateDependencyResult:
+    authority_id: str | None
+    dependency_id: str | None
+    state: ProductOwnerGateDependencyState
+    execution_id: str | None = None
+    architect_result_id: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionSupervisionFailureV1:
     schema_version: str
     failure_id: str
@@ -591,7 +699,7 @@ class ArchitectReviewRequest:
             _single_line(getattr(self, name), name)
         if self.review_iteration < 0 or self.review_iteration > 3:
             raise ValueError("review_iteration must be between 0 and 3")
-        validate_task_id(self.task_id)
+        validate_review_subject_id(self.task_id)
         for name in ("review_request_id", "authority_contract_digest", "review_envelope_digest"):
             _sha256(getattr(self, name), name)
         for name in ("start_commit", "resulting_commit", "review_envelope_commit", "expected_current_head", "current_head", "reviewed_head", "reviewed_tree_hash"):
@@ -672,7 +780,7 @@ class ArchitectReviewResult:
             _single_line(getattr(self, name), name)
         if self.review_iteration < 0 or self.review_iteration > 3:
             raise ValueError("review_iteration must be between 0 and 3")
-        validate_task_id(self.task_id)
+        validate_review_subject_id(self.task_id)
         _sha256(self.review_result_id, "review_result_id")
         _sha256(self.review_request_id, "review_request_id")
         for name in ("reviewed_head", "expected_head", "reviewed_tree_hash"):
@@ -1062,7 +1170,7 @@ class WriterControlPlaneAcceptanceResult:
 @dataclass(frozen=True, slots=True)
 class ContractInboxItem:
     contract_id: str
-    contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1
+    contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1
     received_at: datetime
 
     def __post_init__(self) -> None:
@@ -1073,6 +1181,11 @@ class ContractInboxItem:
             and self.contract_id != self.contract.authority_id
         ):
             raise ValueError("review recovery contract_id must equal its canonical authority_id")
+        if (
+            isinstance(self.contract, ProductOwnerGateDependencyAuthorityV1)
+            and self.contract_id != self.contract.authority_id
+        ):
+            raise ValueError("gate dependency contract_id must equal its canonical authority_id")
         if self.received_at.tzinfo is None or self.received_at.utcoffset() is None:
             raise ValueError("received_at must be timezone-aware")
 
@@ -1399,3 +1512,9 @@ def _git_identity(value: str, name: str) -> None:
 def validate_task_id(value: str) -> None:
     if re.fullmatch(r"(?:TASK-(?:\d{4}|E2E-(?:(?:WRITER|TRIGGER)-)?\d{4})|AIDP-INFRA-\d{4})", value) is None:
         raise ValueError("task_id is not authorized")
+
+
+def validate_review_subject_id(value: str) -> None:
+    if re.fullmatch(r"AIDP-PO-DEP-\d{4}", value) is not None:
+        return
+    validate_task_id(value)

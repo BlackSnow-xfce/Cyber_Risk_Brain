@@ -16,6 +16,7 @@ from .contracts import (
     AuditEvent, AuthenticatedProductOwner, CodexExecutionResult, ProductOwnerApprovalContext,
     ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
     ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
+    ProductOwnerGateDependencyAuthorityV1,
     ExternalStatusProjectionV1, ExternalWatcherHealth, ExternalWatcherOutcome,
     WatcherHeartbeatV1, ExecutionAttemptV1, ExecutionHeartbeatV1,
     ExecutionSupervisionFailureV1, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
@@ -362,6 +363,51 @@ class LocalRuntimeStore:
             raise RuntimeError("Architect review recovery claim persistence failed")
         _sync_parent(path.parent)
         return path
+
+    def claim_product_owner_gate_dependency(
+        self, authority: ProductOwnerGateDependencyAuthorityV1, execution_id: str,
+    ) -> Path:
+        """Durably consume a one-shot gate dependency before any child side effect."""
+        _identity(authority.authority_id, "authority_id")
+        path = self.root / "product-owner-gate-dependency-claims" / f"{authority.authority_id}.json"
+        encoded = _json({"product_owner_gate_dependency_claim": {
+            "authority_id": authority.authority_id,
+            "parent_task_id": authority.parent_task_id,
+            "dependency_id": authority.dependency_id,
+            "execution_id": execution_id,
+            "state": "CONSUMED",
+            "claimed_at": utc_now(),
+        }}) + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
+        except FileExistsError:
+            raise RuntimeError("Product Owner gate dependency authority replay") from None
+        if path.read_text(encoding="utf-8") != encoded:
+            raise RuntimeError("Product Owner gate dependency claim persistence failed")
+        _sync_parent(path.parent)
+        return path
+
+    def product_owner_gate_dependency_claimed(self, authority_id: str) -> bool:
+        _identity(authority_id, "authority_id")
+        return (self.root / "product-owner-gate-dependency-claims" / f"{authority_id}.json").is_file()
+
+    def persist_product_owner_gate_dependency_status(
+        self, authority_id: str, dependency_id: str, state: str, reason: str,
+        *, execution_id: str | None = None, architect_result_id: str | None = None,
+    ) -> Path:
+        _identity(authority_id, "authority_id")
+        if not reason or "\n" in reason or "\r" in reason or len(reason) > 256:
+            raise ValueError("invalid gate dependency status reason")
+        payload = {"product_owner_gate_dependency_status": {
+            "authority_id": authority_id, "dependency_id": dependency_id, "state": state,
+            "reason": reason, "execution_id": execution_id,
+            "architect_result_id": architect_result_id, "updated_at": utc_now(),
+        }}
+        return self._atomic_projection(
+            self.root / "product-owner-gate-dependency-status" / f"{authority_id}.json", _json(payload),
+        )
 
     def architect_review_recovery_authority_claimed(self, authority_id: str) -> bool:
         _identity(authority_id, "authority_id")
