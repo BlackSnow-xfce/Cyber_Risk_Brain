@@ -217,8 +217,9 @@ class ProductOwnerGateDependencyRunner:
             raise RuntimeError("dependency execution changed parent branch or HEAD")
 
     def _prepare_workspace(self, authority: ProductOwnerGateDependencyAuthorityV1) -> tuple[Path, str]:
-        workspace = Path(tempfile.gettempdir()).resolve() / "aidp-gate-dependency-workspaces" / authority.authority_id
+        workspace = Path(tempfile.gettempdir()).resolve() / f"aidp-gate-dependency-{authority.authority_id[:12]}"
         if workspace.exists(): raise RuntimeError("gate dependency workspace already exists")
+        workspace.parent.mkdir(parents=True, exist_ok=True)
         branch = f"aidp/gate-dependency-{authority.authority_id[:12]}"
         self._git_at(self.repository.root, "worktree", "add", "-b", branch, str(workspace), authority.expected_head)
         self._git_at(workspace, "push", "-u", "origin", branch)

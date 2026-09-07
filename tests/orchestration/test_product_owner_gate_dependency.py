@@ -173,6 +173,7 @@ def _bound_authority(root: Path, **overrides) -> ProductOwnerGateDependencyAutho
 
 def test_runner_uses_isolated_branch_and_preserves_waiting_parent(tmp_path: Path, monkeypatch) -> None:
     root, _remote = _repository(tmp_path)
+    monkeypatch.setattr("aidp_orchestration.trigger_publisher.tempfile.gettempdir", lambda: str(tmp_path / "absent-runtime-temp"))
     runtime_root = tmp_path / "shared-runtime"
     value = _bound_authority(root)
     LocalContractInbox(runtime_root).persist(ContractInboxItem(value.authority_id, value, utc_now()))
