@@ -100,6 +100,26 @@ def test_contract_is_consumed_exactly_once_across_restart(tmp_path: Path):
     assert ConsumptionStore(runtime).current("contract-1") is ConsumptionState.REVIEW_PUBLISHED
 
 
+@pytest.mark.parametrize(
+    "terminal_state",
+    (ConsumptionState.REVIEW_PUBLISHED, ConsumptionState.BLOCKED),
+)
+def test_consumption_store_reads_durable_recovery_history(
+    tmp_path: Path, terminal_state: ConsumptionState,
+) -> None:
+    store = ConsumptionStore(tmp_path)
+    contract_id = "recovery-contract"
+    store.append(contract_id, ConsumptionState.RECEIVED, "received")
+    store.append(contract_id, ConsumptionState.MATERIALIZED, "materialized")
+    store.append(contract_id, ConsumptionState.EXECUTING, "executing")
+    store.append(contract_id, ConsumptionState.BLOCKED, "failed")
+    store.append(contract_id, ConsumptionState.RECOVERY_AUTHORIZED, "recovery authorized")
+    store.append(contract_id, ConsumptionState.RECOVERY_EXECUTING, "recovery executing")
+    store.append(contract_id, terminal_state, "terminal")
+
+    assert store.current(contract_id) is terminal_state
+
+
 def test_consumption_log_is_append_only_and_serialization_has_no_authority(tmp_path: Path):
     store = ConsumptionStore(tmp_path)
     store.append("c", ConsumptionState.RECEIVED, "received")

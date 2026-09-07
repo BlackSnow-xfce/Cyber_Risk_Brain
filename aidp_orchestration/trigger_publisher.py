@@ -94,7 +94,16 @@ class ConsumptionStore:
         ConsumptionState.RECEIVED: {ConsumptionState.MATERIALIZED, ConsumptionState.BLOCKED},
         ConsumptionState.MATERIALIZED: {ConsumptionState.EXECUTING, ConsumptionState.BLOCKED},
         ConsumptionState.EXECUTING: {ConsumptionState.REVIEW_PUBLISHED, ConsumptionState.BLOCKED},
-        ConsumptionState.REVIEW_PUBLISHED: set(), ConsumptionState.BLOCKED: set(),
+        ConsumptionState.BLOCKED: {ConsumptionState.RECOVERY_AUTHORIZED},
+        ConsumptionState.RECOVERY_AUTHORIZED: {
+            ConsumptionState.RECOVERY_EXECUTING,
+            ConsumptionState.BLOCKED,
+        },
+        ConsumptionState.RECOVERY_EXECUTING: {
+            ConsumptionState.REVIEW_PUBLISHED,
+            ConsumptionState.BLOCKED,
+        },
+        ConsumptionState.REVIEW_PUBLISHED: set(),
     }
 
     def __init__(self, root: Path):
