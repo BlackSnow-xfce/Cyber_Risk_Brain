@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 
 from .contracts import (
-    AIDPState, ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult,
+    AIDPState, ArchitectReviewDisposition, ArchitectReviewRecoveryAuthorityV1, ArchitectReviewRequest, ArchitectReviewResult,
     AuditEvent, AuthenticatedProductOwner, CodexExecutionResult, ProductOwnerApprovalContext,
     ProductOwnerAuthorizationEvidence, ProductOwnerDecision, ProductOwnerDecisionEvent,
     ProductOwnerDecisionState, ProductOwnerOperation, ReworkContract,
@@ -335,6 +335,44 @@ class LocalRuntimeStore:
 
     def architect_attempt_exists(self, request_id: str) -> bool:
         return (self.root / "architect-review-attempts" / f"{request_id}.json").is_file()
+
+    def claim_architect_review_recovery_authority(
+        self, authority: ArchitectReviewRecoveryAuthorityV1, review_request_id: str,
+    ) -> Path:
+        _identity(authority.authority_id, "authority_id")
+        _identity(review_request_id, "review_request_id")
+        path = self.root / "architect-review-recovery-claims" / f"{authority.authority_id}.json"
+        if path.exists():
+            raise RuntimeError("Architect review recovery authority replay")
+        return self._persist_immutable(path, _json({"architect_review_recovery_claim": {
+            "authority_id": authority.authority_id,
+            "task_id": authority.task_id,
+            "execution_id": authority.execution_id,
+            "review_request_id": review_request_id,
+            "state": "CONSUMED",
+            "claimed_at": utc_now(),
+        }}), authority.authority_id)
+
+    def architect_review_recovery_authority_claimed(self, authority_id: str) -> bool:
+        _identity(authority_id, "authority_id")
+        return (self.root / "architect-review-recovery-claims" / f"{authority_id}.json").is_file()
+
+    def append_architect_review_recovery_event(
+        self, authority_id: str, task_id: str, state: str, reason: str,
+    ) -> Path:
+        _identity(authority_id, "authority_id")
+        if state not in {"DISCOVERED", "VERIFIED", "REVIEW_LAUNCHED", "CONSUMED", "BLOCKED"}:
+            raise ValueError("invalid Architect review recovery event state")
+        if not reason or "\n" in reason or "\r" in reason or len(reason) > 256:
+            raise ValueError("invalid Architect review recovery event reason")
+        path = self.root / "architect-review-recovery-events.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(_json({"architect_review_recovery_event": {
+                "authority_id": authority_id, "task_id": task_id, "state": state,
+                "reason": reason, "timestamp": utc_now(),
+            }}) + "\n")
+        return path
 
     def latest_architect_result(self, task_id: str) -> ArchitectReviewResult | None:
         from .architect_review import parse_architect_review_result

@@ -344,6 +344,73 @@ class LegacyRecoveryAuthorizationV1:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchitectReviewRecoveryAuthorityV1:
+    """One-shot authority to review one already-persisted successful execution."""
+
+    schema_version: str
+    authority_id: str
+    task_id: str
+    authorizing_review_result_id: str
+    authorizing_review_result_digest: str
+    legacy_rework_contract_id: str
+    legacy_rework_contract_digest: str
+    legacy_authorizing_lineage_missing: bool
+    execution_id: str
+    execution_start_head: str
+    implementation_commit: str
+    lifecycle_projection_commit: str
+    changed_files: tuple[str, ...]
+    scope_compliance: ScopeCompliance
+    validator_evidence_digest: str
+    execution_result_digest: str
+    review_envelope_id: str
+    review_envelope_digest: str
+    repository_id: str
+    branch: str
+    expected_lifecycle_state: AIDPState
+    issued_by: str
+    issued_at: datetime
+    expires_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-architect-review-recovery-authority-v1":
+            raise ValueError("unsupported Architect review recovery authority schema")
+        validate_task_id(self.task_id)
+        for name in ("execution_id", "branch", "issued_by"):
+            _single_line(getattr(self, name), name)
+        for name in (
+            "authorizing_review_result_id", "authorizing_review_result_digest",
+            "legacy_rework_contract_id", "legacy_rework_contract_digest",
+            "validator_evidence_digest", "execution_result_digest", "review_envelope_id",
+            "review_envelope_digest", "repository_id",
+        ):
+            _sha256(getattr(self, name), name)
+        for name in ("execution_start_head", "implementation_commit", "lifecycle_projection_commit"):
+            _git_identity(getattr(self, name), name)
+        if self.legacy_authorizing_lineage_missing is not True:
+            raise ValueError("legacy missing-lineage declaration is required")
+        if not self.changed_files or tuple(sorted(set(self.changed_files))) != self.changed_files:
+            raise ValueError("changed_files must be unique, sorted and non-empty")
+        for path in self.changed_files:
+            _single_line(path, "changed_file")
+            if Path(path).is_absolute() or ".." in Path(path).parts:
+                raise ValueError("changed file must be repository-relative")
+        if self.scope_compliance is not ScopeCompliance.COMPLIANT:
+            raise ValueError("review recovery requires compliant execution scope")
+        if self.expected_lifecycle_state is not AIDPState.READY_FOR_ARCHITECT:
+            raise ValueError("review recovery requires READY_FOR_ARCHITECT")
+        _aware(self.issued_at, "issued_at"); _aware(self.expires_at, "expires_at")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("review recovery authority expiry is invalid")
+        if self.authority_id != self.expected_id():
+            raise ValueError("Architect review recovery authority identity mismatch")
+
+    def expected_id(self) -> str:
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authority_id"}
+        return canonical_digest(values)
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionSupervisionFailureV1:
     schema_version: str
     failure_id: str
@@ -995,12 +1062,17 @@ class WriterControlPlaneAcceptanceResult:
 @dataclass(frozen=True, slots=True)
 class ContractInboxItem:
     contract_id: str
-    contract: ArchitectTaskContract | ReworkContract
+    contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1
     received_at: datetime
 
     def __post_init__(self) -> None:
         if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", self.contract_id) is None:
             raise ValueError("contract_id is invalid")
+        if (
+            isinstance(self.contract, ArchitectReviewRecoveryAuthorityV1)
+            and self.contract_id != self.contract.authority_id
+        ):
+            raise ValueError("review recovery contract_id must equal its canonical authority_id")
         if self.received_at.tzinfo is None or self.received_at.utcoffset() is None:
             raise ValueError("received_at must be timezone-aware")
 

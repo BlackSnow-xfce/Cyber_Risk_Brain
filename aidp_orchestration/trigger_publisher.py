@@ -13,7 +13,7 @@ from typing import Callable, Protocol
 
 from .architect_writer import ArchitectContractWriter
 from .contracts import (
-    AIDPState, ArchitectTaskContract, ConsumptionEvent, ConsumptionState,
+    AIDPState, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract, ConsumptionEvent, ConsumptionState,
     ContractInboxItem, ControlPlaneAction, ControlPlaneResult, ExecutionStatus,
     PublishResult, ReworkContract, ReviewEnvelope, ScopeCompliance, TriggerResult,
     TriggerStatus, WriterAction, WriterResult, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
@@ -84,7 +84,10 @@ class LocalContractInbox:
             raise ValueError("contract must be an object")
         contract_type = _string(value, "contract_type")
         contract = _architect_contract(contract_value) if contract_type == "architect_task" else (
-            _rework_contract(contract_value) if contract_type == "rework" else None
+            _rework_contract(contract_value) if contract_type == "rework" else (
+                _architect_review_recovery_authority(contract_value)
+                if contract_type == "architect_review_recovery" else None
+            )
         )
         if contract is None:
             raise ValueError("unknown contract type")
@@ -259,6 +262,7 @@ class AIDPWatchOnce:
                 return TriggerResult(TriggerStatus.NO_ACTION, None, None)
             candidates = tuple(
                 candidate for candidate in items
+                if isinstance(candidate.contract, (ArchitectTaskContract, ReworkContract))
                 if self.repository.accepts_task_id(candidate.contract.task_id)
                 if (
                     self.consumption.current(candidate.contract_id)
@@ -623,7 +627,11 @@ def serialize_review_envelope(value: ReviewEnvelope) -> str:
 
 
 def serialize_contract_inbox_item(value: ContractInboxItem) -> str:
-    contract_type = "architect_task" if isinstance(value.contract, ArchitectTaskContract) else "rework"
+    contract_type = (
+        "architect_task" if isinstance(value.contract, ArchitectTaskContract)
+        else "rework" if isinstance(value.contract, ReworkContract)
+        else "architect_review_recovery"
+    )
     return _json({"contract_inbox_item": {
         "contract_id": value.contract_id,
         "contract_type": contract_type,
@@ -651,6 +659,38 @@ def _rework_contract(v: dict[str, object]) -> ReworkContract:
     if not isinstance(iteration, int) or isinstance(iteration, bool): raise ValueError("review_iteration must be integer")
     return ReworkContract(_string(v,"task_id"), iteration, _string(v,"expected_head"), _strings(v,"allowed_rework_scope"),
                           _strings(v,"findings"), _strings(v,"required_validations"), datetime.fromisoformat(_string(v,"created_at")))
+
+
+def _architect_review_recovery_authority(v: dict[str, object]) -> ArchitectReviewRecoveryAuthorityV1:
+    expected = {
+        "schema_version", "authority_id", "task_id", "authorizing_review_result_id",
+        "authorizing_review_result_digest", "legacy_rework_contract_id", "legacy_rework_contract_digest",
+        "legacy_authorizing_lineage_missing", "execution_id", "execution_start_head",
+        "implementation_commit", "lifecycle_projection_commit", "changed_files", "scope_compliance",
+        "validator_evidence_digest", "execution_result_digest", "review_envelope_id",
+        "review_envelope_digest", "repository_id", "branch", "expected_lifecycle_state",
+        "issued_by", "issued_at", "expires_at",
+    }
+    if set(v) != expected: raise ValueError("invalid ArchitectReviewRecoveryAuthorityV1 schema")
+    missing = v.get("legacy_authorizing_lineage_missing")
+    if not isinstance(missing, bool): raise ValueError("legacy_authorizing_lineage_missing must be boolean")
+    return ArchitectReviewRecoveryAuthorityV1(
+        schema_version=_string(v, "schema_version"), authority_id=_string(v, "authority_id"),
+        task_id=_string(v, "task_id"), authorizing_review_result_id=_string(v, "authorizing_review_result_id"),
+        authorizing_review_result_digest=_string(v, "authorizing_review_result_digest"),
+        legacy_rework_contract_id=_string(v, "legacy_rework_contract_id"),
+        legacy_rework_contract_digest=_string(v, "legacy_rework_contract_digest"),
+        legacy_authorizing_lineage_missing=missing, execution_id=_string(v, "execution_id"),
+        execution_start_head=_string(v, "execution_start_head"), implementation_commit=_string(v, "implementation_commit"),
+        lifecycle_projection_commit=_string(v, "lifecycle_projection_commit"), changed_files=_strings(v, "changed_files"),
+        scope_compliance=ScopeCompliance(_string(v, "scope_compliance")),
+        validator_evidence_digest=_string(v, "validator_evidence_digest"),
+        execution_result_digest=_string(v, "execution_result_digest"), review_envelope_id=_string(v, "review_envelope_id"),
+        review_envelope_digest=_string(v, "review_envelope_digest"), repository_id=_string(v, "repository_id"),
+        branch=_string(v, "branch"), expected_lifecycle_state=AIDPState(_string(v, "expected_lifecycle_state")),
+        issued_by=_string(v, "issued_by"), issued_at=datetime.fromisoformat(_string(v, "issued_at")),
+        expires_at=datetime.fromisoformat(_string(v, "expires_at")),
+    )
 
 
 def _string(v: dict[str, object], name: str) -> str:

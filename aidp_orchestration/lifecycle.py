@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from .architect_review import (
     parse_architect_review_request, parse_architect_review_result, validate_review_result,
 )
 from .contracts import (
-    AIDPState, ArchitectReviewDisposition, ArchitectReviewRequest, ArchitectReviewResult, AuditEvent,
+    AIDPState, ArchitectReviewDisposition, ArchitectReviewRecoveryAuthorityV1, ArchitectReviewRequest, ArchitectReviewResult, AuditEvent,
     ArchitectTaskContract, ContractInboxItem, ExecutionStatus, LifecycleResult, LifecycleStatus,
     ProductOwnerAcceptanceStatus, ReworkContract, ScopeCompliance,
     TriggerStatus, ValidationResult, canonical_digest, utc_now,
@@ -135,8 +136,12 @@ class AIDPLifecycleOnce:
     def _review(self, task_id: str | None) -> LifecycleResult:
         if task_id is None or self.architect is None:
             return self._blocked(task_id, AIDPState.READY_FOR_ARCHITECT, "Architect review boundary is unavailable")
+        recovery_authority = None
         try:
-            request = self.request_factory(task_id)
+            try:
+                request = self.request_factory(task_id)
+            except ValueError:
+                request, recovery_authority = self._build_review_recovery_request(task_id)
             self.runtime.persist_architect_request(request)
             previous = tuple(
                 value for value in self._previous_results(task_id)
@@ -155,10 +160,23 @@ class AIDPLifecycleOnce:
                 "state": "LAUNCH_AUTHORIZED",
                 "created_at": request.created_at,
             })
+            if recovery_authority is not None and persisted is None:
+                self.runtime.claim_architect_review_recovery_authority(
+                    recovery_authority, request.review_request_id,
+                )
+                self.runtime.append_architect_review_recovery_event(
+                    recovery_authority.authority_id, task_id, "REVIEW_LAUNCHED",
+                    "one existing execution submitted for Architect review",
+                )
             result = persisted or self.architect.review(request, schema_path=self._schema_path())
             validate_review_result(request, result)
             self._validate_sequence(request, result, previous)
             self.runtime.persist_architect_result(result)
+            if recovery_authority is not None:
+                self.runtime.append_architect_review_recovery_event(
+                    recovery_authority.authority_id, task_id, "CONSUMED",
+                    "Architect review attempt completed",
+                )
             intended = (
                 AIDPState.ARCHITECT_APPROVED if result.disposition is ArchitectReviewDisposition.PASS
                 else AIDPState.REWORK_REQUIRED if result.disposition is ArchitectReviewDisposition.FAIL
@@ -175,6 +193,14 @@ class AIDPLifecycleOnce:
                 "disposition": result.disposition, "timestamp": self.clock(),
             })
         except Exception as exc:
+            if recovery_authority is not None:
+                try:
+                    self.runtime.append_architect_review_recovery_event(
+                        recovery_authority.authority_id, task_id, "BLOCKED",
+                        f"review recovery failed closed: {exc.__class__.__name__}",
+                    )
+                except Exception:
+                    pass
             return self._blocked(
                 task_id, AIDPState.READY_FOR_ARCHITECT,
                 f"Architect review failed closed: {exc.__class__.__name__}: {exc}",
@@ -376,6 +402,170 @@ class AIDPLifecycleOnce:
         )
         return create_review_request(**values)
 
+    def _build_review_recovery_request(
+        self, task_id: str,
+    ) -> tuple[ArchitectReviewRequest, ArchitectReviewRecoveryAuthorityV1]:
+        items = [
+            item for item in LocalContractInbox(self.authority_inbox_root).pending()
+            if isinstance(item.contract, ArchitectReviewRecoveryAuthorityV1)
+            and item.contract.task_id == task_id
+            and not self.runtime.architect_review_recovery_authority_claimed(item.contract.authority_id)
+        ]
+        if len(items) != 1:
+            raise ValueError("Architect review recovery authority is missing or ambiguous")
+        authority = items[0].contract
+        self._validate_review_recovery_ingress(authority)
+        self.runtime.append_architect_review_recovery_event(
+            authority.authority_id, task_id, "DISCOVERED", "immutable review recovery authority discovered",
+        )
+        now = self.clock()
+        if now >= authority.expires_at or now < authority.issued_at:
+            raise ValueError("Architect review recovery authority is expired or not yet valid")
+        decision = self.repository.inspect()
+        if decision.task_id != task_id or decision.state is not authority.expected_lifecycle_state:
+            raise ValueError("review recovery lifecycle binding mismatch")
+        if self.repository.head != authority.lifecycle_projection_commit:
+            raise ValueError("review recovery lifecycle commit mismatch")
+        repository_id = canonical_digest(str(self.repository.root.resolve()).lower())
+        if repository_id != authority.repository_id:
+            raise ValueError("review recovery repository binding mismatch")
+
+        result_path = self.runtime.root / "architect-review-results" / f"{authority.authorizing_review_result_id}.json"
+        if _file_digest(result_path) != authority.authorizing_review_result_digest:
+            raise ValueError("authorizing Architect result digest mismatch")
+        authorizing_result = self.runtime._authorizing_fail_result(authority.authorizing_review_result_id)
+        if authorizing_result.task_id != task_id:
+            raise ValueError("authorizing Architect result task mismatch")
+
+        legacy_paths = tuple((self.runtime.root / "rework-contracts" / task_id).glob(
+            f"*-{authority.legacy_rework_contract_id}.json",
+        ))
+        if len(legacy_paths) != 1 or _file_digest(legacy_paths[0]) != authority.legacy_rework_contract_digest:
+            raise ValueError("legacy ReworkContract binding mismatch")
+        legacy_wrapper = json.loads(legacy_paths[0].read_text(encoding="utf-8"))
+        if set(legacy_wrapper) != {"rework_contract"} or not authority.legacy_authorizing_lineage_missing:
+            raise ValueError("legacy missing-lineage declaration mismatch")
+        legacy_items = [
+            item for item in LocalContractInbox(self.authority_inbox_root).pending()
+            if isinstance(item.contract, ReworkContract)
+            and item.contract_id == authority.legacy_rework_contract_id
+        ]
+        if len(legacy_items) != 1 or canonical_digest(legacy_wrapper["rework_contract"]) != canonical_digest(legacy_items[0].contract):
+            raise ValueError("legacy ReworkContract immutable payload mismatch")
+
+        execution_path = self.runtime.root / "results" / f"{authority.execution_id}.json"
+        if _file_digest(execution_path) != authority.execution_result_digest:
+            raise ValueError("execution result digest mismatch")
+        execution = self.runtime.latest_execution_result(task_id)
+        if (
+            execution is None or execution.execution_id != authority.execution_id
+            or execution.status is not ExecutionStatus.SUCCESS
+            or execution.start_commit != authority.execution_start_head
+            or execution.changed_files != authority.changed_files
+            or execution.scope_compliance is not authority.scope_compliance
+            or canonical_digest(execution.validation_results) != authority.validator_evidence_digest
+        ):
+            raise ValueError("successful execution evidence binding mismatch")
+        attempt = self.runtime.execution_attempt(authority.execution_id)
+        if (
+            attempt.contract_id != authority.legacy_rework_contract_id
+            or attempt.repository_id != authority.repository_id
+            or attempt.expected_head != authority.execution_start_head
+        ):
+            raise ValueError("execution attempt authority binding mismatch")
+
+        envelopes = []
+        for path in (self.repository.ai_root / "orchestration" / "review-inbox").glob(f"{task_id}-*.json"):
+            raw = path.read_bytes()
+            wrapper = json.loads(raw.decode("utf-8"))
+            payload = wrapper.get("architect_review_envelope") if isinstance(wrapper, dict) else None
+            if isinstance(payload, dict) and payload.get("execution_id") == authority.execution_id:
+                envelopes.append((path, raw, payload))
+        if len(envelopes) != 1:
+            raise ValueError("review envelope identity is missing or ambiguous")
+        envelope_path, envelope_raw, envelope = envelopes[0]
+        if (
+            hashlib.sha256(envelope_raw).hexdigest() != authority.review_envelope_digest
+            or canonical_digest(envelope) != authority.review_envelope_id
+            or str(envelope.get("start_commit")) != authority.execution_start_head
+            or str(envelope.get("resulting_commit")) != authority.implementation_commit
+            or str(envelope.get("branch")) != authority.branch
+            or tuple(sorted(str(value) for value in envelope.get("changed_files", ()))) != authority.changed_files
+            or ScopeCompliance(str(envelope.get("scope_compliance"))) is not authority.scope_compliance
+            or canonical_digest(envelope.get("validation_results")) != authority.validator_evidence_digest
+        ):
+            raise ValueError("review envelope recovery binding mismatch")
+        if self.repository._git("rev-parse", f"{authority.implementation_commit}^{{tree}}") == "":
+            raise ValueError("reviewed implementation commit is unavailable")
+
+        original_items = [
+            item for item in LocalContractInbox(self.authority_inbox_root).pending()
+            if isinstance(item.contract, ArchitectTaskContract) and item.contract.task_id == task_id
+        ]
+        if len(original_items) != 1:
+            raise ValueError("original immutable task authority is unavailable or ambiguous")
+        original_item = original_items[0]
+        original = original_item.contract
+        previous = self._previous_results(task_id)
+        common_path = Path(self.repository._git("rev-parse", "--git-common-dir"))
+        if not common_path.is_absolute():
+            common_path = self.repository.root / common_path
+        values = dict(
+            task_id=task_id, review_iteration=len(previous), execution_id=authority.execution_id,
+            repository=str(self.repository.root), git_common_dir=str(common_path.resolve()),
+            branch=authority.branch, remote_url=self.repository._git("remote", "get-url", "origin"),
+            authority_contract_id=original_item.contract_id, authority_contract_digest=canonical_digest(original),
+            original_allowed_scope=original.allowed_scope, original_prohibited_actions=original.prohibited_actions,
+            original_validation_requirements=original.validation_requirements,
+            original_acceptance_criteria=original.acceptance_criteria, product_owner_gate=original.product_owner_gate,
+            review_envelope_path=envelope_path.relative_to(self.repository.root).as_posix(),
+            review_envelope_digest=authority.review_envelope_digest,
+            execution_status=ExecutionStatus.SUCCESS, start_commit=authority.execution_start_head,
+            resulting_commit=authority.implementation_commit, review_envelope_commit=authority.lifecycle_projection_commit,
+            changed_files=authority.changed_files, validation_results=execution.validation_results,
+            scope_compliance=authority.scope_compliance, expected_current_head=authority.lifecycle_projection_commit,
+            current_head=authority.lifecycle_projection_commit, reviewed_head=authority.implementation_commit,
+            reviewed_tree_hash=self.repository._git("rev-parse", f"{authority.implementation_commit}^{{tree}}"),
+            previous_review_result_id=previous[-1].review_result_id if previous else None,
+            previous_rework_contract_id=authority.legacy_rework_contract_id,
+            previous_finding_fingerprints=tuple(finding.fingerprint for finding in previous[-1].findings) if previous else (),
+            created_at=datetime.fromisoformat(str(envelope["published_at"])),
+        )
+        request = create_review_request(**values)
+        self.runtime.append_architect_review_recovery_event(
+            authority.authority_id, task_id, "VERIFIED", "all immutable review recovery bindings verified",
+        )
+        return request, authority
+
+    def _validate_review_recovery_ingress(
+        self, authority: ArchitectReviewRecoveryAuthorityV1,
+    ) -> None:
+        inbox_path = self.authority_inbox_root / "contract-inbox" / f"{authority.authority_id}.json"
+        state_path = self.authority_inbox_root / "architect-ingress.jsonl"
+        if not inbox_path.is_file() or inbox_path.is_symlink() or not state_path.is_file():
+            raise ValueError("review recovery publication evidence is missing")
+        events = []
+        for line in state_path.read_text(encoding="utf-8").splitlines():
+            wrapper = json.loads(line)
+            event = wrapper.get("architect_ingress_event") if isinstance(wrapper, dict) else None
+            if (
+                isinstance(event, dict)
+                and event.get("contract_id") == authority.authority_id
+                and event.get("status") == "MATERIALIZED"
+                and event.get("identity_kind") == "contract_id"
+            ):
+                events.append(event)
+        if len(events) != 1:
+            raise ValueError("review recovery Git publication evidence is missing or ambiguous")
+        blob_id = events[0].get("blob_id")
+        commit_id = events[0].get("remote_commit")
+        if (
+            not isinstance(blob_id, str) or len(blob_id) not in {40, 64}
+            or not isinstance(commit_id, str) or len(commit_id) not in {40, 64}
+            or _git_blob_digest(inbox_path.read_bytes(), len(blob_id)) != blob_id
+        ):
+            raise ValueError("review recovery Git publication binding mismatch")
+
     def _persisted_request(self, request_id: str) -> ArchitectReviewRequest:
         path = self.runtime.root / "architect-review-requests" / f"{request_id}.json"
         if not path.is_file():
@@ -455,3 +645,14 @@ class AIDPLifecycleOnce:
     @staticmethod
     def _blocked(task_id: str | None, state: AIDPState, reason: str) -> LifecycleResult:
         return LifecycleResult(LifecycleStatus.BLOCKED, task_id, state, reason)
+
+
+def _file_digest(path: Path) -> str:
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("immutable evidence file is missing or unsafe")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_blob_digest(content: bytes, length: int) -> str:
+    encoded = f"blob {len(content)}\0".encode("ascii") + content
+    return (hashlib.sha1(encoded) if length == 40 else hashlib.sha256(encoded)).hexdigest()
