@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,7 +18,7 @@ from aidp_orchestration.contracts import (
 )
 from aidp_orchestration.lifecycle import AIDPLifecycleOnce
 from aidp_orchestration.runtime import LocalRuntimeStore
-from aidp_orchestration.trigger_publisher import AIDPWatchOnce, LocalContractInbox
+from aidp_orchestration.trigger_publisher import AIDPWatchOnce, LocalContractInbox, serialize_contract_inbox_item
 
 
 NOW = datetime(2026, 9, 7, 20, tzinfo=timezone.utc)
@@ -218,3 +219,38 @@ def test_review_recovery_authority_is_not_a_codex_contract(tmp_path):
     assert result.status.value == "NO_ACTION"
     assert result.contract_id is None
     assert not (inbox / "consumption-events.jsonl").exists()
+
+
+def test_review_recovery_authority_rejects_duplicate_unknown_and_missing_fields(tmp_path):
+    _, _, _, authority = _fixture(tmp_path)
+    encoded = serialize_contract_inbox_item(ContractInboxItem(authority.authority_id, authority, NOW))
+    duplicate = encoded.replace('"schema_version":', '"schema_version":"forged","schema_version":', 1)
+    with pytest.raises(ValueError, match="duplicate JSON field"):
+        LocalContractInbox.parse(duplicate.encode())
+    payload = json.loads(encoded)
+    payload["contract_inbox_item"]["contract"]["unknown"] = "forged"
+    with pytest.raises(ValueError, match="invalid ArchitectReviewRecoveryAuthorityV1 schema"):
+        LocalContractInbox.parse(json.dumps(payload).encode())
+    del payload["contract_inbox_item"]["contract"]["unknown"]
+    del payload["contract_inbox_item"]["contract"]["execution_id"]
+    with pytest.raises(ValueError, match="invalid ArchitectReviewRecoveryAuthorityV1 schema"):
+        LocalContractInbox.parse(json.dumps(payload).encode())
+
+
+def test_concurrent_review_recovery_claim_has_exactly_one_winner(tmp_path):
+    _, runtime, _, authority = _fixture(tmp_path)
+    barrier = threading.Barrier(2)
+    results = []
+
+    def claim():
+        barrier.wait()
+        try:
+            runtime.claim_architect_review_recovery_authority(authority, "9" * 64)
+            results.append("won")
+        except RuntimeError:
+            results.append("replay")
+
+    workers = [threading.Thread(target=claim) for _ in range(2)]
+    for worker in workers: worker.start()
+    for worker in workers: worker.join()
+    assert sorted(results) == ["replay", "won"]

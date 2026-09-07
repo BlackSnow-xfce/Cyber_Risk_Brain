@@ -344,14 +344,24 @@ class LocalRuntimeStore:
         path = self.root / "architect-review-recovery-claims" / f"{authority.authority_id}.json"
         if path.exists():
             raise RuntimeError("Architect review recovery authority replay")
-        return self._persist_immutable(path, _json({"architect_review_recovery_claim": {
+        encoded = _json({"architect_review_recovery_claim": {
             "authority_id": authority.authority_id,
             "task_id": authority.task_id,
             "execution_id": authority.execution_id,
             "review_request_id": review_request_id,
             "state": "CONSUMED",
             "claimed_at": utc_now(),
-        }}), authority.authority_id)
+        }}) + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
+        except FileExistsError:
+            raise RuntimeError("Architect review recovery authority replay") from None
+        if path.read_text(encoding="utf-8") != encoded:
+            raise RuntimeError("Architect review recovery claim persistence failed")
+        _sync_parent(path.parent)
+        return path
 
     def architect_review_recovery_authority_claimed(self, authority_id: str) -> bool:
         _identity(authority_id, "authority_id")

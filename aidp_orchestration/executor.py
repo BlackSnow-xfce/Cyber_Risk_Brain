@@ -391,6 +391,43 @@ class GitInspector:
             digest.update(content)
         return digest.hexdigest()
 
+    def control_metadata_digest(self) -> str:
+        """Hash Git control inputs without invoking Git after child execution."""
+        git_dir = self._git_path("--git-dir")
+        common_dir = self._git_path("--git-common-dir")
+        targets = (
+            git_dir / "config.worktree",
+            common_dir / "config", common_dir / "packed-refs", common_dir / "hooks",
+            common_dir / "info" / "alternates", common_dir / "refs" / "replace",
+        )
+        digest = hashlib.sha256(b"aidp-git-control-metadata-v1\0")
+        for target in targets:
+            relative = f"{target.parent.name}/{target.name}".encode("utf-8")
+            digest.update(len(relative).to_bytes(8, "big")); digest.update(relative)
+            _hash_control_path(digest, target)
+        return digest.hexdigest()
+
+    def ignored_worktree_digest(self) -> str:
+        paths = self._read_null_paths("git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+        digest = hashlib.sha256(b"aidp-ignored-worktree-v1\0")
+        for relative in sorted(paths):
+            path = self.root / relative
+            encoded_path = relative.encode("utf-8")
+            digest.update(len(encoded_path).to_bytes(8, "big")); digest.update(encoded_path)
+            if path.is_symlink():
+                content = os.readlink(path).encode("utf-8")
+            elif path.is_file():
+                content = path.read_bytes()
+            else:
+                raise ValueError("ignored worktree path is not a regular file")
+            digest.update(len(content).to_bytes(8, "big")); digest.update(content)
+        return digest.hexdigest()
+
+    def _git_path(self, argument: str) -> Path:
+        value = self._read("git", "rev-parse", argument)
+        path = Path(value)
+        return path.resolve() if path.is_absolute() else (self.root / path).resolve()
+
     def _read_null_paths(self, *args: str) -> tuple[str, ...]:
         output = subprocess.check_output(args, cwd=self.root)
         if not output:
@@ -505,6 +542,8 @@ class CodexExecutionService:
             return self._result(request, start_commit, ExecutionStatus.BLOCKED, str(exc), ScopeCompliance.NOT_EVALUATED)
 
         try:
+            git_control_digest = git.control_metadata_digest() if isinstance(git, GitInspector) else None
+            ignored_worktree_digest = git.ignored_worktree_digest() if isinstance(git, GitInspector) else None
             emit_activity(
                 self.activity_sink, "AIDP", "lifecycle_transition", task_id=request.task_id,
                 execution_id=request.execution_id, state="CODEX_EXECUTION_STARTED",
@@ -513,6 +552,24 @@ class CodexExecutionService:
                 self.codex_runner, self._codex_command(request, launcher), root,
                 supervision_event,
             )
+            if (
+                git_control_digest is not None
+                and git.control_metadata_digest() != git_control_digest
+            ):
+                return self._result(
+                    request, start_commit, ExecutionStatus.SCOPE_VIOLATION,
+                    "Git control metadata changed during execution",
+                    ScopeCompliance.VIOLATION,
+                )
+            if (
+                ignored_worktree_digest is not None
+                and git.ignored_worktree_digest() != ignored_worktree_digest
+            ):
+                return self._result(
+                    request, start_commit, ExecutionStatus.SCOPE_VIOLATION,
+                    "ignored worktree content changed during execution",
+                    ScopeCompliance.VIOLATION,
+                )
             emit_codex_jsonl(self.activity_sink, "CODEX", outcome.stdout)
             if outcome.stderr:
                 emit_activity(self.activity_sink, "CODEX", "process_output", stream="stderr", text=outcome.stderr)
@@ -685,6 +742,35 @@ class CodexExecutionService:
 
 class _StaleExecution(RuntimeError):
     pass
+
+
+def _hash_control_path(digest, path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        digest.update(b"missing\0")
+        return
+    if path.is_symlink():
+        digest.update(b"symlink\0" + os.readlink(path).encode("utf-8"))
+        return
+    if path.is_file():
+        content = path.read_bytes()
+        digest.update(b"file\0" + len(content).to_bytes(8, "big") + content)
+        return
+    if not path.is_dir():
+        raise ValueError("Git control metadata contains an unsupported filesystem object")
+    digest.update(b"directory\0")
+    for entry in sorted(os.scandir(path), key=lambda item: item.name):
+        name = entry.name.encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big") + name)
+        child = Path(entry.path)
+        if entry.is_symlink():
+            digest.update(b"symlink\0" + os.readlink(child).encode("utf-8"))
+        elif entry.is_file(follow_symlinks=False):
+            content = child.read_bytes()
+            digest.update(b"file\0" + len(content).to_bytes(8, "big") + content)
+        elif entry.is_dir(follow_symlinks=False):
+            _hash_control_path(digest, child)
+        else:
+            raise ValueError("Git control metadata contains an unsupported filesystem object")
 
 
 def serialize_execution_result(result: CodexExecutionResult) -> str:

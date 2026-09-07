@@ -74,3 +74,16 @@ def test_malformed_or_undecodable_git_paths_fail_closed(tmp_path: Path, monkeypa
     monkeypatch.setattr(subprocess, "check_output", lambda *args, **kwargs: b"invalid\xff\0")
     with pytest.raises(UnicodeDecodeError):
         inspector.changed_files()
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ("config", "hooks/pre-commit", "info/alternates", "refs/replace/old"),
+)
+def test_git_control_metadata_digest_detects_security_sensitive_mutation(tmp_path: Path, relative: str) -> None:
+    inspector = initialize_repository(tmp_path, {"tracked.txt": "tracked\n"})
+    before = inspector.control_metadata_digest()
+    target = tmp_path / ".git" / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("attacker-controlled\n", encoding="utf-8")
+    assert inspector.control_metadata_digest() != before

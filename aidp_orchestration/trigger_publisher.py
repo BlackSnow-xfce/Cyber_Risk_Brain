@@ -75,7 +75,10 @@ class LocalContractInbox:
 
     @staticmethod
     def parse(content: bytes) -> ContractInboxItem:
-        payload = json.loads(content.decode("utf-8-sig", errors="strict"))
+        payload = json.loads(
+            content.decode("utf-8-sig", errors="strict"),
+            object_pairs_hook=_reject_duplicate_json_fields,
+        )
         value = payload.get("contract_inbox_item") if isinstance(payload, dict) else None
         if not isinstance(value, dict) or set(value) != {"contract_id", "contract_type", "contract", "received_at"}:
             raise ValueError("malformed contract inbox item")
@@ -708,6 +711,15 @@ def _strings(v: dict[str, object], name: str) -> tuple[str, ...]:
 def _boolean(v: dict[str, object], name: str) -> bool:
     value = v.get(name)
     if not isinstance(value, bool): raise ValueError(f"{name} must be boolean")
+    return value
+
+
+def _reject_duplicate_json_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON field")
+        value[key] = item
     return value
 
 

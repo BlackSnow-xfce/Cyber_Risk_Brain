@@ -79,6 +79,16 @@ def success_runner() -> FakeRunner:
     return FakeRunner([ProcessOutcome(0, '{"type":"completed"}\n', ""), ProcessOutcome(0, "", "")])
 
 
+def _initialize_git_repository(root: Path) -> str:
+    subprocess.run(("git", "init", "-q", "-b", "main"), cwd=root, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=root, check=True)
+    subprocess.run(("git", "config", "user.email", "test@localhost"), cwd=root, check=True)
+    (root / "TASK-9000.md").write_text("task", encoding="utf-8")
+    subprocess.run(("git", "add", "--", "."), cwd=root, check=True)
+    subprocess.run(("git", "commit", "-q", "-m", "fixture"), cwd=root, check=True)
+    return subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=root, text=True).strip()
+
+
 def test_subprocess_runner_never_enables_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     observed: dict[str, object] = {}
 
@@ -91,6 +101,78 @@ def test_subprocess_runner_never_enables_shell(tmp_path: Path, monkeypatch: pyte
     assert observed.get("shell", False) is False
     assert observed.get("text", False) is False
     assert "encoding" not in observed
+
+
+def test_execution_blocks_git_control_metadata_mutation_before_post_child_git_use(tmp_path: Path) -> None:
+    head = _initialize_git_repository(tmp_path)
+
+    class MutatingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            with (cwd / ".git" / "config").open("a", encoding="utf-8") as stream:
+                stream.write("[core]\n\tfsmonitor = attacker.exe\n")
+            return ProcessOutcome(0, '{"type":"completed"}\n', "")
+
+    execution_request = CodexExecutionRequest(
+        "TASK-9000", tmp_path / "TASK-9000.md", str(tmp_path), "main", head, head,
+        "implementation", ("TASK-9000.md",), (".git/**",), ("git diff --check",),
+        utc_now(), "git-control-mutation",
+    )
+    result = CodexExecutionService(
+        codex_runner=MutatingRunner(), runner=FakeRunner([]), git=GitInspector(tmp_path),
+        repository_root=tmp_path, launcher=CodexLauncher(("codex.exe",)),
+    ).execute(execution_request)
+    assert result.status is ExecutionStatus.SCOPE_VIOLATION
+    assert result.scope_compliance is ScopeCompliance.VIOLATION
+    assert result.failure_reason == "Git control metadata changed during execution"
+
+
+def test_execution_blocks_new_ignored_file(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("ignored/**\n", encoding="utf-8")
+    head = _initialize_git_repository(tmp_path)
+
+    class MutatingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            target = cwd / "ignored" / "conftest.py"
+            target.parent.mkdir()
+            target.write_text("pytest_plugins = ['attacker']\n", encoding="utf-8")
+            return ProcessOutcome(0, '{"type":"completed"}\n', "")
+
+    execution_request = CodexExecutionRequest(
+        "TASK-9000", tmp_path / "TASK-9000.md", str(tmp_path), "main", head, head,
+        "implementation", ("TASK-9000.md",), (".git/**",), ("git diff --check",),
+        utc_now(), "ignored-file-mutation",
+    )
+    result = CodexExecutionService(
+        codex_runner=MutatingRunner(), runner=FakeRunner([]), git=GitInspector(tmp_path),
+        repository_root=tmp_path, launcher=CodexLauncher(("codex.exe",)),
+    ).execute(execution_request)
+    assert result.status is ExecutionStatus.SCOPE_VIOLATION
+    assert result.scope_compliance is ScopeCompliance.VIOLATION
+    assert result.failure_reason == "ignored worktree content changed during execution"
+
+
+def test_execution_allows_expected_branch_commit_without_git_control_false_positive(tmp_path: Path) -> None:
+    head = _initialize_git_repository(tmp_path)
+
+    class CommittingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            (cwd / "TASK-9000.md").write_text("implemented\n", encoding="utf-8")
+            subprocess.run(("git", "add", "--", "TASK-9000.md"), cwd=cwd, check=True)
+            subprocess.run(("git", "commit", "-q", "-m", "implementation"), cwd=cwd, check=True)
+            return ProcessOutcome(0, '{"type":"completed"}\n', "")
+
+    execution_request = CodexExecutionRequest(
+        "TASK-9000", tmp_path / "TASK-9000.md", str(tmp_path), "main", head, head,
+        "implementation", ("TASK-9000.md",), (".git/**",), ("git diff --check",),
+        utc_now(), "legitimate-commit",
+    )
+    result = CodexExecutionService(
+        codex_runner=CommittingRunner(), runner=FakeRunner([ProcessOutcome(0, "", "")]),
+        git=GitInspector(tmp_path), repository_root=tmp_path,
+        launcher=CodexLauncher(("codex.exe",)),
+    ).execute(execution_request)
+    assert result.status is ExecutionStatus.SUCCESS
+    assert result.resulting_commit != head
 
 
 def test_subprocess_runner_decodes_utf8_independently_of_windows_charmap(
