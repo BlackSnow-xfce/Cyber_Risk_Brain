@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,7 +17,8 @@ from aidp_orchestration.contracts import (
 from aidp_orchestration.repository import AIDPRepository
 from aidp_orchestration.trigger_publisher import AIDPWatchOnce
 from aidp_orchestration.watcher_runtime import (
-    AIDPLocalWatcherRuntime, WatcherRuntimeLock, serialize_watch_iteration_event,
+    AIDPLocalWatcherRuntime, PersistentWatcherStatusPublisher, WatcherRuntimeLock,
+    serialize_watch_iteration_event,
     serialize_watch_runtime_result,
 )
 
@@ -34,13 +36,18 @@ def test_watch_cli_forwards_configured_execution_timeout(
             observed["timeout_seconds"] = timeout_seconds
 
     class Runtime:
-        def __init__(self, repository, *, watcher, interval_seconds, ingress, lifecycle, infrastructure_lifecycle):
+        def __init__(
+            self, repository, *, watcher, interval_seconds, ingress, lifecycle,
+            infrastructure_lifecycle, heartbeat, status_publisher,
+        ):
             observed["runtime_repository"] = repository.root
             observed["watcher"] = watcher
             observed["interval_seconds"] = interval_seconds
             observed["ingress"] = ingress
             observed["lifecycle"] = lifecycle
             observed["infrastructure_lifecycle"] = infrastructure_lifecycle
+            observed["heartbeat"] = heartbeat
+            observed["status_publisher"] = status_publisher
 
         def run(self):
             return type("Result", (), {"status": type("Status", (), {"value": "STOPPED"})()})()
@@ -48,6 +55,14 @@ def test_watch_cli_forwards_configured_execution_timeout(
     monkeypatch.setattr(cli, "AIDPWatchOnce", WatchOnce)
     monkeypatch.setattr(cli, "AIDPLocalWatcherRuntime", Runtime)
     monkeypatch.setattr(cli, "serialize_watch_runtime_result", lambda _result: "{}")
+    monkeypatch.setattr(
+        cli.LocalRuntimeStore,
+        "for_repository",
+        lambda _root: SimpleNamespace(
+            root=tmp_path / "runtime",
+            watcher_heartbeat=lambda: None,
+        ),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -60,6 +75,78 @@ def test_watch_cli_forwards_configured_execution_timeout(
     assert observed["timeout_seconds"] == 14400.0
     assert observed["interval_seconds"] == 15.0
     assert observed["watcher"] is not None
+    assert observed["heartbeat"] is not None
+    assert observed["status_publisher"] is not None
+
+
+def test_persistent_status_projection_is_atomic_sanitized_and_lane_aware(tmp_path: Path) -> None:
+    publisher = PersistentWatcherStatusPublisher(tmp_path / "status")
+    event = WatchIterationEvent(
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        7,
+        TriggerStatus.BLOCKED,
+        None,
+        None,
+        "secret failure detail",
+        product_lifecycle_status=LifecycleStatus.NO_ACTION,
+        product_task_id="TASK-0131",
+        product_state=AIDPState.WAITING_FOR_PRODUCT_OWNER,
+        product_reason="secret product detail",
+        infrastructure_lifecycle_status=LifecycleStatus.ESCALATION_REQUIRED,
+        infrastructure_task_id="AIDP-INFRA-0002",
+        infrastructure_state=AIDPState.REWORK_REQUIRED,
+        infrastructure_reason="secret infrastructure detail",
+    )
+
+    publisher.publish(event)
+
+    payload = json.loads(publisher.json_path.read_text(encoding="utf-8"))
+    visible = publisher.text_path.read_text(encoding="utf-8")
+    assert payload["overall_status"] == "BLOCKED"
+    assert payload["active_component"] == "INFRASTRUCTURE"
+    assert payload["next_action"] == "HUMAN_ACTION_REQUIRED"
+    assert payload["product"] == {
+        "task_id": "TASK-0131",
+        "lifecycle_state": "WAITING_FOR_PRODUCT_OWNER",
+        "lifecycle_status": "NO_ACTION",
+    }
+    assert payload["infrastructure"] == {
+        "task_id": "AIDP-INFRA-0002",
+        "lifecycle_state": "REWORK_REQUIRED",
+        "lifecycle_status": "ESCALATION_REQUIRED",
+    }
+    assert "Overall: BLOCKED" in visible
+    assert "Next action: HUMAN_ACTION_REQUIRED" in visible
+    assert "secret" not in publisher.json_path.read_text(encoding="utf-8")
+    assert "secret" not in visible
+    assert not publisher.json_path.with_name("watcher-current-status.json.tmp").exists()
+    assert not publisher.text_path.with_name("watcher-current-status.txt.tmp").exists()
+
+
+def test_persistent_status_projects_long_running_activity_without_sensitive_output(tmp_path: Path) -> None:
+    publisher = PersistentWatcherStatusPublisher(
+        tmp_path / "status",
+        clock=lambda: datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+    publisher.publish_activity(json.dumps({"operator_activity": {
+        "source": "CODEX",
+        "kind": "process_started",
+        "task_id": "AIDP-INFRA-0002",
+        "command": ["codex", "--secret", "credential"],
+        "text": "sensitive child output",
+        "execution_id": "protected-execution-id",
+    }}))
+
+    payload = json.loads(publisher.json_path.read_text(encoding="utf-8"))
+    persisted = publisher.json_path.read_text(encoding="utf-8")
+    assert payload["overall_status"] == "WORKING"
+    assert payload["active_component"] == "CODEX"
+    assert payload["activity_kind"] == "process_started"
+    assert payload["next_action"] == "CONTINUE_AUTOMATICALLY"
+    assert payload["infrastructure"]["task_id"] == "AIDP-INFRA-0002"
+    assert "secret" not in persisted
+    assert "sensitive" not in persisted
+    assert "protected-execution-id" not in persisted
 
 
 class SequenceWatcher:

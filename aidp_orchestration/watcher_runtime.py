@@ -12,10 +12,10 @@ from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Mapping, Protocol
 
 from .contracts import (
-    ArchitectIngressResult, IngressStatus, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
+    AIDPState, ArchitectIngressResult, IngressStatus, LifecycleResult, LifecycleStatus, TriggerResult, TriggerStatus, WatchIterationEvent, WatchRuntimeResult,
     WatchRuntimeStatus, ExternalWatcherHealth, ExternalWatcherOutcome,
     WatcherHeartbeatV1, canonical_digest, utc_now,
 )
@@ -56,6 +56,174 @@ class SanitizedWatcherHeartbeatPublisher:
             previous_heartbeat_digest=None if self.previous is None else self.previous.heartbeat_digest)
         heartbeat = WatcherHeartbeatV1(heartbeat_digest=canonical_digest(values), **values)
         self.store.persist_watcher_heartbeat(heartbeat); self.previous = heartbeat
+
+
+class PersistentWatcherStatusPublisher:
+    """Atomically publishes one sanitized current-status view outside task authority."""
+
+    def __init__(self, root: Path, *, clock: Callable[[], datetime] = utc_now):
+        self.json_path = root / "watcher-current-status.json"
+        self.text_path = root / "watcher-current-status.txt"
+        self.clock = clock
+
+    def publish(self, event: WatchIterationEvent) -> None:
+        overall = self._overall(event)
+        component = self._component(event, overall)
+        next_action = self._next_action(event, overall)
+        payload = {
+            "schema_version": "aidp-watcher-current-status-v1",
+            "updated_at": event.timestamp.isoformat(),
+            "iteration": event.iteration,
+            "overall_status": overall,
+            "active_component": component,
+            "last_activity": event.timestamp.isoformat(),
+            "next_action": next_action,
+            "trigger_status": event.trigger_status.value,
+            "product": self._lane(
+                event.product_task_id, event.product_state, event.product_lifecycle_status,
+            ),
+            "infrastructure": self._lane(
+                event.infrastructure_task_id,
+                event.infrastructure_state,
+                event.infrastructure_lifecycle_status,
+            ),
+        }
+        self._write_payload(payload)
+
+    def publish_activity(self, encoded_event: str) -> None:
+        """Project only bounded activity metadata; raw child output is never persisted."""
+
+        try:
+            envelope = json.loads(encoded_event)
+            activity = envelope.get("operator_activity")
+        except (json.JSONDecodeError, AttributeError):
+            return
+        if not isinstance(activity, dict):
+            return
+        source = activity.get("source")
+        kind = activity.get("kind")
+        if source not in {"AIDP", "CODEX", "ARCHITECT", "VALIDATION"} or not isinstance(kind, str):
+            return
+        payload = self._read_or_initial()
+        timestamp = self.clock().isoformat()
+        payload.update({
+            "updated_at": timestamp,
+            "overall_status": "WORKING",
+            "active_component": source,
+            "last_activity": timestamp,
+            "activity_kind": kind[:64],
+            "next_action": "CONTINUE_AUTOMATICALLY",
+        })
+        task_id = activity.get("task_id")
+        if isinstance(task_id, str) and len(task_id) <= 64:
+            lane_name = "infrastructure" if task_id.startswith("AIDP-INFRA-") else "product"
+            lane = payload.get(lane_name)
+            if isinstance(lane, dict):
+                lane["task_id"] = task_id
+        self._write_payload(payload)
+
+    def _read_or_initial(self) -> dict[str, object]:
+        try:
+            value = json.loads(self.json_path.read_text(encoding="utf-8"))
+            if isinstance(value, dict) and value.get("schema_version") == "aidp-watcher-current-status-v1":
+                return value
+        except (OSError, json.JSONDecodeError):
+            pass
+        return {
+            "schema_version": "aidp-watcher-current-status-v1",
+            "iteration": None,
+            "trigger_status": None,
+            "product": self._lane(None, None, None),
+            "infrastructure": self._lane(None, None, None),
+        }
+
+    def _write_payload(self, payload: Mapping[str, object]) -> None:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        text = (
+            "AIDP WATCHER STATUS\n"
+            f"Overall: {payload['overall_status']}\n"
+            f"Updated: {payload['updated_at']}\n"
+            f"Active component: {payload['active_component']}\n"
+            f"Next action: {payload['next_action']}\n"
+            f"Product: {self._lane_text(payload['product'])}\n"
+            f"Infrastructure: {self._lane_text(payload['infrastructure'])}\n"
+        )
+        self._atomic_write(self.json_path, encoded)
+        self._atomic_write(self.text_path, text)
+
+    @staticmethod
+    def _lane(
+        task_id: str | None,
+        state: AIDPState | None,
+        status: LifecycleStatus | None,
+    ) -> dict[str, str | None]:
+        return {
+            "task_id": task_id,
+            "lifecycle_state": state.value if state is not None else None,
+            "lifecycle_status": status.value if status is not None else None,
+        }
+
+    @staticmethod
+    def _lane_text(lane: Mapping[str, str | None]) -> str:
+        return f"{lane['task_id'] or 'NONE'} | {lane['lifecycle_state'] or 'UNKNOWN'} | {lane['lifecycle_status'] or 'UNKNOWN'}"
+
+    @staticmethod
+    def _overall(event: WatchIterationEvent) -> str:
+        statuses = (event.product_lifecycle_status, event.infrastructure_lifecycle_status)
+        if event.trigger_status in {TriggerStatus.BLOCKED, TriggerStatus.ERROR} or any(
+            status in {LifecycleStatus.BLOCKED, LifecycleStatus.ESCALATION_REQUIRED}
+            for status in statuses
+        ):
+            return "BLOCKED"
+        states = tuple(state for state in (event.product_state, event.infrastructure_state) if state is not None)
+        if states and all(state is AIDPState.DONE for state in states):
+            return "DONE"
+        if event.trigger_status is TriggerStatus.PUBLISHED or any(
+            status is LifecycleStatus.ADVANCED for status in statuses
+        ) or any(state is AIDPState.CODEX_RUNNING for state in states):
+            return "WORKING"
+        return "WAITING"
+
+    @staticmethod
+    def _component(event: WatchIterationEvent, overall: str) -> str:
+        if event.infrastructure_lifecycle_status in {
+            LifecycleStatus.ADVANCED, LifecycleStatus.BLOCKED, LifecycleStatus.ESCALATION_REQUIRED,
+        }:
+            return "INFRASTRUCTURE"
+        if event.product_state is AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            return "PRODUCT_OWNER"
+        if event.product_lifecycle_status in {
+            LifecycleStatus.ADVANCED, LifecycleStatus.BLOCKED, LifecycleStatus.ESCALATION_REQUIRED,
+        }:
+            return "PRODUCT"
+        return "NONE" if overall == "DONE" else "WATCHER"
+
+    @staticmethod
+    def _next_action(event: WatchIterationEvent, overall: str) -> str:
+        if overall == "DONE":
+            return "NONE"
+        if overall == "BLOCKED":
+            if LifecycleStatus.ESCALATION_REQUIRED in {
+                event.product_lifecycle_status, event.infrastructure_lifecycle_status,
+            }:
+                return "HUMAN_ACTION_REQUIRED"
+            return "OPERATOR_REVIEW"
+        if overall == "WORKING":
+            return "CONTINUE_AUTOMATICALLY"
+        if event.product_state is AIDPState.WAITING_FOR_PRODUCT_OWNER:
+            return "PRODUCT_OWNER_CONFIRMATION"
+        if AIDPState.READY_FOR_ARCHITECT in {event.product_state, event.infrastructure_state}:
+            return "ARCHITECT_REVIEW"
+        if AIDPState.REWORK_REQUIRED in {event.product_state, event.infrastructure_state}:
+            return "CODEX_REWORK"
+        return "WAIT_FOR_AUTHORIZED_WORK"
+
+    @staticmethod
+    def _atomic_write(path: Path, value: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(value, encoding="utf-8", newline="\n")
+        os.replace(temporary, path)
 
 
 class WatcherRuntimeLock:
@@ -148,6 +316,7 @@ class AIDPLocalWatcherRuntime:
         lifecycle: LifecycleBoundary | None = None,
         infrastructure_lifecycle: LifecycleBoundary | None = None,
         heartbeat: SanitizedWatcherHeartbeatPublisher | None = None,
+        status_publisher: PersistentWatcherStatusPublisher | None = None,
     ):
         if not math.isfinite(interval_seconds) or interval_seconds < MINIMUM_WATCH_INTERVAL_SECONDS:
             raise ValueError(f"watch interval must be at least {MINIMUM_WATCH_INTERVAL_SECONDS:g} seconds")
@@ -161,6 +330,7 @@ class AIDPLocalWatcherRuntime:
         self.lifecycle = lifecycle
         self.infrastructure_lifecycle = infrastructure_lifecycle
         self.heartbeat = heartbeat
+        self.status_publisher = status_publisher
 
     def run(self) -> WatchRuntimeResult:
         try:
@@ -240,6 +410,8 @@ class AIDPLocalWatcherRuntime:
                     infrastructure_result.reason if infrastructure_result else None,
                 )
                 try:
+                    if self.status_publisher is not None:
+                        self.status_publisher.publish(event)
                     self.event_sink(serialize_watch_iteration_event(event))
                     for lane, lifecycle_event in (
                         ("infrastructure", infrastructure_result), ("product", product_result),

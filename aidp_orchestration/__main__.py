@@ -39,6 +39,8 @@ from .trigger_publisher_acceptance import (
 from .watcher_runtime import (
     AIDPLocalWatcherRuntime,
     MINIMUM_WATCH_INTERVAL_SECONDS,
+    PersistentWatcherStatusPublisher,
+    SanitizedWatcherHeartbeatPublisher,
     serialize_watch_runtime_result,
 )
 
@@ -88,11 +90,18 @@ def main() -> int:
         print(serialize_architect_ingress_acceptance_result(result))
         return 0 if result.status is AcceptanceStatus.PASS else 2
     if args.watch:
+        runtime_store = LocalRuntimeStore.for_repository(repository.root)
+        status_publisher = PersistentWatcherStatusPublisher(
+            runtime_store.root / "external-status-internal",
+        )
+        def activity_sink(event: str) -> None:
+            print(event)
+            status_publisher.publish_activity(event)
         try:
             ingress = ArchitectGitIngress(repository, branch=args.architect_contract_branch) if args.architect_contract_branch else None
         except ValueError as exc:
             parser.error(str(exc))
-        watcher_options = {"activity_sink": print} if args.autonomous_architect else {}
+        watcher_options = {"activity_sink": activity_sink} if args.autonomous_architect else {}
         watcher = AIDPWatchOnce(repository, timeout_seconds=args.timeout, **watcher_options)
         lifecycle = None
         infrastructure_lifecycle = None
@@ -104,7 +113,7 @@ def main() -> int:
             )
             architect = ArchitectReviewCoordinator(
                 product_root=args.root, identity_guard=guard, timeout_seconds=args.timeout,
-                activity_sink=print,
+                activity_sink=activity_sink,
             )
             lifecycle = AIDPLifecycleOnce(repository, codex=watcher, architect=architect)
             infrastructure_repository = AIDPRepository(
@@ -116,7 +125,7 @@ def main() -> int:
                 runtime_root=authority_inbox_root,
                 timeout_seconds=args.timeout,
                 allow_test_failure_retry=True,
-                activity_sink=print,
+                activity_sink=activity_sink,
             )
             infrastructure_guard = ProductWorktreeIdentityGuard(
                 args.infrastructure_root,
@@ -127,7 +136,7 @@ def main() -> int:
                 product_root=args.infrastructure_root,
                 identity_guard=infrastructure_guard,
                 timeout_seconds=args.timeout,
-                activity_sink=print,
+                activity_sink=activity_sink,
             )
             infrastructure_lifecycle = AIDPLifecycleOnce(
                 infrastructure_repository,
@@ -142,6 +151,11 @@ def main() -> int:
             ingress=ingress,
             lifecycle=lifecycle,
             infrastructure_lifecycle=infrastructure_lifecycle,
+            heartbeat=SanitizedWatcherHeartbeatPublisher(
+                runtime_store,
+                expected_interval_seconds=args.watch_interval,
+            ),
+            status_publisher=status_publisher,
         ).run()
         print(serialize_watch_runtime_result(result))
         return 0 if result.status.value == "STOPPED" else 2
