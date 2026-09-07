@@ -203,7 +203,7 @@ class GitReviewPublisher:
                 else self.projection.project_ready_for_architect(execution.task_id, relative)
             )
             self._git("remote", "get-url", "origin")
-            self._git("push", "origin", branch)
+            self._git("push", "origin", expected_branch)
             return PublishResult(branch, execution_commit, relative, envelope_commit, "PUSHED", AIDPState.READY_FOR_ARCHITECT)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             return PublishResult(branch, None, None, None, "NOT_PUSHED", None, str(exc))
@@ -326,9 +326,7 @@ class AIDPWatchOnce:
             decision = self.control_plane.decide()
             if decision.action is not ControlPlaneAction.EXECUTE:
                 return self._block(item.contract_id, ConsumptionState.MATERIALIZED, f"control plane decided {decision.action.value}", writer_result)
-            execution_state = (
-                ConsumptionState.RECOVERY_EXECUTING if recovering else ConsumptionState.EXECUTING
-            )
+            execution_state = ConsumptionState.RECOVERY_EXECUTING if recovering else ConsumptionState.EXECUTING
             self.consumption.append(item.contract_id, execution_state, "control plane authorized execution")
             lifecycle_state = execution_state
             runner = getattr(self.control_plane, "runner", None)
@@ -388,6 +386,7 @@ class AIDPWatchOnce:
         return bool(
             self._typed_recovery_authorization(item)
             or self._test_failure_retry_is_authorized(item)
+            or self._rework_test_failure_retry_is_authorized(item)
             or self._abandoned_rework_recovery_is_authorized(item)
         )
 
@@ -412,13 +411,13 @@ class AIDPWatchOnce:
             for authority in runtime.recovery_authorizations():
                 common = (
                     authority.task_id == item.contract.task_id
-                and authority.failed_execution_id == result.execution_id
-                and authority.expected_head == item.contract.expected_head == decision.commit
-                and authority.start_head == result.start_commit
-                and authority.authorizer_identity == item.contract_id
-                and authority.retry_budget == 1
-                and decision.task_id == item.contract.task_id
-                and not runtime.recovery_authorization_claimed(authority.authorization_id)
+                    and authority.failed_execution_id == result.execution_id
+                    and authority.expected_head == item.contract.expected_head == decision.commit
+                    and authority.start_head == result.start_commit
+                    and authority.authorizer_identity == item.contract_id
+                    and authority.retry_budget == 1
+                    and decision.task_id == item.contract.task_id
+                    and not runtime.recovery_authorization_claimed(authority.authorization_id)
                 )
                 if not common:
                     continue
@@ -474,8 +473,6 @@ class AIDPWatchOnce:
         if (not self.allow_test_failure_retry or self.repository.task_namespace != "infrastructure"
                 or not isinstance(item.contract, ReworkContract)):
             return False
-        # One-time bootstrap authority frozen by contract 18615075... . Future incidents
-        # require a separately persisted typed recovery authorization.
         expected = {
             "contract_id": "4ece65a0224b1a3978b266d6663b10eeef27479180f7c9b4300599414dc684f8",
             "execution_id": "381f8c6d-8db2-447d-bfc3-da6b61ddad75",
@@ -575,6 +572,49 @@ class AIDPWatchOnce:
                 ) is ScopeCompliance.COMPLIANT
             )
         except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+
+    def _rework_test_failure_retry_is_authorized(self, item: ContractInboxItem) -> bool:
+        if (
+            not self.allow_test_failure_retry
+            or self.repository.task_namespace != "infrastructure"
+            or not isinstance(item.contract, ReworkContract)
+        ):
+            return False
+        try:
+            events = self.consumption.events(item.contract_id)
+            if (
+                not events or events[-1].state is not ConsumptionState.BLOCKED
+                or any(event.state is ConsumptionState.RECOVERY_AUTHORIZED for event in events)
+            ):
+                return False
+            contract = item.contract
+            decision = self.repository.inspect()
+            if (
+                decision.state is not AIDPState.REWORK_REQUIRED
+                or decision.task_id != contract.task_id
+                or decision.commit != contract.expected_head
+            ):
+                return False
+            result = LocalRuntimeStore.for_repository(self.repository.root).latest_execution_result(contract.task_id)
+            if (
+                result is None
+                or result.status is not ExecutionStatus.TEST_FAILED
+                or result.scope_compliance is not ScopeCompliance.COMPLIANT
+                or result.start_commit != contract.expected_head
+                or result.resulting_commit != decision.commit
+                or tuple(validation.name for validation in result.validation_results) != contract.required_validations
+                or not any(not validation.passed for validation in result.validation_results)
+            ):
+                return False
+            changed = GitInspector(self.repository.root).changed_files()
+            if changed != tuple(sorted(result.changed_files)):
+                return False
+            request = self.repository.build_execution_request(
+                contract.task_id, rework_count=contract.review_iteration,
+            )
+            return self.repository.validate_scope(request, changed) is ScopeCompliance.COMPLIANT
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
             return False
 
 
