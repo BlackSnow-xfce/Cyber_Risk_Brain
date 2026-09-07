@@ -1,0 +1,83 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "77b615e6da7fc09127671adbdb4e365e1e37930a767be298d75936a65c5024f5",
+    "contract_type": "architect_task",
+    "contract": {
+      "task_id": "AIDP-INFRA-0005",
+      "title": "AIDP Agent Execution Isolation and Least-Privilege Boundary",
+      "phase": "AIDP INFRASTRUCTURE SECURITY",
+      "expected_head": "4a3cae7c9307c3421e54a4b21ca5c5ad2e5d4430",
+      "allowed_scope": [
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/isolation.py",
+        "aidp_orchestration/executor.py",
+        "aidp_orchestration/architect_review.py",
+        "aidp_orchestration/runner.py",
+        "aidp_orchestration/runtime.py",
+        "aidp_orchestration/watcher_runtime.py",
+        "aidp_orchestration/external_status.py",
+        "aidp_orchestration/__main__.py",
+        "tools/Install-AIDPExecutionIsolation.ps1",
+        "tools/Test-AIDPExecutionIsolation.ps1",
+        "tools/Start-AIDPVisibleWatcher.ps1",
+        "tests/orchestration/test_isolation.py",
+        "tests/orchestration/test_executor.py",
+        "tests/orchestration/test_architect_review.py",
+        "tests/orchestration/test_runner.py",
+        "tests/orchestration/test_runtime.py",
+        "tests/orchestration/test_watcher_runtime.py",
+        "tests/orchestration/test_external_status_projection.py",
+        "tests/orchestration/test_external_status_security.py"
+      ],
+      "prohibited_actions": [
+        "Do not modify PredatorAI product functionality or product task artifacts",
+        "Do not weaken lifecycle authority replay idempotency evidence or fail-closed controls",
+        "Do not fall back to same-principal Codex or Architect execution when isolation is unavailable",
+        "Do not grant worker identities access to Product Owner watcher or other worker credentials",
+        "Do not grant workers write access to protected runtime authority Decision Journal or immutable evidence stores",
+        "Do not pass the complete watcher environment to a worker or child process",
+        "Do not store passwords tokens client secrets private keys or generated credentials in Git",
+        "Do not whitelist unknown reparse points junctions symlinks ignored files or out-of-scope paths",
+        "Do not weaken start HEAD committed diff Git metadata replace ref ignored file or scope enforcement",
+        "Do not provision broad filesystem permissions or administrator membership for worker identities",
+        "Do not restart the running watcher without a separate governed deployment authorization",
+        "Do not create or modify TASK-0132 or create TASK-0133"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Implement one closed versioned ExecutionIsolationPolicy and machine-readable IsolationAttestation contract covering worker kind principal SID workspace identity environment-policy digest containment status and verification time.",
+        "Use distinct Windows virtual service identities NT SERVICE PredatorAIAIDPWatcher NT SERVICE PredatorAIAIDPCodex and NT SERVICE PredatorAIAIDPArchitect or equivalently distinct dedicated service SIDs approved by the installer. No identity may be shared between the three roles.",
+        "The watcher remains the trusted control plane and never launches Codex or Architect directly. It submits a closed immutable capability request through local ACL-protected IPC to the matching worker and validates an exact response binding before consuming results.",
+        "Codex and Architect worker protocols are structurally distinct. A Codex capability cannot enter Architect dispatch and an Architect capability cannot enter Codex dispatch. Requests bind task execution repository start HEAD allowed scope validators worker kind expiry nonce and canonical digest as applicable.",
+        "Each worker creates its child process under its own low-privilege service identity inside a Windows Job Object configured to terminate the full process tree on close and to prevent child escape. Failure to establish or verify the Job Object is BLOCKED.",
+        "Codex receives write access only to one disposable execution workspace and its isolated temp and cache directories. Architect receives read-only access only to the exact reviewed repository snapshot and immutable sanitized review evidence required by its request.",
+        "NTFS ACLs deny Codex and Architect access to Decision Journal Product Owner credential material watcher credentials each other credentials protected authority stores protected runtime stores unrelated repositories and other execution workspaces.",
+        "Worker responses are written to per-request staging locations owned by the worker and are imported by the watcher only after canonical identity authority repository scope process-isolation and evidence validation. Workers cannot write authoritative journal or lifecycle records directly.",
+        "Before dispatch and again before result consumption AIDP verifies expected service SID worker kind workspace root ACL policy no unapproved reparse point and exact repository identity. Missing malformed stale or unverifiable isolation evidence is BLOCKED.",
+        "Reject symlinks junctions mount points and other reparse points anywhere in a writable workspace path unless a future explicitly typed policy positively authorizes that exact reparse identity. Handle-based final paths must remain on the authorized volume and beneath the authorized workspace.",
+        "Construct a fixed allowlisted child environment rather than copying os.environ. Permit only explicitly required values including SystemRoot a fixed tool PATH worker-specific TEMP and TMP deterministic locale and encoding values and narrowly required Git settings.",
+        "HOME USERPROFILE APPDATA and LOCALAPPDATA are absent unless mapped to worker-specific ACL-isolated directories. PYTHONPATH PYTHONSTARTUP credential variables token variables inherited Git configuration variables coverage variables pip cache variables and unrelated watcher variables are removed.",
+        "Preserve the hardened controls represented by security commits 67f01e61c4642023acd613bbb8190a6ddaf3d02e and 41b410f0877bdd60a57793e8d6cd69f43264315d including duplicate-key rejection atomic recovery claims Git-control metadata checks ignored-file checks ancestry checks and committed-diff scope enforcement.",
+        "The installer is idempotent and fail-closed. It creates only the three named service identities services protected ProgramData directories and minimum ACLs described by a versioned manifest and never embeds generated credentials.",
+        "Provisioning requires an elevated administrator operation outside autonomous Codex execution. Until installation and the real ACL probe succeed persistent status reports isolation BLOCKED and no Codex or Architect process launches.",
+        "The deployment verifier launches real probes under the actual Codex and Architect service security contexts and proves denied read and write access to Decision Journal authority evidence watcher Product Owner and peer-worker protected paths.",
+        "The real deployment verifier also proves authorized repository work validators and read-only Architect review work succeed while attempts to access another workspace write out of tree or escape through a reparse point are denied.",
+        "Persistent status exposes execution_isolation workspace_containment environment_policy worker_type and sanitized principal type as VERIFIED or BLOCKED without SIDs ACL bodies paths environment contents credentials tokens prompts or command arguments.",
+        "Watcher startup validates the installed isolation manifest service identities ACLs and worker protocol compatibility. It must remain operational but dispatch must fail closed when any verification or worker service dependency is unavailable.",
+        "Recovery and restart preserve immutable attempts heartbeats retry budgets claims and results. A worker crash timeout disappearance or watcher restart must not duplicate execution or review and must not leave an unclassified active process.",
+        "Rollback stops the isolated worker services and restores the last independently reviewed watcher executable only through a separately authorized deployment action. Rollback never enables legacy same-principal dispatch and therefore leaves agent execution BLOCKED until isolation is restored.",
+        "Automated security tests prove workers cannot read or write protected Decision Journal authority credential watcher Architect or peer-execution state cannot inherit prohibited variables cannot persist influence into another execution and cannot impersonate the other worker kind.",
+        "Positive tests prove authorized Codex work validators Architect review watcher supervision recovery restart and sanitized persistent observability remain operational with exact capability and evidence binding.",
+        "Mock ACL or unit tests are not sufficient for production acceptance. A real Windows deployment test under the actual service tokens and ACLs is mandatory before isolation may project VERIFIED.",
+        "The full orchestration suite and git diff --check pass and no product repository path changes.",
+        "After independent Architect implementation PASS a separate Product Owner deployment authorization is required for elevated provisioning and one controlled watcher update or restart. The implementation itself must not restart the current watcher."
+      ],
+      "product_owner_gate": true,
+      "created_at": "2026-09-07T23:18:30.4083781+02:00"
+    },
+    "received_at": "2026-09-07T23:18:30.4083781+02:00"
+  }
+}
