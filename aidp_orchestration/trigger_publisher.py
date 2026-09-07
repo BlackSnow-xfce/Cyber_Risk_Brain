@@ -386,8 +386,8 @@ class AIDPWatchOnce:
         return bool(
             self._typed_recovery_authorization(item)
             or self._test_failure_retry_is_authorized(item)
-            or self._rework_test_failure_retry_is_authorized(item)
             or self._abandoned_rework_recovery_is_authorized(item)
+            or self._rework_test_failure_retry_is_authorized(item)
         )
 
     def _typed_recovery_authorization(
