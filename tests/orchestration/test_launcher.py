@@ -69,3 +69,14 @@ def test_non_file_launcher_paths_fail_closed(tmp_path: Path) -> None:
             which=resolver({"codex.exe": native_directory}),
             search_path=str(tmp_path),
         )
+
+
+def test_visible_watcher_places_temporary_state_outside_governed_worktrees() -> None:
+    script = (
+        Path(__file__).resolve().parents[2] / "tools" / "Start-AIDPVisibleWatcher.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert '$temporaryRoot = Join-Path $runtimeRoot "tmp\\visible-watcher"' in script
+    assert '$temporaryRoot = Join-Path $orchestrationRoot' not in script
+    assert "$env:TEMP = $temporaryRoot" in script
+    assert "$env:TMP = $temporaryRoot" in script

@@ -13,7 +13,7 @@ $infrastructureBranch = "aidp/infrastructure-lifecycle"
 $contractBranch = "aidp/architect-contracts"
 $runtimeRoot = Join-Path $env:LOCALAPPDATA "PredatorAI\AIDP"
 $logRoot = Join-Path $runtimeRoot "logs"
-$temporaryRoot = Join-Path $orchestrationRoot ".tmp\visible-watcher"
+$temporaryRoot = Join-Path $runtimeRoot "tmp\visible-watcher"
 
 $Host.UI.RawUI.WindowTitle = "PredatorAI AIDP Visible Autonomous Watcher"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
