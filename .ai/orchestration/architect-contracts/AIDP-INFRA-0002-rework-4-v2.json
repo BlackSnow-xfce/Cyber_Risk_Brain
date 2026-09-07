@@ -1,0 +1,24 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "dd87fa39087782cf82f12350e6cf9099808472b45d6290ac11c12720972b981b",
+    "contract_type": "rework",
+    "contract": {
+      "task_id": "AIDP-INFRA-0002",
+      "review_iteration": 4,
+      "expected_head": "3af026627dde718ed3133ff815cbfa8ac2b1a15a",
+      "allowed_rework_scope": [
+        "aidp_orchestration/product_owner_http.py",
+        "tests/orchestration/test_product_owner_http_security.py"
+      ],
+      "findings": [
+        "2591ecf7f2970be58020add160d8c0135f975eb368095d67a7e798eca80dd9da:AC-HTTP-BOUNDED-GENERIC-ERROR:AIDP-INFRA-0002-AR-003"
+      ],
+      "required_validations": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "created_at": "2026-09-07T19:20:00+00:00"
+    },
+    "received_at": "2026-09-07T19:20:00+00:00"
+  }
+}
