@@ -8,8 +8,10 @@ from aidp_orchestration.contracts import (
     AIDPState,
     CodexExecutionResult,
     ExecutionStatus,
+    ReworkContract,
     ScopeCompliance,
     ValidationResult,
+    utc_now,
 )
 from aidp_orchestration.repository import AIDPRepository
 
@@ -68,14 +70,30 @@ def test_rework_with_explicit_scope_can_create_new_execution_request(tmp_path: P
     path = tmp_path / ".ai" / "tasks" / "review" / "TASK-9000.md"
     path.write_text(
         "---\ntask_id: TASK-9000\nphase: rework\nallowed_scope: application/**\n"
-        "prohibited_actions: .git/**\nvalidation_requirements: pytest\n---\n"
+        "prohibited_actions: .git/**\nvalidation_requirements: pytest, git diff --check\n---\n"
         "Status: REVIEW / REWORK REQUIRED\n",
         encoding="utf-8",
     )
     assert repo.inspect().state is AIDPState.REWORK_REQUIRED
-    request = repo.build_execution_request("TASK-9000", rework_count=1)
+    authority = ReworkContract(
+        "TASK-9000",
+        3,
+        repo.head,
+        ("application/rework.py",),
+        ("Fix the active Architect finding",),
+        ("pytest",),
+        utc_now(),
+    )
+    request = repo.build_execution_request(
+        "TASK-9000", rework_count=1, rework_contract=authority,
+    )
     assert request.task_id == "TASK-9000"
     assert request.rework_count == 1
+    assert request.allowed_scope == ("application/rework.py",)
+    assert request.allowed_scope != ("application/**",)
+    assert request.validation_requirements == ("pytest",)
+    assert request.validation_requirements != ("pytest", "git diff --check")
+    assert request.expected_head == authority.expected_head
 
 
 def test_two_ready_tasks_are_blocked(tmp_path: Path) -> None:

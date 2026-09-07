@@ -15,6 +15,7 @@ from .contracts import (
     CodexExecutionRequest,
     CodexExecutionResult,
     OrchestrationDecision,
+    ReworkContract,
     RunnerResult,
     RunnerStatus,
     ExecutionStatus,
@@ -58,7 +59,7 @@ class AIDPRunner:
         )
         self.runtime_store = runtime_store or LocalRuntimeStore.for_repository(repository.root)
 
-    def run_ready(self) -> RunnerResult:
+    def run_ready(self, rework_contract: ReworkContract | None = None) -> RunnerResult:
         try:
             decision = self.repository.inspect()
         except (OSError, RuntimeError) as exc:
@@ -91,7 +92,15 @@ class AIDPRunner:
             if decision.task_id is None:
                 raise ValueError("executable inspection has no task")
             rework_count = 1 if decision.state is AIDPState.REWORK_REQUIRED else 0
-            request = self.repository.build_execution_request(decision.task_id, rework_count=rework_count)
+            if decision.state is AIDPState.REWORK_REQUIRED and rework_contract is None:
+                raise ValueError("rework execution requires validated contract authority")
+            if decision.state is AIDPState.READY_FOR_CODEX and rework_contract is not None:
+                raise ValueError("READY execution cannot use rework authority")
+            request = self.repository.build_execution_request(
+                decision.task_id,
+                rework_count=rework_count,
+                rework_contract=rework_contract,
+            )
         except Exception as exc:
             reason = f"runner failed closed: {exc.__class__.__name__}"
             self._audit_safely(decision.state, decision.state, None, reason, decision, None)

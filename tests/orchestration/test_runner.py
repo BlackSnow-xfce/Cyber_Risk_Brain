@@ -11,6 +11,7 @@ from aidp_orchestration.contracts import (
     CodexExecutionResult,
     ExecutionStatus,
     OrchestrationDecision,
+    ReworkContract,
     RunnerStatus,
     ScopeCompliance,
     ValidationResult,
@@ -31,20 +32,37 @@ class FakeRepository:
         task_id = None if self.state is AIDPState.WAITING else "TASK-9000"
         return OrchestrationDecision(task_id, self.state, self.next_state, "main", "base", (), utc_now())
 
-    def build_execution_request(self, task_id: str, *, rework_count: int = 0) -> CodexExecutionRequest:
+    def build_execution_request(
+        self,
+        task_id: str,
+        *,
+        rework_count: int = 0,
+        rework_contract: ReworkContract | None = None,
+    ) -> CodexExecutionRequest:
         self.requests.append((task_id, rework_count))
         task_path = self.root / ".ai" / "tasks" / "ready" / f"{task_id}.md"
+        allowed_scope = (
+            rework_contract.allowed_rework_scope
+            if rework_contract is not None
+            else ("aidp_orchestration/**",)
+        )
+        validations = (
+            rework_contract.required_validations
+            if rework_contract is not None
+            else ("pytest",)
+        )
+        expected_head = rework_contract.expected_head if rework_contract is not None else "base"
         return CodexExecutionRequest(
             task_id,
             task_path,
             str(self.root),
             "main",
             "base",
-            "base",
+            expected_head,
             "implementation",
-            ("aidp_orchestration/**",),
+            allowed_scope,
             (".ai/tasks/**", ".ai/handoff/**"),
-            ("pytest",),
+            validations,
             utc_now(),
             "execution-1",
             rework_count,
@@ -87,6 +105,20 @@ def make_runner(tmp_path: Path, state: AIDPState, *, next_state: AIDPState | Non
     return AIDPRunner(repository, execution_service=execution_service, runtime_store=store), repository, execution_service, store
 
 
+def rework_contract(**changes: object) -> ReworkContract:
+    values = {
+        "task_id": "TASK-9000",
+        "review_iteration": 2,
+        "expected_head": "base",
+        "allowed_rework_scope": ("aidp_orchestration/product_owner_http.py",),
+        "findings": ("Fix the active Architect finding",),
+        "required_validations": ("git diff --check",),
+        "created_at": utc_now(),
+    }
+    values.update(changes)
+    return ReworkContract(**values)
+
+
 def test_ready_for_codex_starts_exactly_one_execution_and_reports_review_state(tmp_path: Path) -> None:
     runner, repository, service, _ = make_runner(tmp_path, AIDPState.READY_FOR_CODEX, next_state=AIDPState.CODEX_RUNNING)
 
@@ -120,11 +152,36 @@ def test_rework_executes_only_with_explicit_ready_authorization(tmp_path: Path) 
         tmp_path / "allowed", AIDPState.REWORK_REQUIRED, next_state=AIDPState.READY_FOR_CODEX
     )
 
-    assert denied.run_ready().status is RunnerStatus.NO_ACTION
+    authority = rework_contract()
+    assert denied.run_ready(authority).status is RunnerStatus.NO_ACTION
     assert denied_service.calls == []
-    assert allowed.run_ready().status is RunnerStatus.EXECUTED
+    assert allowed.run_ready(authority).status is RunnerStatus.EXECUTED
     assert len(allowed_service.calls) == 1
     assert repository.requests == [("TASK-9000", 1)]
+    assert allowed_service.calls[0].allowed_scope == authority.allowed_rework_scope
+    assert allowed_service.calls[0].validation_requirements == authority.required_validations
+
+
+def test_rework_without_contract_authority_fails_closed(tmp_path: Path) -> None:
+    runner, repository, service, _ = make_runner(
+        tmp_path, AIDPState.REWORK_REQUIRED, next_state=AIDPState.READY_FOR_CODEX,
+    )
+
+    result = runner.run_ready()
+
+    assert result.status is RunnerStatus.ERROR
+    assert service.calls == []
+    assert repository.requests == []
+
+
+def test_ready_for_codex_does_not_accept_rework_authority(tmp_path: Path) -> None:
+    runner, repository, service, _ = make_runner(tmp_path, AIDPState.READY_FOR_CODEX)
+
+    result = runner.run_ready(rework_contract())
+
+    assert result.status is RunnerStatus.ERROR
+    assert service.calls == []
+    assert repository.requests == []
 
 
 def test_execution_result_is_persisted_with_required_fields(tmp_path: Path) -> None:

@@ -16,6 +16,7 @@ from .contracts import (
     ExecutionStatus,
     Handoff,
     OrchestrationDecision,
+    ReworkContract,
     ScopeCompliance,
     TaskMetadata,
     ValidationResult,
@@ -26,6 +27,17 @@ from .contracts import (
 
 _FRONT_MATTER = re.compile(r"\A---\s*\n(?P<body>.*?)\n---\s*\n", re.DOTALL)
 _KEY = re.compile(r"^(?P<key>[a-z_]+):\s*(?P<value>.*)$")
+
+
+def _scope_is_subset(candidate: tuple[str, ...], authorized: tuple[str, ...]) -> bool:
+    for item in candidate:
+        if item in authorized:
+            continue
+        if any(character in item for character in "*?["):
+            return False
+        if not any(fnmatch.fnmatchcase(item, pattern) for pattern in authorized):
+            return False
+    return True
 
 
 class AIDPRepository:
@@ -107,7 +119,13 @@ class AIDPRepository:
                 return OrchestrationDecision(done[0].stem, AIDPState.DONE, None, branch, commit, (), utc_now())
         return OrchestrationDecision(None, AIDPState.WAITING, None, branch, commit, (), utc_now())
 
-    def build_execution_request(self, task_id: str, *, rework_count: int = 0) -> CodexExecutionRequest:
+    def build_execution_request(
+        self,
+        task_id: str,
+        *,
+        rework_count: int = 0,
+        rework_contract: ReworkContract | None = None,
+    ) -> CodexExecutionRequest:
         candidates = [path for path in (*self.task_paths("ready"), *self.task_paths("review")) if path.stem == task_id]
         if len(candidates) != 1:
             raise ValueError("exactly one active task is required")
@@ -118,17 +136,46 @@ class AIDPRepository:
         decision = self.inspect()
         if decision.state not in {AIDPState.READY_FOR_CODEX, AIDPState.REWORK_REQUIRED}:
             raise ValueError(f"task is not executable in state {decision.state}")
+        if decision.state is AIDPState.REWORK_REQUIRED:
+            if rework_contract is None:
+                raise ValueError("rework execution requires validated contract authority")
+            if rework_contract.task_id != task_id or rework_contract.expected_head != self.head:
+                raise ValueError("rework contract binding mismatch")
+            if not _scope_is_subset(rework_contract.allowed_rework_scope, metadata.allowed_scope):
+                raise ValueError("rework contract widens task scope")
+            if any(
+                name not in metadata.validation_requirements
+                for name in rework_contract.required_validations
+            ):
+                raise ValueError("rework contract widens task validations")
+        elif rework_contract is not None:
+            raise ValueError("READY execution cannot use rework authority")
+        allowed_scope = (
+            rework_contract.allowed_rework_scope
+            if rework_contract is not None
+            else metadata.allowed_scope
+        )
+        validation_requirements = (
+            rework_contract.required_validations
+            if rework_contract is not None
+            else metadata.validation_requirements
+        )
+        expected_head = (
+            rework_contract.expected_head
+            if rework_contract is not None
+            else self.head
+        )
         return CodexExecutionRequest(
             task_id=task_id,
             task_path=path,
             repository=str(self.root),
             branch=self.branch,
             base_commit=self.head,
-            expected_head=self.head,
+            expected_head=expected_head,
             phase=metadata.phase,
-            allowed_scope=metadata.allowed_scope,
+            allowed_scope=allowed_scope,
             prohibited_actions=metadata.prohibited_actions,
-            validation_requirements=metadata.validation_requirements,
+            validation_requirements=validation_requirements,
             created_at=utc_now(),
             execution_id=str(uuid4()),
             rework_count=rework_count,

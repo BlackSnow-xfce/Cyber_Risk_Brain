@@ -44,9 +44,11 @@ class RecordingRunner:
     def __init__(self, result: RunnerResult | None = None):
         self.result = result
         self.calls = 0
+        self.rework_contracts: list[ReworkContract | None] = []
 
-    def run_ready(self) -> RunnerResult:
+    def run_ready(self, rework_contract: ReworkContract | None = None) -> RunnerResult:
         self.calls += 1
+        self.rework_contracts.append(rework_contract)
         if self.result is None:
             raise AssertionError("runner result was not configured")
         return self.result
@@ -177,6 +179,7 @@ def test_ready_for_codex_executes_through_existing_runner_once(tmp_path: Path) -
     assert result.decision.action is ControlPlaneAction.EXECUTE
     assert result.final_action is ControlPlaneAction.READY_FOR_ARCHITECT
     assert runner.calls == 1
+    assert runner.rework_contracts == [None]
 
 
 def test_dirty_worktree_blocks_before_runner(tmp_path: Path) -> None:
@@ -223,9 +226,15 @@ def test_valid_rework_contract_admits_existing_runner(tmp_path: Path) -> None:
     runner_result = successful_runner_result(repo)
     runner_result = replace(runner_result, current_state=AIDPState.REWORK_REQUIRED)
     runner = RecordingRunner(runner_result)
-    result = plane(repo, runner, contract(repo)).run_once()
+    authority = contract(
+        repo,
+        allowed_rework_scope=("aidp_orchestration/product_owner_http.py",),
+        required_validations=("git diff --check",),
+    )
+    result = plane(repo, runner, authority).run_once()
     assert result.decision.action is ControlPlaneAction.EXECUTE
     assert runner.calls == 1
+    assert runner.rework_contracts == [authority]
 
 
 def test_successful_execution_persists_architect_inbox(tmp_path: Path) -> None:
@@ -332,3 +341,16 @@ def test_iteration_safe_rework_store_selects_latest_without_overwrite(tmp_path: 
     second_path = LocalRuntimeStore(root).persist_rework_contract("second", second)
     assert first_path != second_path and first_path.exists() and second_path.exists()
     assert LocalReworkContractStore(root).load("TASK-9000") == second
+
+
+def test_ambiguous_active_rework_contracts_fail_closed(tmp_path: Path) -> None:
+    root = tmp_path / "runtime"
+    directory = root / "rework-contracts" / "TASK-9000"
+    directory.mkdir(parents=True)
+    first = ReworkContract("TASK-9000", 3, "head", ("a.py",), ("f1",), ("pytest",), utc_now())
+    second = replace(first, allowed_rework_scope=("b.py",), findings=("f2",))
+    (directory / "first.json").write_text(serialize_rework_contract(first), encoding="utf-8")
+    (directory / "second.json").write_text(serialize_rework_contract(second), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ambiguous rework contracts"):
+        LocalReworkContractStore(root).load("TASK-9000")

@@ -32,7 +32,7 @@ from .worktree import cleanliness_adapter, worktree_admission_reason
 
 
 class RunnerBoundary(Protocol):
-    def run_ready(self) -> RunnerResult: ...
+    def run_ready(self, rework_contract: ReworkContract | None = None) -> RunnerResult: ...
 
 
 class ReworkContractBoundary(Protocol):
@@ -168,7 +168,22 @@ class AIDPControlPlane:
             return ControlPlaneResult(decision, decision.action)
 
         try:
-            runner_result = self.runner.run_ready()
+            rework_contract = None
+            if decision.repository_state is AIDPState.REWORK_REQUIRED:
+                rework_contract, reason = self._validated_rework_contract(
+                    decision.task_id, decision.commit,
+                )
+                if reason is not None:
+                    return ControlPlaneResult(
+                        decision,
+                        ControlPlaneAction.BLOCKED,
+                        failure_reason=reason,
+                    )
+            runner_result = (
+                self.runner.run_ready(rework_contract)
+                if rework_contract is not None
+                else self.runner.run_ready()
+            )
         except Exception as exc:
             reason = f"runner failed: {exc.__class__.__name__}"
             return ControlPlaneResult(decision, ControlPlaneAction.BLOCKED, failure_reason=reason)
@@ -224,32 +239,38 @@ class AIDPControlPlane:
         )
 
     def _rework_admission(self, task_id: str | None, expected_head: str) -> str | None:
+        _, reason = self._validated_rework_contract(task_id, expected_head)
+        return reason
+
+    def _validated_rework_contract(
+        self, task_id: str | None, expected_head: str,
+    ) -> tuple[ReworkContract | None, str | None]:
         base_reason = self._ready_admission(task_id, state_dir="review")
         if base_reason is not None:
-            return base_reason
+            return None, base_reason
         if task_id is None:
-            return "rework task id is missing"
+            return None, "rework task id is missing"
         metadata = self._metadata(task_id, "review")
         if metadata is None:
-            return "rework metadata is missing"
+            return None, "rework metadata is missing"
         try:
             contract = self.contract_store.load(task_id)
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-            return f"rework contract is invalid: {exc.__class__.__name__}"
+            return None, f"rework contract is invalid: {exc.__class__.__name__}"
         if contract is None:
-            return "rework contract is missing"
+            return None, "rework contract is missing"
         if contract.task_id != task_id:
-            return "rework task and contract task_id do not match"
+            return None, "rework task and contract task_id do not match"
         if contract.expected_head != expected_head:
-            return "rework contract expected_head is stale"
+            return None, "rework contract expected_head is stale"
         if not scope_is_subset(contract.allowed_rework_scope, metadata.allowed_scope):
-            return "rework contract widens the authorized scope"
+            return None, "rework contract widens the authorized scope"
         unknown = self.validator_registry.unknown(contract.required_validations)
         if unknown:
-            return f"unknown rework validator: {unknown[0]}"
+            return None, f"unknown rework validator: {unknown[0]}"
         if any(item not in metadata.validation_requirements for item in contract.required_validations):
-            return "rework validators are not authorized by task metadata"
-        return None
+            return None, "rework validators are not authorized by task metadata"
+        return contract, None
 
     def _metadata(self, task_id: str | None, state_dir: str) -> TaskMetadata | None:
         if task_id is None:
