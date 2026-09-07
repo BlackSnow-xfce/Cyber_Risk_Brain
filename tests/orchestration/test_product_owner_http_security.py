@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from aidp_orchestration.product_owner_http import _SECURITY_HEADERS
+from aidp_orchestration.product_owner_http import ProductOwnerHTTPApplication, _SECURITY_HEADERS
 
 
 def test_every_response_uses_restrictive_browser_security_headers() -> None:
@@ -43,6 +43,34 @@ def test_audit_boundary_hashes_correlation_and_fails_closed_on_sink_error() -> N
         application._audit("dependency_failure", "secret")
 
 
+def test_top_level_rejection_remains_bounded_when_audit_sink_fails() -> None:
+    application = object.__new__(ProductOwnerHTTPApplication)
+    application.path = "/product-owner/confirm"
+    application.sessions = SimpleNamespace(COOKIE_NAME="__Host-aidp_product_owner")
+    application.rate_limiter = SimpleNamespace(check=lambda *_args: None)
+    application.audit = lambda _event, _correlation: (_ for _ in ()).throw(
+        RuntimeError("sensitive audit sink failure")
+    )
+    application._dispatch = lambda _environ: (_ for _ in ()).throw(
+        PermissionError("sensitive request detail")
+    )
+    response: dict[str, object] = {}
+
+    body = application(
+        {
+            "PATH_INFO": application.path,
+            "REMOTE_ADDR": "192.0.2.1",
+        },
+        lambda status, headers: response.update(status=status, headers=headers),
+    )
+
+    assert response["status"] == "400 Bad Request"
+    assert body == [b"Request rejected"]
+    assert dict(response["headers"])["Content-Length"] == str(len(body[0]))
+    assert b"sensitive" not in body[0]
+    assert b"audit" not in body[0]
+
+
 def test_missing_server_session_emits_sanitized_expiry_event() -> None:
     events: list[tuple[str, str]] = []
     application = object.__new__(__import__(
@@ -58,3 +86,54 @@ def test_missing_server_session_emits_sanitized_expiry_event() -> None:
     assert events == [("session_expiry", events[0][1])]
     assert len(events[0][1]) == 32
     assert "secret-session" not in events[0][1]
+
+
+@pytest.mark.parametrize(
+    "path",
+    ("//attacker.example/confirm", "/confirm?next=//attacker.example", "/confirm#fragment", "/confirm\\callback"),
+)
+def test_adapter_rejects_unsafe_configured_confirmation_paths(path: str) -> None:
+    oidc = SimpleNamespace(config=SimpleNamespace(redirect_uri=f"https://owner.example{path}/callback"))
+
+    with pytest.raises(ValueError, match="unsafe HTTP adapter configuration"):
+        ProductOwnerHTTPApplication(
+            oidc=oidc,
+            sessions=SimpleNamespace(),
+            confirmation_service=SimpleNamespace(),
+            challenge_resolver=lambda _: None,
+            public_origin="https://owner.example",
+            confirmation_path=path,
+            audit=lambda _event, _correlation: None,
+        )
+
+
+def test_callback_redirect_url_encodes_the_server_resolved_context_locator() -> None:
+    application = object.__new__(ProductOwnerHTTPApplication)
+    application.path = "/product-owner/confirm"
+    application.sessions = SimpleNamespace(
+        rotate_authenticated=lambda _identifier, _proof: SimpleNamespace(
+            session_id="rotated-session",
+            approval_context=SimpleNamespace(approval_context_id="context&role=owner#fragment"),
+        ),
+    )
+    application.oidc = SimpleNamespace(exchange_code=lambda **_kwargs: object())
+    application.audit = lambda _event, _correlation: None
+    application.rate_limiter = SimpleNamespace(check=lambda *_args: None)
+    application._require_session = lambda _environ: SimpleNamespace(
+        session_id="pre-auth-session",
+        oidc_transaction=SimpleNamespace(state="expected-state"),
+    )
+    application._cookie = lambda identifier: f"cookie={identifier}"
+
+    status, headers, body = application._callback(
+        {
+            "QUERY_STRING": "code=code&state=expected-state",
+            "REMOTE_ADDR": "192.0.2.1",
+        }
+    )
+
+    assert status.value == 303
+    assert dict(headers)["Location"] == (
+        "/product-owner/confirm?context=context%26role%3Downer%23fragment"
+    )
+    assert body == b""

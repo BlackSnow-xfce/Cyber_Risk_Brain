@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from typing import Callable, Deque, Iterable, Mapping
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from .contracts import ProductOwnerAcceptanceStatus, ProductOwnerOperation
 from .product_owner_confirmation import ApprovalChallenge, ProductOwnerConfirmationCommand, ProductOwnerConfirmationService
@@ -78,7 +78,13 @@ class ProductOwnerHTTPApplication:
                  rate_limiter: _RateLimiter | None = None) -> None:
         if not public_origin.startswith("https://") or public_origin.endswith("/"):
             raise ValueError("an exact HTTPS public origin is required")
-        if not confirmation_path.startswith("/") or ".." in confirmation_path or maximum_body_bytes > 16_384:
+        if (
+            not confirmation_path.startswith("/")
+            or confirmation_path.startswith("//")
+            or ".." in confirmation_path
+            or any(character in confirmation_path for character in "?#\\\r\n")
+            or maximum_body_bytes > 16_384
+        ):
             raise ValueError("unsafe HTTP adapter configuration")
         self.oidc, self.sessions, self.service = oidc, sessions, confirmation_service
         if self.oidc.config.redirect_uri != public_origin + confirmation_path + "/callback":
@@ -103,7 +109,7 @@ class ProductOwnerHTTPApplication:
                 transaction = session.session_id if session is not None else "network:" + peer
                 self.rate_limiter.check("failure", peer, transaction)
                 self._audit(event, transaction)
-            except PermissionError:
+            except (PermissionError, RuntimeError):
                 # Rate-limit exhaustion cannot turn a rejected request into
                 # an accepted one. Audit sink failures remain fail-closed.
                 pass
@@ -180,7 +186,7 @@ class ProductOwnerHTTPApplication:
             raise PermissionError
         authenticated = self.sessions.rotate_authenticated(session.session_id, self.oidc.exchange_code(code=code, transaction=transaction))
         self._audit("authentication_success", authenticated.session_id)
-        location = f"{self.path}?context={authenticated.approval_context.approval_context_id}"
+        location = f"{self.path}?{urlencode({'context': authenticated.approval_context.approval_context_id})}"
         return HTTPStatus.SEE_OTHER, [("Location", location), ("Set-Cookie", self._cookie(authenticated.session_id))], b""
 
     def _confirm(self, environ: Mapping[str, object]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
