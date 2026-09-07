@@ -87,3 +87,12 @@ def test_git_control_metadata_digest_detects_security_sensitive_mutation(tmp_pat
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("attacker-controlled\n", encoding="utf-8")
     assert inspector.control_metadata_digest() != before
+
+
+def test_changed_files_since_includes_clean_committed_paths(tmp_path: Path) -> None:
+    inspector = initialize_repository(tmp_path, {"tracked.txt": "before\n"})
+    base = inspector.head()
+    (tmp_path / "tracked.txt").write_text("after\n", encoding="utf-8")
+    git(tmp_path, "add", "--", "tracked.txt")
+    git(tmp_path, "commit", "-q", "-m", "change")
+    assert inspector.changed_files_since(base) == ("tracked.txt",)

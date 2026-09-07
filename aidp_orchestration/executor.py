@@ -375,6 +375,17 @@ class GitInspector:
             paths.update(self._read_null_paths(*command))
         return tuple(sorted(paths))
 
+    def changed_files_since(self, base_commit: str) -> tuple[str, ...]:
+        if subprocess.run(
+            ("git", "merge-base", "--is-ancestor", base_commit, "HEAD"),
+            cwd=self.root, capture_output=True, check=False,
+        ).returncode != 0:
+            raise ValueError("resulting Git history does not descend from execution authority")
+        committed = self._read_null_paths(
+            "git", "diff", "--no-renames", "--name-only", "-z", f"{base_commit}..HEAD",
+        )
+        return tuple(sorted(set(committed).union(self.changed_files())))
+
     def residual_digest(self) -> str:
         tracked = subprocess.check_output(
             ("git", "diff", "HEAD", "--binary", "--no-ext-diff", "--no-renames"), cwd=self.root,
@@ -421,6 +432,11 @@ class GitInspector:
             else:
                 raise ValueError("ignored worktree path is not a regular file")
             digest.update(len(content).to_bytes(8, "big")); digest.update(content)
+        return digest.hexdigest()
+
+    def index_digest(self) -> str:
+        digest = hashlib.sha256(b"aidp-git-index-v1\0")
+        _hash_control_path(digest, self._git_path("--git-dir") / "index")
         return digest.hexdigest()
 
     def _git_path(self, argument: str) -> Path:
@@ -544,6 +560,7 @@ class CodexExecutionService:
         try:
             git_control_digest = git.control_metadata_digest() if isinstance(git, GitInspector) else None
             ignored_worktree_digest = git.ignored_worktree_digest() if isinstance(git, GitInspector) else None
+            git_index_digest = git.index_digest() if isinstance(git, GitInspector) else None
             emit_activity(
                 self.activity_sink, "AIDP", "lifecycle_transition", task_id=request.task_id,
                 execution_id=request.execution_id, state="CODEX_EXECUTION_STARTED",
@@ -551,6 +568,9 @@ class CodexExecutionService:
             outcome = self._run_process(
                 self.codex_runner, self._codex_command(request, launcher), root,
                 supervision_event,
+            )
+            git_index_changed = (
+                git_index_digest is not None and git.index_digest() != git_index_digest
             )
             if (
                 git_control_digest is not None
@@ -563,6 +583,7 @@ class CodexExecutionService:
                 )
             if (
                 ignored_worktree_digest is not None
+                and not git_index_changed
                 and git.ignored_worktree_digest() != ignored_worktree_digest
             ):
                 return self._result(
@@ -588,11 +609,29 @@ class CodexExecutionService:
                 return self._result(request, start_commit, ExecutionStatus.ERROR, "Codex returned malformed JSONL", ScopeCompliance.NOT_EVALUATED)
 
             try:
-                changed = git.changed_files()
                 resulting_commit = git.head()
+                changed = (
+                    git.changed_files_since(start_commit)
+                    if isinstance(git, GitInspector) else git.changed_files()
+                )
+                if (
+                    ignored_worktree_digest is not None
+                    and git.ignored_worktree_digest() != ignored_worktree_digest
+                ):
+                    return self._result(
+                        request, start_commit, ExecutionStatus.SCOPE_VIOLATION,
+                        "ignored worktree content changed during execution",
+                        ScopeCompliance.VIOLATION,
+                    )
                 for path in changed:
                     emit_activity(self.activity_sink, "CODEX", "file_change", paths=(path,))
-            except (OSError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
+            except (OSError, RuntimeError, ValueError, UnicodeError, subprocess.SubprocessError) as exc:
+                if git_index_changed:
+                    return self._result(
+                        request, start_commit, ExecutionStatus.SCOPE_VIOLATION,
+                        "Git index changed and resulting scope could not be established",
+                        ScopeCompliance.VIOLATION,
+                    )
                 return self._result(request, start_commit, ExecutionStatus.ERROR, f"git inspection failed: {exc.__class__.__name__}", ScopeCompliance.NOT_EVALUATED)
             scope = AIDPRepository(root).validate_scope(request, changed)
             if scope is not ScopeCompliance.COMPLIANT:

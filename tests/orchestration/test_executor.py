@@ -173,6 +173,51 @@ def test_execution_allows_expected_branch_commit_without_git_control_false_posit
     ).execute(execution_request)
     assert result.status is ExecutionStatus.SUCCESS
     assert result.resulting_commit != head
+    assert result.changed_files == ("TASK-9000.md",)
+
+
+def test_execution_rejects_clean_commit_outside_scope(tmp_path: Path) -> None:
+    head = _initialize_git_repository(tmp_path)
+
+    class CommittingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            (cwd / "unauthorized.txt").write_text("outside scope\n", encoding="utf-8")
+            subprocess.run(("git", "add", "--", "unauthorized.txt"), cwd=cwd, check=True)
+            subprocess.run(("git", "commit", "-q", "-m", "unauthorized"), cwd=cwd, check=True)
+            return ProcessOutcome(0, '{"type":"completed"}\n', "")
+
+    execution_request = CodexExecutionRequest(
+        "TASK-9000", tmp_path / "TASK-9000.md", str(tmp_path), "main", head, head,
+        "implementation", ("TASK-9000.md",), (".git/**",), ("git diff --check",),
+        utc_now(), "unauthorized-clean-commit",
+    )
+    result = CodexExecutionService(
+        codex_runner=CommittingRunner(), runner=FakeRunner([]), git=GitInspector(tmp_path),
+        repository_root=tmp_path, launcher=CodexLauncher(("codex.exe",)),
+    ).execute(execution_request)
+    assert result.status is ExecutionStatus.SCOPE_VIOLATION
+    assert result.changed_files == ("unauthorized.txt",)
+
+
+def test_execution_fails_closed_when_child_corrupts_git_index(tmp_path: Path) -> None:
+    head = _initialize_git_repository(tmp_path)
+
+    class MutatingRunner:
+        def run(self, args, *, cwd, timeout_seconds):
+            (cwd / ".git" / "index").write_bytes(b"attacker-controlled")
+            return ProcessOutcome(0, '{"type":"completed"}\n', "")
+
+    execution_request = CodexExecutionRequest(
+        "TASK-9000", tmp_path / "TASK-9000.md", str(tmp_path), "main", head, head,
+        "implementation", ("TASK-9000.md",), (".git/**",), ("git diff --check",),
+        utc_now(), "git-index-corruption",
+    )
+    result = CodexExecutionService(
+        codex_runner=MutatingRunner(), runner=FakeRunner([]), git=GitInspector(tmp_path),
+        repository_root=tmp_path, launcher=CodexLauncher(("codex.exe",)),
+    ).execute(execution_request)
+    assert result.status is ExecutionStatus.SCOPE_VIOLATION
+    assert result.scope_compliance is ScopeCompliance.VIOLATION
 
 
 def test_subprocess_runner_decodes_utf8_independently_of_windows_charmap(
