@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -105,6 +106,67 @@ def test_adapter_rejects_unsafe_configured_confirmation_paths(path: str) -> None
             confirmation_path=path,
             audit=lambda _event, _correlation: None,
         )
+
+
+@pytest.mark.parametrize(
+    "origin",
+    (
+        "http://owner.example",
+        "https://owner.example/confirm",
+        "https://owner.example?next=/confirm",
+        "https://owner.example#fragment",
+        "https://user@owner.example",
+        "https://owner.example:invalid",
+        "https://owner.example\r\nInjected: value",
+    ),
+)
+def test_adapter_rejects_values_that_are_not_exact_https_origins(origin: str) -> None:
+    oidc = SimpleNamespace(config=SimpleNamespace(redirect_uri=f"{origin}/product-owner/confirm/callback"))
+
+    with pytest.raises(ValueError, match="an exact HTTPS public origin is required"):
+        ProductOwnerHTTPApplication(
+            oidc=oidc,
+            sessions=SimpleNamespace(),
+            confirmation_service=SimpleNamespace(),
+            challenge_resolver=lambda _: None,
+            public_origin=origin,
+            audit=lambda _event, _correlation: None,
+        )
+
+
+@pytest.mark.parametrize("maximum_body_bytes", (0, -1, 16_385))
+def test_adapter_rejects_unsafe_body_size_configuration(maximum_body_bytes: int) -> None:
+    oidc = SimpleNamespace(
+        config=SimpleNamespace(redirect_uri="https://owner.example/product-owner/confirm/callback"),
+        set_session_validator=lambda _validator: None,
+    )
+
+    with pytest.raises(ValueError, match="unsafe HTTP adapter configuration"):
+        ProductOwnerHTTPApplication(
+            oidc=oidc,
+            sessions=SimpleNamespace(),
+            confirmation_service=SimpleNamespace(),
+            challenge_resolver=lambda _: None,
+            public_origin="https://owner.example",
+            maximum_body_bytes=maximum_body_bytes,
+            audit=lambda _event, _correlation: None,
+        )
+
+
+@pytest.mark.parametrize("framing_header", ("HTTP_TRANSFER_ENCODING", "HTTP_CONTENT_LENGTH"))
+def test_form_parser_rejects_ambiguous_request_framing(framing_header: str) -> None:
+    application = object.__new__(ProductOwnerHTTPApplication)
+    application.maximum_body_bytes = 128
+    body = b"csrf=token&operation=ACCEPT&reason="
+    environ = {
+        "CONTENT_TYPE": "application/x-www-form-urlencoded",
+        "CONTENT_LENGTH": str(len(body)),
+        "wsgi.input": BytesIO(body),
+        framing_header: "chunked" if framing_header == "HTTP_TRANSFER_ENCODING" else str(len(body)),
+    }
+
+    with pytest.raises(PermissionError):
+        application._form(environ)
 
 
 def test_callback_redirect_url_encodes_the_server_resolved_context_locator() -> None:

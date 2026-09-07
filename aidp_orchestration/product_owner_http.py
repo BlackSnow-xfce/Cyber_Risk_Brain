@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from typing import Callable, Deque, Iterable, Mapping
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .contracts import ProductOwnerAcceptanceStatus, ProductOwnerOperation
 from .product_owner_confirmation import ApprovalChallenge, ProductOwnerConfirmationCommand, ProductOwnerConfirmationService
@@ -76,14 +76,28 @@ class ProductOwnerHTTPApplication:
                  confirmation_path: str = "/product-owner/confirm", maximum_body_bytes: int = 8192,
                  audit: Callable[[str, str], None],
                  rate_limiter: _RateLimiter | None = None) -> None:
-        if not public_origin.startswith("https://") or public_origin.endswith("/"):
+        try:
+            parsed_origin = urlsplit(public_origin)
+            origin_port = parsed_origin.port
+        except ValueError as exc:
+            raise ValueError("an exact HTTPS public origin is required") from exc
+        if (
+            parsed_origin.scheme != "https"
+            or not parsed_origin.hostname
+            or parsed_origin.username is not None
+            or parsed_origin.password is not None
+            or parsed_origin.path
+            or parsed_origin.query
+            or parsed_origin.fragment
+            or any(character.isspace() for character in public_origin)
+        ):
             raise ValueError("an exact HTTPS public origin is required")
         if (
             not confirmation_path.startswith("/")
             or confirmation_path.startswith("//")
             or ".." in confirmation_path
             or any(character in confirmation_path for character in "?#\\\r\n")
-            or maximum_body_bytes > 16_384
+            or not 1 <= maximum_body_bytes <= 16_384
         ):
             raise ValueError("unsafe HTTP adapter configuration")
         self.oidc, self.sessions, self.service = oidc, sessions, confirmation_service
@@ -91,6 +105,7 @@ class ProductOwnerHTTPApplication:
             raise ValueError("OIDC redirect URI does not match the exact callback")
         self.oidc.set_session_validator(lambda identifier: self.sessions.get(identifier, touch=False))
         self.challenge_resolver, self.public_origin = challenge_resolver, public_origin
+        self.public_host = parsed_origin.netloc
         self.path, self.maximum_body_bytes = confirmation_path, maximum_body_bytes
         if audit is None:
             raise ValueError("a security audit sink is required")
@@ -119,7 +134,7 @@ class ProductOwnerHTTPApplication:
         return [body]
 
     def _dispatch(self, environ: Mapping[str, object]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-        if environ.get("wsgi.url_scheme") != "https" or environ.get("HTTP_HOST") != self.public_origin.removeprefix("https://"):
+        if environ.get("wsgi.url_scheme") != "https" or environ.get("HTTP_HOST") != self.public_host:
             raise PermissionError
         if environ.get("HTTP_X_HTTP_METHOD_OVERRIDE") is not None:
             raise PermissionError
@@ -236,6 +251,8 @@ class ProductOwnerHTTPApplication:
 
     def _form(self, environ: Mapping[str, object]) -> dict[str, list[str]]:
         if environ.get("CONTENT_TYPE") != "application/x-www-form-urlencoded":
+            raise PermissionError
+        if environ.get("HTTP_TRANSFER_ENCODING") is not None or environ.get("HTTP_CONTENT_LENGTH") is not None:
             raise PermissionError
         raw_length = environ.get("CONTENT_LENGTH", "")
         if not isinstance(raw_length, str) or not raw_length.isdigit() or int(raw_length) > self.maximum_body_bytes:
