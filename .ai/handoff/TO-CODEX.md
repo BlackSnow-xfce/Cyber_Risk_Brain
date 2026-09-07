@@ -2,5 +2,5 @@
 
 Status: WAITING
 Current AIDP Task: AIDP-INFRA-0002
-Current Phase: REVIEW / WAITING
-Task Status: REVIEW
+Current Phase: ARCHITECT_APPROVED
+Task Status: ARCHITECT_APPROVED
