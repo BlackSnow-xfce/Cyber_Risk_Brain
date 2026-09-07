@@ -375,7 +375,11 @@ class AIDPWatchOnce:
         return resolved.exists()
 
     def _recovery_is_authorized(self, item: ContractInboxItem) -> bool:
-        return self._test_failure_retry_is_authorized(item) or self._abandoned_rework_recovery_is_authorized(item)
+        return bool(
+            self._test_failure_retry_is_authorized(item)
+            or self._rework_test_failure_retry_is_authorized(item)
+            or self._abandoned_rework_recovery_is_authorized(item)
+        )
 
     def _abandoned_rework_recovery_is_authorized(self, item: ContractInboxItem) -> bool:
         if (not self.allow_test_failure_retry or self.repository.task_namespace != "infrastructure"
@@ -481,6 +485,50 @@ class AIDPWatchOnce:
                     contract.allowed_scope, contract.prohibited_actions, result.changed_files,
                 ) is ScopeCompliance.COMPLIANT
             )
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+
+    def _rework_test_failure_retry_is_authorized(self, item: ContractInboxItem) -> bool:
+        if (
+            not self.allow_test_failure_retry
+            or self.repository.task_namespace != "infrastructure"
+            or not isinstance(item.contract, ReworkContract)
+        ):
+            return False
+        try:
+            events = self.consumption.events(item.contract_id)
+            if (
+                not events or events[-1].state is not ConsumptionState.BLOCKED
+                or events[-1].reason != "execution is not review-ready"
+                or any(event.state is ConsumptionState.RECOVERY_AUTHORIZED for event in events)
+            ):
+                return False
+            contract = item.contract
+            decision = self.repository.inspect()
+            if (
+                decision.state is not AIDPState.REWORK_REQUIRED
+                or decision.task_id != contract.task_id
+                or decision.commit != contract.expected_head
+            ):
+                return False
+            result = LocalRuntimeStore.for_repository(self.repository.root).latest_execution_result(contract.task_id)
+            if (
+                result is None
+                or result.status is not ExecutionStatus.TEST_FAILED
+                or result.scope_compliance is not ScopeCompliance.COMPLIANT
+                or result.start_commit != contract.expected_head
+                or result.resulting_commit != decision.commit
+                or tuple(validation.name for validation in result.validation_results) != contract.required_validations
+                or not any(not validation.passed for validation in result.validation_results)
+            ):
+                return False
+            changed = GitInspector(self.repository.root).changed_files()
+            if changed != tuple(sorted(result.changed_files)):
+                return False
+            request = self.repository.build_execution_request(
+                contract.task_id, rework_count=contract.review_iteration,
+            )
+            return self.repository.validate_scope(request, changed) is ScopeCompliance.COMPLIANT
         except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
             return False
 
