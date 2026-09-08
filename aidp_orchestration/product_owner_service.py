@@ -38,11 +38,7 @@ class _ChallengeRegistry:
             self._purge()
             context = challenge.approval_context
             self._values[context.approval_context_id] = challenge
-            return ProductOwnerConfirmationLocator(
-                context.approval_context_id,
-                "",
-                context.expires_at.isoformat(),
-            )
+            return ProductOwnerConfirmationLocator(context.approval_context_id, "", context.expires_at.isoformat())
 
     def get(self, context_id: str) -> ApprovalChallenge:
         with self._lock:
@@ -58,7 +54,6 @@ class _ChallengeRegistry:
 
     def _purge(self) -> None:
         from .contracts import utc_now
-
         now = utc_now()
         expired = [key for key, value in self._values.items() if now >= value.approval_context.expires_at]
         for key in expired:
@@ -149,6 +144,12 @@ class ProductOwnerServiceApplication:
 
 
 class _QuietRequestHandler(WSGIRequestHandler):
+    def get_environ(self):
+        environ = super().get_environ()
+        environ["wsgi.url_scheme"] = "https"
+        environ["HTTPS"] = "on"
+        return environ
+
     def log_message(self, format: str, *args: object) -> None:
         return
 
@@ -175,34 +176,20 @@ def build_product_owner_confirmation_runtime(config_path: Path) -> ProductOwnerC
     audit = JsonLineSecurityAuditSink(config.security_audit_file)
     secrets_provider = WindowsDPAPISecretProvider(config.protected_secret_file, expected_client_id=config.client_id)
     verify: bool | str = True if config.oidc_ca_bundle is None else str(config.oidc_ca_bundle)
-    oidc = KeycloakOIDCClient(
-        config.oidc_config(),
-        secrets_provider=secrets_provider,
-        transport=RequestsOIDCTransport(verify=verify),
-        audit=audit,
-    )
+    oidc = KeycloakOIDCClient(config.oidc_config(), secrets_provider=secrets_provider,
+                              transport=RequestsOIDCTransport(verify=verify), audit=audit)
     sessions = ProductOwnerWebSessionStore()
     issuer = ApprovalContextIssuer(repository, runtime, policy_version=config.policy_version)
     confirmation_service = ProductOwnerConfirmationService(
-        runtime,
-        authenticator=oidc,
-        authorizer=oidc,
-        context_validator=issuer.revalidate,
+        runtime, authenticator=oidc, authorizer=oidc, context_validator=issuer.revalidate,
     )
     registry = _ChallengeRegistry()
     confirmation = ProductOwnerHTTPApplication(
-        oidc=oidc,
-        sessions=sessions,
-        confirmation_service=confirmation_service,
-        challenge_resolver=registry.get,
-        public_origin=config.public_origin,
-        audit=audit,
+        oidc=oidc, sessions=sessions, confirmation_service=confirmation_service,
+        challenge_resolver=registry.get, public_origin=config.public_origin, audit=audit,
     )
     application = ProductOwnerServiceApplication(
-        issuer=issuer,
-        confirmation=confirmation,
-        registry=registry,
-        public_origin=config.public_origin,
+        issuer=issuer, confirmation=confirmation, registry=registry, public_origin=config.public_origin,
     )
     server = make_server(config.bind_host, config.bind_port, application, handler_class=_QuietRequestHandler)
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
