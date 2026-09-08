@@ -1,8 +1,9 @@
-"""Fail-closed recovery for an orphaned Product Owner gate dependency bootstrap."""
+"""Fail-closed recovery and deterministic successor arbitration for Product Owner gate dependency bootstrap."""
 
 from __future__ import annotations
 
 import subprocess
+from dataclasses import fields
 from pathlib import Path
 
 from .contracts import ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyResult
@@ -31,8 +32,27 @@ class _BootstrapRecoveryStoreProxy:
         return getattr(self._store, name)
 
 
+class _SelectedAuthorityInboxProxy:
+    def __init__(self, inbox, authority_id: str):
+        self._inbox = inbox
+        self._authority_id = authority_id
+
+    def pending(self):
+        values = []
+        for item in self._inbox.pending():
+            if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1):
+                if item.contract_id == self._authority_id:
+                    values.append(item)
+                continue
+            values.append(item)
+        return tuple(values)
+
+    def __getattr__(self, name):
+        return getattr(self._inbox, name)
+
+
 class RecoveringProductOwnerGateDependencyRunner(ProductOwnerGateDependencyRunner):
-    """Resume only a provably orphaned pre-execution dependency bootstrap."""
+    """Resume orphaned bootstrap work and arbitrate equivalent immutable successor authorities."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -49,18 +69,50 @@ class RecoveringProductOwnerGateDependencyRunner(ProductOwnerGateDependencyRunne
             for item in all_candidates
             if self.store.product_owner_gate_dependency_claimed(item.contract_id)
         )
-        if len(claimed) != 1 or not self._bootstrap_recovery_authorized(claimed[0].contract):
+        if len(claimed) == 1 and self._bootstrap_recovery_authorized(claimed[0].contract):
+            authority = claimed[0].contract
+            original_store = self.store
+            self._recovering_authority_id = authority.authority_id
+            self.store = _BootstrapRecoveryStoreProxy(original_store, authority.authority_id)
+            try:
+                return super().run_once()
+            finally:
+                self.store = original_store
+                self._recovering_authority_id = None
+
+        if claimed:
             return super().run_once()
 
-        authority = claimed[0].contract
-        original_store = self.store
-        self._recovering_authority_id = authority.authority_id
-        self.store = _BootstrapRecoveryStoreProxy(original_store, authority.authority_id)
+        selected = self._equivalent_successor(all_candidates)
+        if selected is None:
+            return super().run_once()
+        original_inbox = self.inbox
+        self.inbox = _SelectedAuthorityInboxProxy(original_inbox, selected.contract_id)
         try:
             return super().run_once()
         finally:
-            self.store = original_store
-            self._recovering_authority_id = None
+            self.inbox = original_inbox
+
+    @staticmethod
+    def _equivalent_successor(items):
+        if len(items) < 2:
+            return None
+        ignored = {"authority_id", "issued_at", "expires_at"}
+
+        def semantic_values(contract):
+            return tuple(
+                (field.name, getattr(contract, field.name))
+                for field in fields(contract)
+                if field.name not in ignored
+            )
+
+        first = semantic_values(items[0].contract)
+        if any(semantic_values(item.contract) != first for item in items[1:]):
+            return None
+        ordered = sorted(items, key=lambda item: item.contract.issued_at)
+        if ordered[-1].contract.issued_at == ordered[-2].contract.issued_at:
+            return None
+        return ordered[-1]
 
     def _bootstrap_recovery_authorized(self, authority: ProductOwnerGateDependencyAuthorityV1) -> bool:
         try:
