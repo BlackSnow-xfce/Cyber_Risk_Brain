@@ -2,6 +2,10 @@
   "realm": "predatorai",
   "enabled": true,
   "sslRequired": "all",
+  "browserFlow": "aidp-product-owner-browser",
+  "acrToLoAMapping": {
+    "urn:keycloak:acr:totp": 1
+  },
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
   "otpPolicyDigits": 6,
@@ -55,11 +59,26 @@
   "authenticationFlows": [
     {
       "alias": "aidp-product-owner-browser",
-      "description": "Browser authentication requiring password and OTP",
+      "description": "Dedicated browser authentication requiring password and TOTP for every Product Owner confirmation login",
       "providerId": "basic-flow",
       "topLevel": true,
       "builtIn": false,
-      "authenticationExecutions": []
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
     }
   ]
 }
