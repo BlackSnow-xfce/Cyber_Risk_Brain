@@ -31,7 +31,8 @@ from .writer_control_plane_acceptance import (
     WriterControlPlaneAcceptanceHarness,
     serialize_writer_control_plane_acceptance_result,
 )
-from .trigger_publisher import AIDPWatchOnce, ProductOwnerGateDependencyRunner, serialize_trigger_result
+from .trigger_publisher import AIDPWatchOnce, serialize_trigger_result
+from .gate_dependency_recovery import RecoveringProductOwnerGateDependencyRunner
 from .trigger_publisher_acceptance import (
     TriggerPublisherAcceptanceHarness,
     serialize_trigger_publisher_acceptance_result,
@@ -145,7 +146,7 @@ def main() -> int:
                 architect=infrastructure_architect,
                 authority_inbox_root=authority_inbox_root,
             )
-            gate_dependency = ProductOwnerGateDependencyRunner(
+            gate_dependency = RecoveringProductOwnerGateDependencyRunner(
                 infrastructure_repository, runtime_root=authority_inbox_root,
                 architect=infrastructure_architect, timeout_seconds=args.timeout,
             )
