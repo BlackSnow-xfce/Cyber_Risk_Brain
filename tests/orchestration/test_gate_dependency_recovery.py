@@ -49,6 +49,10 @@ def test_orphaned_claim_branch_is_recoverable_only_at_expected_head(tmp_path: Pa
 def test_claimed_orphan_uses_proxy_without_replaying_claim(tmp_path: Path, monkeypatch) -> None:
     authority = SimpleNamespace(authority_id="b" * 64, dependency_id="AIDP-PO-DEP-0002")
     item = SimpleNamespace(contract_id=authority.authority_id, contract=authority)
+    monkeypatch.setattr(
+        "aidp_orchestration.gate_dependency_recovery.ProductOwnerGateDependencyAuthorityV1",
+        SimpleNamespace,
+    )
 
     class Inbox:
         def pending(self):
