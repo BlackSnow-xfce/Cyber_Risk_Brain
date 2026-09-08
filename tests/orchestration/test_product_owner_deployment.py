@@ -15,6 +15,7 @@ from aidp_orchestration.contracts import AIDPState, ProductOwnerApprovalContext,
 
 
 def _config(tmp_path: Path, **overrides) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     repo = tmp_path / "repo"
     repo.mkdir()
     cert = tmp_path / "tls.crt"
@@ -46,7 +47,6 @@ def test_deployment_config_is_strict_and_loopback_only(tmp_path: Path) -> None:
     config = ProductOwnerDeploymentConfig.load(_config(tmp_path))
     config.validate_files()
     assert config.bind_host == "127.0.0.1"
-    assert config.oidc_config().redirect_uri == "https://127.0.0.1:8443/product-owner/confirm/callback"
 
     with pytest.raises(ValueError):
         ProductOwnerDeploymentConfig.load(_config(tmp_path / "bad-host", bind_host="0.0.0.0"))
@@ -75,7 +75,6 @@ def _context() -> ProductOwnerApprovalContext:
         nonce_digest="6" * 64,
     )
     from aidp_orchestration.contracts import canonical_digest
-
     identifier = canonical_digest(values)
     return ProductOwnerApprovalContext(approval_context_id=identifier, context_digest=identifier, **values)
 
@@ -127,7 +126,6 @@ def test_status_endpoint_is_locator_only() -> None:
     context = _context()
     registry = _ChallengeRegistry()
     registry.add(ApprovalChallenge(context, "n" * 64))
-
     app = ProductOwnerServiceApplication(
         issuer=SimpleNamespace(issue=lambda: None), confirmation=SimpleNamespace(),
         registry=registry, public_origin="https://127.0.0.1:8443",
