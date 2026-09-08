@@ -4,19 +4,29 @@ This deployment hosts the existing Product Owner confirmation core behind a firs
 
 ## Required administrator provisioning
 
-Create a dedicated Keycloak confidential client from `keycloak-realm.template.json`, require the dedicated `aidp-product-owner` client role and TOTP MFA, and set exact HTTPS redirect/logout URIs.
+Import `keycloak-realm.template.json`. The realm binds `aidp-product-owner-browser` as its browser flow and requires both username/password and OTP executions. The client remains confidential, requires PKCE S256, the dedicated `aidp-product-owner` role, and the approved TOTP ACR.
 
-Create a TLS certificate/key pair for the configured `public_origin` and store them outside Git.
+Create a TLS certificate/key pair for the configured `public_origin`. The deployment configuration, TLS private key, DPAPI credential files, issuance credential, and audit destination must be outside every governed Git worktree and Git metadata. On Windows the service also rejects reparse-point traversal, unsafe ownership, and broad writable ACLs.
 
-Create the Keycloak client secret as a Windows DPAPI-protected JSON document outside Git:
+Create the Keycloak client secret as a current-user Windows DPAPI-protected JSON document:
 
 ```json
-{"schema_version":"aidp-dpapi-secret-v1","client_id":"aidp-product-owner","ciphertext":"<base64 DPAPI ciphertext>"}
+{
+  "schema_version": "aidp-dpapi-secret-v2",
+  "client_id": "aidp-product-owner",
+  "protection_scope": "current-user",
+  "principal_sid": "<service-account SID>",
+  "ciphertext": "<base64 DPAPI ciphertext>"
+}
 ```
 
-The plaintext client secret must never be placed in Git, the deployment JSON, command-line arguments, or ordinary environment variables.
+DPAPI protection must use optional entropy equal to the ASCII SHA-256 canonical digest of `{client_id, principal_sid}`. The service rejects another Windows principal or any scope other than `current-user`.
 
-Create a deployment JSON outside Git with exactly these fields:
+Create a second DPAPI document with the same v2 structure using client ID `aidp-product-owner-issuer`. Its plaintext is a random value of at least 32 characters used only by the trusted local watcher/operator when calling `/product-owner/issue`.
+
+The plaintext values must never be placed in Git, deployment JSON, command-line arguments, ordinary environment variables, logs, or status projections.
+
+Create a deployment JSON outside all governed Git worktrees with exactly these fields:
 
 ```json
 {
@@ -31,11 +41,12 @@ Create a deployment JSON outside Git with exactly these fields:
   "tls_certificate": "C:\\ProgramData\\PredatorAI\\product-owner\\tls.crt",
   "tls_private_key": "C:\\ProgramData\\PredatorAI\\product-owner\\tls.key",
   "protected_secret_file": "C:\\ProgramData\\PredatorAI\\product-owner\\oidc-secret.json",
+  "trusted_issuer_token_file": "C:\\ProgramData\\PredatorAI\\product-owner\\issuer-secret.json",
   "security_audit_file": "C:\\ProgramData\\PredatorAI\\product-owner\\security-audit.jsonl"
 }
 ```
 
-Optionally add `oidc_ca_bundle` for a private CA. The service refuses non-loopback bind addresses, missing TLS/credential files, non-HTTPS public origins, unknown configuration fields, missing trusted identity configuration, or unvalidated confirmation contexts.
+Optionally add `oidc_ca_bundle` for a private CA. The service refuses non-loopback bind addresses, non-HTTPS origins, missing protected files, unsafe protected-file placement/ACLs, unsupported DPAPI scope, wrong Windows principal, or invalid confirmation contexts.
 
 ## Start
 
@@ -43,14 +54,17 @@ Optionally add `oidc_ca_bundle` for a private CA. The service refuses non-loopba
 powershell -ExecutionPolicy Bypass -File .\deploy\product-owner-confirmation\Start-ProductOwnerConfirmation.ps1 -ConfigPath C:\ProgramData\PredatorAI\product-owner\deployment.json
 ```
 
-The process prints `PRODUCT_OWNER_CONFIRMATION_READY` only after configuration validation, DPAPI provider construction, confirmation-core composition, and TLS server construction succeed.
+The launcher passes `ConfigPath` as an argument vector to `python -m aidp_orchestration.product_owner_service`; it does not interpolate the path into Python source. `PRODUCT_OWNER_CONFIRMATION_READY` is printed only after configuration validation, credential loading, confirmation-core composition, and TLS server construction succeed.
 
 ## Issue a Product Owner approval context
 
-From the trusted local host:
+The issuance endpoint accepts only loopback callers that present the dedicated DPAPI-protected issuance credential:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri https://127.0.0.1:8443/product-owner/issue
+$token = '<plaintext loaded by the trusted local watcher/operator from the protected provider>'
+Invoke-RestMethod -Method Post `
+  -Uri https://127.0.0.1:8443/product-owner/issue `
+  -Headers @{ Authorization = "Bearer $token" }
 ```
 
-The response contains only locator/status data: task ID, approval-context ID, confirmation URL, expiry, and Architect review ID. The browser follows `confirmation_url`, authenticates through Keycloak, and submits the existing nonce-bound Product Owner decision flow.
+The response contains only locator/status data: task ID, approval-context ID, confirmation URL, expiry, and Architect review ID. It contains no nonce, token, client secret, or authentication proof. The browser follows `confirmation_url`, authenticates through Keycloak, and submits the existing nonce-bound Product Owner decision flow.
