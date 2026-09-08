@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import secrets
 import ssl
 import threading
 from dataclasses import dataclass
@@ -64,11 +66,16 @@ class ProductOwnerServiceApplication:
     """Issuance/status shell around the hardened confirmation HTTP adapter."""
 
     def __init__(self, *, issuer: ApprovalContextIssuer, confirmation: ProductOwnerHTTPApplication,
-                 registry: _ChallengeRegistry, public_origin: str) -> None:
+                 registry: _ChallengeRegistry, public_origin: str, issuance_token: str,
+                 audit: Callable[[str, str], None]) -> None:
+        if not issuance_token or len(issuance_token) < 32 or len(issuance_token) > 4096:
+            raise ValueError("trusted issuance credential is invalid")
         self.issuer = issuer
         self.confirmation = confirmation
         self.registry = registry
         self.public_origin = public_origin
+        self._issuance_token = issuance_token
+        self.audit = audit
 
     def __call__(self, environ: Mapping[str, object], start_response: Callable[..., object]) -> Iterable[bytes]:
         method = environ.get("REQUEST_METHOD")
@@ -83,14 +90,31 @@ class ProductOwnerServiceApplication:
             return self._html(start_response, HTTPStatus.OK, b"<h1>Signed out</h1>")
         return self.confirmation(environ, start_response)
 
+    def _trusted_issuer(self, environ: Mapping[str, object]) -> bool:
+        peer = str(environ.get("REMOTE_ADDR", ""))
+        if peer not in {"127.0.0.1", "::1"}:
+            return False
+        authorization = environ.get("HTTP_AUTHORIZATION")
+        if not isinstance(authorization, str) or not authorization.startswith("Bearer "):
+            return False
+        supplied = authorization.removeprefix("Bearer ")
+        return bool(supplied) and secrets.compare_digest(supplied, self._issuance_token)
+
     def _issue(self, environ: Mapping[str, object], start_response: Callable[..., object]) -> Iterable[bytes]:
         if environ.get("CONTENT_LENGTH") not in {"", "0", None}:
             return self._response(start_response, HTTPStatus.BAD_REQUEST, {"status": "BLOCKED"})
+        if not self._trusted_issuer(environ):
+            try:
+                self.audit("issuance_failure", str(environ.get("REMOTE_ADDR", "unknown")))
+            except Exception:
+                pass
+            return self._response(start_response, HTTPStatus.FORBIDDEN, {"status": "BLOCKED"})
         try:
             challenge = self.issuer.issue()
             context = challenge.approval_context
             self.registry.add(challenge)
             locator = self.public_origin + "/product-owner/confirm?" + urlencode({"context": context.approval_context_id})
+            self.audit("issuance_success", context.approval_context_id)
             return self._response(start_response, HTTPStatus.CREATED, {
                 "status": "WAITING_FOR_PRODUCT_OWNER",
                 "task_id": context.task_id,
@@ -175,6 +199,10 @@ def build_product_owner_confirmation_runtime(config_path: Path) -> ProductOwnerC
     runtime = LocalRuntimeStore.for_repository(repository.root)
     audit = JsonLineSecurityAuditSink(config.security_audit_file)
     secrets_provider = WindowsDPAPISecretProvider(config.protected_secret_file, expected_client_id=config.client_id)
+    issuance_provider = WindowsDPAPISecretProvider(
+        config.trusted_issuer_token_file, expected_client_id="aidp-product-owner-issuer",
+    )
+    issuance_token = issuance_provider.client_secret("aidp-product-owner-issuer")
     verify: bool | str = True if config.oidc_ca_bundle is None else str(config.oidc_ca_bundle)
     oidc = KeycloakOIDCClient(config.oidc_config(), secrets_provider=secrets_provider,
                               transport=RequestsOIDCTransport(verify=verify), audit=audit)
@@ -190,6 +218,7 @@ def build_product_owner_confirmation_runtime(config_path: Path) -> ProductOwnerC
     )
     application = ProductOwnerServiceApplication(
         issuer=issuer, confirmation=confirmation, registry=registry, public_origin=config.public_origin,
+        issuance_token=issuance_token, audit=audit,
     )
     server = make_server(config.bind_host, config.bind_port, application, handler_class=_QuietRequestHandler)
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -197,3 +226,17 @@ def build_product_owner_confirmation_runtime(config_path: Path) -> ProductOwnerC
     tls.load_cert_chain(certfile=str(config.tls_certificate), keyfile=str(config.tls_private_key))
     server.socket = tls.wrap_socket(server.socket, server_side=True)
     return ProductOwnerConfirmationRuntime(config, application, server)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run the Product Owner confirmation service")
+    parser.add_argument("--config", type=Path, required=True)
+    args = parser.parse_args(argv)
+    runtime = build_product_owner_confirmation_runtime(args.config)
+    print("PRODUCT_OWNER_CONFIRMATION_READY", flush=True)
+    runtime.serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
