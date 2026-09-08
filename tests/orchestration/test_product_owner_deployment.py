@@ -25,6 +25,8 @@ def _config(tmp_path: Path, monkeypatch=None, **overrides) -> Path:
     key = tmp_path / "tls.key"
     secret = tmp_path / "oidc-secret.json"
     issuer_secret = tmp_path / "issuer-secret.json"
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
     for path in (cert, key, secret, issuer_secret):
         path.write_text("fixture", encoding="utf-8")
     values = {
@@ -40,7 +42,7 @@ def _config(tmp_path: Path, monkeypatch=None, **overrides) -> Path:
         "tls_private_key": str(key),
         "protected_secret_file": str(secret),
         "trusted_issuer_token_file": str(issuer_secret),
-        "security_audit_file": str(tmp_path / "audit" / "security.jsonl"),
+        "security_audit_file": str(audit_dir / "security.jsonl"),
     }
     values.update(overrides)
     path = tmp_path / "deployment.json"
