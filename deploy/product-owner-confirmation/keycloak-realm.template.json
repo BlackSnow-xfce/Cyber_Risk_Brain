@@ -1,0 +1,65 @@
+{
+  "realm": "predatorai",
+  "enabled": true,
+  "sslRequired": "all",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "clients": [
+    {
+      "clientId": "aidp-product-owner",
+      "name": "PredatorAI Product Owner Confirmation",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "${PRODUCT_OWNER_PUBLIC_ORIGIN}/product-owner/confirm/callback"
+      ],
+      "webOrigins": [
+        "${PRODUCT_OWNER_PUBLIC_ORIGIN}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${PRODUCT_OWNER_PUBLIC_ORIGIN}/signed-out"
+      },
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "aidp-product-owner",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": ["profile", "roles"]
+    }
+  ],
+  "roles": {
+    "client": {
+      "aidp-product-owner": [
+        {
+          "name": "aidp-product-owner",
+          "description": "Authorizes authenticated Product Owner confirmation only"
+        }
+      ]
+    }
+  },
+  "authenticationFlows": [
+    {
+      "alias": "aidp-product-owner-browser",
+      "description": "Browser authentication requiring password and OTP",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": []
+    }
+  ]
+}
