@@ -1,0 +1,57 @@
+{
+  "schema_version": "architect-task-contract-v1",
+  "task_id": "AIDP-INFRA-0002",
+  "title": "Product Owner gate dependency recovery and live deployment repair",
+  "objective": "Repair the live-acceptance blockers discovered at the authoritative Product Owner gate without bypassing Product Owner authority: restore a deployable Keycloak-backed confirmation boundary, wire the existing Product Owner decision consumer into the production lifecycle, and add a strictly controlled audited recovery path for failure of the confirmation dependency itself.",
+  "expected_head": "091afb0025b2386e97d50daa5acd2913749adc1e",
+  "allowed_scope": [
+    "aidp_orchestration/__main__.py",
+    "aidp_orchestration/lifecycle.py",
+    "aidp_orchestration/product_owner_acceptance.py",
+    "aidp_orchestration/product_owner_confirmation.py",
+    "aidp_orchestration/product_owner_deployment.py",
+    "aidp_orchestration/product_owner_service.py",
+    "deploy/product-owner-confirmation/README.md",
+    "deploy/product-owner-confirmation/Start-ProductOwnerConfirmation.ps1",
+    "deploy/product-owner-confirmation/keycloak-realm.template.json",
+    "tests/orchestration/test_product_owner_deployment.py",
+    "tests/orchestration/test_product_owner_confirmation.py",
+    "tests/orchestration/test_product_owner_http.py",
+    "tests/orchestration/test_product_owner_oidc.py",
+    "tests/orchestration/test_product_owner_acceptance.py",
+    "tests/orchestration/test_lifecycle.py"
+  ],
+  "requirements": [
+    "Preserve the authoritative WAITING_FOR_PRODUCT_OWNER hard gate; do not mark the task DONE or synthesize ACCEPT.",
+    "Implement a narrowly scoped, fail-closed, auditable Product Owner REQUEST_REWORK recovery mechanism for the case where the confirmation dependency itself is unavailable. It must require explicit Product Owner authorization, bind to task AIDP-INFRA-0002 and expected HEAD 091afb0025b2386e97d50daa5acd2913749adc1e, be single-use/idempotent, and never authorize ACCEPT.",
+    "Wire ProductOwnerDecisionConsumer/Product Owner acceptance consumption into the production watcher/lifecycle composition so recorded authenticated decisions are actually consumed.",
+    "Pin an explicit supported Keycloak container version for the governed deployment/acceptance path; do not depend on quay.io/keycloak/keycloak:latest.",
+    "Make keycloak-realm.template.json importable by the pinned Keycloak version while preserving the dedicated Product Owner browser flow, username/password plus TOTP MFA, confidential client, PKCE S256, Product Owner role, and required authorization/ACR policy.",
+    "Add an executable Docker integration/smoke test that imports the actual realm into the pinned Keycloak image and fails on import/startup failure. Unit tests that only parse JSON are insufficient.",
+    "Keep protected secrets outside Git/worktrees and retain current-user DPAPI, ACL, loopback, TLS and audit protections.",
+    "Document the exact pinned Keycloak version and live acceptance procedure.",
+    "The live failure observed during acceptance was: Unrecognized field acrToLoAMapping in RealmRepresentation. Treat this as a required regression case.",
+    "After implementation, run focused Product Owner deployment/confirmation/OIDC/HTTP/acceptance/lifecycle tests, git diff --check, and the real Docker Keycloak import smoke test."
+  ],
+  "acceptance": [
+    "No governance bypass: WAITING_FOR_PRODUCT_OWNER remains authoritative until a valid ACCEPT or explicitly authorized REQUEST_REWORK is consumed.",
+    "A dependency-failure recovery can only produce REQUEST_REWORK, never ACCEPT or DONE.",
+    "Production lifecycle composition consumes recorded Product Owner decisions.",
+    "Pinned Keycloak starts and imports the shipped realm successfully in an executable smoke test.",
+    "Password plus TOTP flow and existing security controls remain enforced.",
+    "All focused tests and git diff --check pass."
+  ],
+  "product_owner_authorization": {
+    "operation": "REQUEST_REWORK",
+    "authorization_source": "explicit-chat-product-owner-authorization",
+    "authorization_text": "REWORK FREIGEGEBEN",
+    "scope": "rework contract creation only; no ACCEPT, DONE, merge, or gate bypass authority"
+  },
+  "evidence": {
+    "live_state": "WAITING_FOR_PRODUCT_OWNER",
+    "live_branch": "aidp/gate-dependency-460dfe8550f8",
+    "live_head": "091afb0025b2386e97d50daa5acd2913749adc1e",
+    "live_keycloak_failure": "Unrecognized field acrToLoAMapping (RealmRepresentation)",
+    "github_issue": 2
+  }
+}
