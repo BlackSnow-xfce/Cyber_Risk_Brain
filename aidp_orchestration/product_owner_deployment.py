@@ -6,13 +6,14 @@ import base64
 import ctypes
 import json
 import os
+import subprocess
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Mapping
 from urllib.parse import urlsplit
 
+from .contracts import canonical_digest
 from .product_owner_oidc import ProductOwnerOIDCConfig, ProtectedSecretProvider, SecurityAuditSink
 
 
@@ -173,9 +174,13 @@ class JsonLineSecurityAuditSink(SecurityAuditSink):
 
 
 def _repository_identity(root: Path) -> str:
-    import hashlib
-
-    return hashlib.sha256(str(root.resolve()).lower().encode("utf-8")).hexdigest()
+    common = subprocess.check_output(
+        ("git", "rev-parse", "--git-common-dir"), cwd=root, text=True,
+    ).strip()
+    common_path = Path(common)
+    if not common_path.is_absolute():
+        common_path = root / common_path
+    return canonical_digest({"root": str(root.resolve()), "git_common_dir": str(common_path.resolve())})
 
 
 class _DATA_BLOB(ctypes.Structure):
