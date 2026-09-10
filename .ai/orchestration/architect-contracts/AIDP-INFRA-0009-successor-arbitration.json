@@ -1,0 +1,37 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0009-successor-arbitration-v1",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T17:30:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0009",
+      "title": "Filter stale Product Owner gate authorities during successor arbitration",
+      "phase": "infrastructure-orchestration",
+      "expected_head": "b7279ba5f009957abfcf4f16a7dbd77d87674a14",
+      "allowed_scope": [
+        "aidp_orchestration/trigger_publisher.py",
+        "tests/orchestration/test_product_owner_gate_dependency.py"
+      ],
+      "prohibited_actions": [
+        "Delete, rewrite, move, suppress or fabricate authority history",
+        "Mutate or accept AIDP-INFRA-0002",
+        "Bypass Product Owner confirmation or authentication",
+        "Widen dependency execution authority",
+        "Weaken claim, replay, expiry, lineage or fail-closed controls"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Exclude stale expected_head authorities from the executable candidate set while retaining them auditable",
+        "Select a unique newest current-HEAD successor only when semantic bindings are equivalent",
+        "Block genuinely competing current-HEAD authorities and when no valid current authority exists",
+        "Preserve claims, replay resistance, expiry, lineage validation and parent immutability",
+        "Add all specified stale/current arbitration and history-preservation adversarial tests"
+      ],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T17:30:00+00:00"
+    }
+  }
+}
