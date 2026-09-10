@@ -1,0 +1,19 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0012-bootstrap-dispatch-model-v1",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T21:00:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0012",
+      "title": "Implement frozen bootstrap dispatch authority and state model",
+      "phase": "infrastructure-governance",
+      "expected_head": "402f53af9f48f1e1c154ac73ec0ba3421f5fb276",
+      "allowed_scope": ["aidp_orchestration/contracts.py", "aidp_orchestration/runtime.py", "aidp_orchestration/trigger_publisher.py", "aidp_orchestration/gate_dependency_recovery.py", "aidp_orchestration/watcher_runtime.py", "aidp_orchestration/__main__.py", "tests/orchestration/test_product_owner_gate_dependency.py"],
+      "prohibited_actions": ["Mutate AIDP-INFRA-0002", "Create generic parallel execution", "Execute arbitrary infrastructure tasks", "Modify immutable history", "Bypass Product Owner controls", "Weaken fail-closed governance"],
+      "validation_requirements": ["python -m pytest tests/orchestration", "git diff --check"],
+      "acceptance_criteria": ["Define BootstrapDispatchAuthorityV1 and BootstrapDispatchClaimV1 with canonical SHA-256 identity", "Persist claims before side effects under runtime/bootstrap-dispatch-claims and append immutable state evidence", "Allow only DISCOVERED to VERIFIED to CLAIMED to EXECUTING to REVIEW_REQUIRED to ACTIVATED to CONSUMED transitions with BLOCKED terminal failure", "Bind exclusively to INFRA-0011 parent INFRA-0002 WAITING_FOR_PRODUCT_OWNER and exact HEAD and scope", "Reject replay expiry ambiguity mismatch and generic task use", "Recover interrupted execution fail closed and require review before activation", "Add adversarial tests for all bindings and parent immutability"],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T21:00:00+00:00"
+    }
+  }
+}
