@@ -1,0 +1,19 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0013-bootstrap-activation-v2",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T22:00:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0013",
+      "title": "Implement one-time bootstrap activation entry point",
+      "phase": "infrastructure-governance",
+      "expected_head": "402f53af9f48f1e1c154ac73ec0ba3421f5fb276",
+      "allowed_scope": ["aidp_orchestration/bootstrap_dispatch.py", "aidp_orchestration/contracts.py", "aidp_orchestration/runtime.py", "aidp_orchestration/trigger_publisher.py", "aidp_orchestration/gate_dependency_recovery.py", "aidp_orchestration/watcher_runtime.py", "aidp_orchestration/__main__.py", "tests/orchestration/test_product_owner_gate_dependency.py"],
+      "prohibited_actions": ["Execute any task other than INFRA-0012", "Mutate AIDP-INFRA-0002", "Create generic manual execution", "Bypass authority or Product Owner controls", "Modify immutable history", "Weaken fail-closed governance"],
+      "validation_requirements": ["python -m pytest tests/orchestration", "git diff --check"],
+      "acceptance_criteria": ["Provide a dedicated one-time bootstrap_dispatch entry point bound only to INFRA-0012 and this authority chain", "Validate parent waiting state HEAD repository identity and exact scope before durable claim", "Persist immutable single-use claim and execution evidence before side effects", "Reject replay expiry mismatch ambiguity and non-target tasks", "Disable the entry point after terminal consumption and preserve ordinary dispatcher semantics", "Add adversarial tests for all bindings and parent immutability"],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T22:00:00+00:00"
+    }
+  }
+}
