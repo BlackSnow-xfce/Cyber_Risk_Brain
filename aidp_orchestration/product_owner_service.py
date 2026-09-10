@@ -198,9 +198,17 @@ def build_product_owner_confirmation_runtime(config_path: Path) -> ProductOwnerC
     repository = AIDPRepository(config.repository_root, task_namespace="infrastructure")
     runtime = LocalRuntimeStore.for_repository(repository.root)
     audit = JsonLineSecurityAuditSink(config.security_audit_file)
-    secrets_provider = WindowsDPAPISecretProvider(config.protected_secret_file, expected_client_id=config.client_id)
+    secrets_provider = WindowsDPAPISecretProvider(
+        config.protected_secret_file,
+        expected_client_id=config.client_id,
+        expected_principal_sid=config.service_principal_sid,
+        repository_root=config.repository_root,
+    )
     issuance_provider = WindowsDPAPISecretProvider(
-        config.trusted_issuer_token_file, expected_client_id="aidp-product-owner-issuer",
+        config.trusted_issuer_token_file,
+        expected_client_id="aidp-product-owner-issuer",
+        expected_principal_sid=config.service_principal_sid,
+        repository_root=config.repository_root,
     )
     issuance_token = issuance_provider.client_secret("aidp-product-owner-issuer")
     verify: bool | str = True if config.oidc_ca_bundle is None else str(config.oidc_ca_bundle)
