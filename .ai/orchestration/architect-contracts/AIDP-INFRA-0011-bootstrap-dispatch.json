@@ -1,0 +1,19 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0011-bootstrap-dispatch-v1",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T20:00:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0011",
+      "title": "Implement isolated bootstrap dispatch for INFRA-0010",
+      "phase": "infrastructure-governance",
+      "expected_head": "b7279ba5f009957abfcf4f16a7dbd77d87674a14",
+      "allowed_scope": ["aidp_orchestration/trigger_publisher.py", "aidp_orchestration/gate_dependency_recovery.py", "aidp_orchestration/watcher_runtime.py", "aidp_orchestration/__main__.py", "tests/orchestration/test_product_owner_gate_dependency.py"],
+      "prohibited_actions": ["Mutate AIDP-INFRA-0002", "Create generic parallel execution", "Execute arbitrary infrastructure tasks", "Modify immutable history", "Bypass Product Owner controls", "Weaken fail-closed governance"],
+      "validation_requirements": ["python -m pytest tests/orchestration", "git diff --check"],
+      "acceptance_criteria": ["Add a dedicated immutable single-use bootstrap claim and state machine bound only to INFRA-0010", "Bind parent INFRA-0002 waiting state and exact infrastructure HEAD", "Execute only the approved INFRA-0010 scope in an isolated path", "Reject replay expiry mismatch ambiguity and scope widening", "Preserve normal single-active infrastructure governance and audit history", "Add adversarial isolation and parent-immutability tests"],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T20:00:00+00:00"
+    }
+  }
+}
