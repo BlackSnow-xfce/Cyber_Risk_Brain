@@ -1,0 +1,38 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0008-product-owner-gate-parser-v1",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T16:20:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0008",
+      "title": "Accept replacement-lineage Product Owner gate dependency authorities",
+      "phase": "infrastructure-orchestration",
+      "expected_head": "69f4980c925618d8f2e2ede53bb77922d2e43e2f",
+      "allowed_scope": [
+        "aidp_orchestration/contracts.py",
+        "aidp_orchestration/trigger_publisher.py",
+        "tests/orchestration/test_product_owner_gate_dependency.py"
+      ],
+      "prohibited_actions": [
+        "Modify or reopen historical rejection evidence",
+        "Accept or mutate AIDP-INFRA-0002",
+        "Create Product Owner decision evidence",
+        "Execute AIDP-INFRA-0005 or arbitrary infrastructure work",
+        "Widen dependency authority or weaken fail-closed controls"
+      ],
+      "validation_requirements": [
+        "python -m pytest tests/orchestration",
+        "git diff --check"
+      ],
+      "acceptance_criteria": [
+        "Parse ProductOwnerGateDependencyAuthorityV1 replacement authorities with optional supersedes_authority_id",
+        "Require and validate the approved predecessor for replacement authorities while preserving legacy non-replacement parsing",
+        "Reject unknown fields, malformed identities, altered bindings, replay and duplicate replacement lineage fail closed",
+        "Preserve architect_task and rework parsing and all existing dependency isolation and lifecycle semantics",
+        "Add focused positive and adversarial regression coverage including canonical identity determinism"
+      ],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T16:20:00+00:00"
+    }
+  }
+}
