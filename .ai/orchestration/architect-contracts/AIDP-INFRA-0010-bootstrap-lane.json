@@ -1,0 +1,19 @@
+{
+  "contract_inbox_item": {
+    "contract_id": "architect-aidp-infra-0010-bootstrap-lane-v1",
+    "contract_type": "architect_task",
+    "received_at": "2026-09-10T18:30:00+00:00",
+    "contract": {
+      "task_id": "AIDP-INFRA-0010",
+      "title": "Authorize isolated bootstrap execution lane for INFRA-0009",
+      "phase": "infrastructure-governance",
+      "expected_head": "b7279ba5f009957abfcf4f16a7dbd77d87674a14",
+      "allowed_scope": ["aidp_orchestration/trigger_publisher.py", "tests/orchestration/test_product_owner_gate_dependency.py"],
+      "prohibited_actions": ["Mutate AIDP-INFRA-0002", "Globally weaken single-active-task governance", "Execute arbitrary infrastructure work", "Modify inbox rejection claim or lifecycle history", "Bypass Product Owner authority or fail-closed controls"],
+      "validation_requirements": ["python -m pytest tests/orchestration", "git diff --check"],
+      "acceptance_criteria": ["Define immutable single-use bootstrap authority bound only to AIDP-INFRA-0009", "Bind parent lifecycle and infrastructure HEAD exactly", "Permit only the two-file INFRA-0009 scope in an isolated lane", "Expire authority after consumption or lineage change", "Preserve normal single-active-task behavior for all other tasks", "Add adversarial tests for parent mutation scope widening replay and lineage mismatch"],
+      "product_owner_gate": false,
+      "created_at": "2026-09-10T18:30:00+00:00"
+    }
+  }
+}
