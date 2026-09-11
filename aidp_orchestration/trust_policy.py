@@ -95,3 +95,40 @@ class SourceAuthorizationPolicyStore:
         c=self._cas.read(); p=None if c is None else c["payload"]
         policy.verify(public_key=public_key,environment=environment,now=now,highest_epoch=-1 if p is None else p["policy_epoch"],previous_digest=None if p is None else p["policy_digest"])
         return self._cas.compare_and_swap(expected_version=None if c is None else c["version"],expected_digest=None if c is None else c["digest"],payload={"environment":environment,"policy_id":policy.payload["policy_id"],"policy_epoch":policy.payload["policy_epoch"],"policy_digest":canonical_digest(policy.payload)})
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationResult:
+    authorized: bool
+    stage: int
+    code: str
+
+    @classmethod
+    def deny(cls, stage: int, code: str) -> "AuthorizationResult":
+        return cls(False, stage, code)
+
+
+def authorize_source(*, policy: SourceAuthorizationPolicyV1, request: dict[str, Any],
+                     environment: str, audience: str, endpoint_identity: str,
+                     trust_store: dict[str, Any] | None, revoked_key_ids: set[str] | None,
+                     payload: bytes, envelope: bytes, public_key: bytes,
+                     payload_schema: str, lineage: dict[str, str] | None,
+                     expected_lineage: dict[str, str] | None, now: str) -> AuthorizationResult:
+    """The sole public authorization pipeline; every failure is a stable denial."""
+    try:
+        parse_canonical_utf8(payload)  # stage 1
+    except Exception:
+        return AuthorizationResult.deny(1, "NONCANONICAL_INPUT")
+    if policy.payload.get("domain") != "aidp-source-authorization": return AuthorizationResult.deny(2, "SCHEMA_OR_DOMAIN")
+    if policy.payload.get("environment") != environment or request.get("audience") != audience: return AuthorizationResult.deny(3, "ENVIRONMENT_OR_AUDIENCE")
+    if not any(row == request for row in policy.payload.get("rows", [])): return AuthorizationResult.deny(4, "SOURCE_OR_CATEGORY")
+    if request.get("endpoint_identity") != endpoint_identity: return AuthorizationResult.deny(5, "ENDPOINT_IDENTITY")
+    if request.get("key_namespace", "") == "" or request.get("key_id", "") == "" or request.get("algorithm") != "Ed25519": return AuthorizationResult.deny(6, "KEY_BINDING")
+    if trust_store is None or request.get("trust_store_id") != trust_store.get("trust_store_id") or request.get("minimum_epoch", -1) > trust_store.get("monotonic_epoch", -1): return AuthorizationResult.deny(7, "TRUST_STORE")
+    if revoked_key_ids is None or request.get("key_id") in revoked_key_ids: return AuthorizationResult.deny(8, "REVOCATION")
+    try: verify(payload, envelope, key_id=request["key_id"], public_key=public_key, schema_version="aidp-attestation-v1")
+    except Exception: return AuthorizationResult.deny(9, "SIGNATURE")
+    if request.get("payload_schema") != payload_schema: return AuthorizationResult.deny(10, "PAYLOAD_SCHEMA")
+    if expected_lineage is not None and lineage != expected_lineage: return AuthorizationResult.deny(11, "LINEAGE_BINDING")
+    try: _fresh({"issued_at": request["issued_at"], "valid_until": request["valid_until"]}, now)
+    except Exception: return AuthorizationResult.deny(12, "FRESHNESS")
+    return AuthorizationResult(True, 12, "AUTHORIZED")

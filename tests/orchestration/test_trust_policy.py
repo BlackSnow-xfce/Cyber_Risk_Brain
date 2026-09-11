@@ -8,7 +8,7 @@ from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
 from aidp_orchestration.foundation import canonical_bytes, foundation_status
 from aidp_orchestration.trust_policy import (
     CHECKPOINT_SCHEMA, POLICY_SCHEMA, SourceAuthorizationPolicyV1,
-    TrustStoreCheckpointStore, TrustStoreCheckpointV1,
+    TrustStoreCheckpointStore, TrustStoreCheckpointV1, AuthorizationResult, authorize_source,
 )
 
 NOW = "2026-09-11T12:00:00.000000Z"
@@ -40,3 +40,10 @@ def test_trust_checkpoint_cas_and_rollback(tmp_path):
 def test_policy_exact_tuple_and_readiness():
     assert foundation_status()["TRUST_STORE_READY"] == "UNCONFIGURED"
     assert foundation_status()["SOURCE_AUTHORIZATION_READY"] == "UNCONFIGURED"
+
+
+def test_authorization_pipeline_denies_at_first_failed_stage():
+    result = authorize_source(policy=object(), request={}, environment="test", audience="a", endpoint_identity="e",
+        trust_store=None, revoked_key_ids=None, payload=b"{", envelope=b"", public_key=b"", payload_schema="p",
+        lineage=None, expected_lineage=None, now=NOW)
+    assert result == AuthorizationResult(False, 1, "NONCANONICAL_INPUT")
