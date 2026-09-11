@@ -5,6 +5,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from aidp_orchestration.attestations import ATTESTATION_SCHEMA, CATEGORIES, EXTRA, AttestationBundleVerifier
 from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
 from aidp_orchestration.foundation import canonical_bytes
+from aidp_orchestration.foundation import DurableCAS
 from aidp_orchestration.trust_policy import POLICY_SCHEMA
 
 @dataclass
@@ -26,7 +27,13 @@ class Stage3TestTrustHarness:
             requests[category]={"source_identity":name,"category":category,"schema":"aidp-source-attestation-v1","environment":"test","endpoint_identity":name+"-endpoint","audience":"aidp-recovery-test","key_namespace":name+"-namespace","key_id":key_id,"algorithm":"Ed25519","trust_store_id":"stage3-test-store","minimum_epoch":1,"payload_schema":"payload-v1"}
             policies[category]=type("Policy",(),{"payload":{"schema_version":POLICY_SCHEMA,"domain":"aidp-source-authorization","environment":"test","rows":[requests[category]],"issued_at":"2026-09-11T12:00:00.000000Z","valid_until":"2026-09-11T13:00:00.000000Z"}})()
         lineage={"dependency_id":"dep-test","parent_task_id":"parent-test","predecessor_authority_id":"pred-test","predecessor_claim_digest":"claim-test","predecessor_execution_id":"exec-test","proposal_digest":"proposal-test"}
-        return cls(root,policies,requests,keys,public,lineage)
+        harness=cls(root,policies,requests,keys,public,lineage)
+        root.mkdir(parents=True, exist_ok=True)
+        trust=DurableCAS(root/"trust.cas")
+        policy=DurableCAS(root/"policy.cas")
+        if trust.read() is None: trust.compare_and_swap(expected_version=None, expected_digest=None, payload={"trust_store_id":"stage3-test-store","monotonic_epoch":1,"revocation_epoch":1,"checkpoint_digest":"test-checkpoint"})
+        if policy.read() is None: policy.compare_and_swap(expected_version=None, expected_digest=None, payload={"policy_id":"stage3-test-policy","policy_epoch":1,"policy_digest":"test-policy"})
+        return harness
 
     def build(self, category):
         req=self.requests[category]; payload={"schema_version":ATTESTATION_SCHEMA,"domain":"aidp-source-attestation","source_category":category,**{k:v for k,v in req.items() if k not in {"category","schema","minimum_epoch"}},"trust_store_epoch":1,"observation_sequence":1,"issued_at":self.now,"valid_until":"2026-09-11T13:00:00.000000Z",**self.lineage,"payload_digest":"placeholder"}
@@ -36,5 +43,7 @@ class Stage3TestTrustHarness:
         return canonical_bytes({**payload, "signature": json.loads(envelope)}), envelope
 
     def verify(self):
+        trust=DurableCAS(self.root/"trust.cas").read()
+        if trust is None: raise ValueError("test trust store unavailable")
         members=[self.build(category) for category in sorted(CATEGORIES)]
-        return AttestationBundleVerifier().verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store={"trust_store_id":"stage3-test-store","monotonic_epoch":1}, revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
+        return AttestationBundleVerifier().verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store=trust["payload"], revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
