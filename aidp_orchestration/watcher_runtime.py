@@ -127,6 +127,23 @@ class PersistentWatcherStatusPublisher:
                 lane["task_id"] = task_id
         self._write_payload(payload)
 
+    def publish_verifier_readiness(self, readiness) -> None:
+        """Expose recovery-verifier readiness without implying authorization."""
+        payload = self._read_or_initial()
+        payload.setdefault("overall_status", "BLOCKED")
+        payload.setdefault("active_component", "RECOVERY_VERIFIER")
+        payload.setdefault("last_activity", self.clock().isoformat())
+        payload.setdefault("next_action", "TRUSTED_VERIFIER_UNAVAILABLE")
+        payload.setdefault("product", self._lane(None, None, None))
+        payload.setdefault("infrastructure", self._lane(None, None, None))
+        payload.setdefault("updated_at", self.clock().isoformat())
+        payload["recovery_verifier"] = {
+            "state": str(readiness.state),
+            "reason": str(readiness.reason)[:128],
+            "updated_at": self.clock().isoformat(),
+        }
+        self._write_payload(payload)
+
     def _read_or_initial(self) -> dict[str, object]:
         try:
             value = json.loads(self.json_path.read_text(encoding="utf-8"))
@@ -340,6 +357,14 @@ class AIDPLocalWatcherRuntime:
         self.heartbeat = heartbeat
         self.status_publisher = status_publisher
         self.gate_dependency = gate_dependency
+
+    def diagnose_ingress_once(self, authority: str) -> dict[str, object]:
+        """One transport-only diagnostic; leave watcher and lifecycle state untouched."""
+        from .architect_ingress import ArchitectGitIngress
+
+        if not isinstance(self.ingress, ArchitectGitIngress):
+            raise ValueError("Architect Git ingress is not configured")
+        return self.ingress.diagnose_once(authority)
 
     def run(self) -> WatchRuntimeResult:
         try:

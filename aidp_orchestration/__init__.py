@@ -140,9 +140,12 @@ from .product_owner_confirmation import (
     ProductOwnerConfirmationCommand,
     ProductOwnerConfirmationService,
 )
+from .recovery_verifier import ProductionGateDependencyRecoveryVerifier, TrustedVerifierReadiness
 
 __all__ = [
     "ProductOwnerGateDependencyRecoveryAuthorityV1",
+    "ProductionGateDependencyRecoveryVerifier",
+    "TrustedVerifierReadiness",
     "AIDPRepository",
     "AIDPState",
     "AcceptanceHarness",

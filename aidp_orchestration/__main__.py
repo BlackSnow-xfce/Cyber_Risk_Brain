@@ -33,6 +33,7 @@ from .writer_control_plane_acceptance import (
 )
 from .trigger_publisher import AIDPWatchOnce, serialize_trigger_result
 from .gate_dependency_recovery import RecoveringProductOwnerGateDependencyRunner
+from .recovery_verifier import ProductionGateDependencyRecoveryVerifier
 from .trigger_publisher_acceptance import (
     TriggerPublisherAcceptanceHarness,
     serialize_trigger_publisher_acceptance_result,
@@ -94,6 +95,9 @@ def main() -> int:
         runtime_store = LocalRuntimeStore.for_repository(repository.root)
         status_publisher = PersistentWatcherStatusPublisher(
             runtime_store.root / "external-status-internal",
+        )
+        status_publisher.publish_verifier_readiness(
+            ProductionGateDependencyRecoveryVerifier().readiness()
         )
         def activity_sink(event: str) -> None:
             print(event)
