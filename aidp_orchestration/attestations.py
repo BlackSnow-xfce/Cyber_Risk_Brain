@@ -83,3 +83,11 @@ class AttestationBundleVerifier:
         elif category == "process-lineage":
             required=("topology_snapshot_digest","host_identity","supervisor_identity","launcher_identity","descendants","job_process_groups","detached_orphan_state","containers","remote_executors")
             if payload.get("completeness_result") != "true" or any(not payload.get(k) for k in required): raise ValueError("invalid process lineage semantics")
+        elif category == "workspace-ref":
+            if payload.get("residual_state_assessment") != "clean" or not payload.get("workspace_identities") or not payload.get("refs_worktrees_detached_heads") or payload.get("tracked_state") != "clean" or payload.get("untracked_state") != "clean" or not digest(payload.get("repository_workspace_manifest_digest")): raise ValueError("invalid workspace semantics")
+        elif category == "repository-advancement":
+            if not all(payload.get(k) for k in ("repository_identity","git_common_identity","remote_identity","branch","original_head","approved_current_head","repository_snapshot_digest")) or payload.get("ancestry_result") != "true" or not digest(payload.get("repository_snapshot_digest")): raise ValueError("invalid repository semantics")
+        elif category == "execution-source-authority":
+            if not payload.get("selected_source_authority_id") or not digest(payload.get("selected_source_digest")) or not digest(payload.get("authority_terms_digest")) or payload.get("authority_lifecycle_state") != "ELIGIBLE": raise ValueError("invalid source authority semantics")
+        elif category == "trusted-time":
+            if not payload.get("trusted_utc_timestamp") or not payload.get("monotonic_time_sequence") or not payload.get("time_service_identity") or payload.get("time_validity_interval") != "valid": raise ValueError("invalid trusted time semantics")

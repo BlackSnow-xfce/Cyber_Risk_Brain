@@ -41,6 +41,10 @@ class Stage3TestTrustHarness:
         if category == "product-owner-recovery-decision": payload.update(principal="po-test", operation="RECOVER_GATE_DEPENDENCY", approval_context_id="ctx", approval_context_digest="a"*64, decision_id="decision", nonce="nonce", selected_source_authority_id="source-test", selected_source_digest="b"*64)
         if category == "execution-evidence": payload.update(attempt_count="1", result_count="1", execution_outcome="FAILED", heartbeat_continuity="true", execution_store_manifest_digest="c"*64)
         if category == "process-lineage": payload.update(completeness_result="true", topology_snapshot_digest="d"*64)
+        if category == "workspace-ref": payload.update(residual_state_assessment="clean", workspace_identities="workspace", refs_worktrees_detached_heads="refs", tracked_state="clean", untracked_state="clean", repository_workspace_manifest_digest="e"*64)
+        if category == "repository-advancement": payload.update(repository_identity="repo", git_common_identity="common", remote_identity="remote", branch="branch", original_head="a"*40, approved_current_head="b"*40, ancestry_result="true", repository_snapshot_digest="f"*64)
+        if category == "execution-source-authority": payload.update(selected_source_authority_id="source-test", selected_source_digest="1"*64, authority_terms_digest="2"*64, authority_lifecycle_state="ELIGIBLE")
+        if category == "trusted-time": payload.update(trusted_utc_timestamp=self.now, monotonic_time_sequence="1", time_service_identity="time-test", time_validity_interval="valid")
         body=canonical_bytes(payload); payload["payload_digest"]=hashlib.sha256(body).hexdigest(); body=canonical_bytes(payload)
         key=self.keys[category]; sig=key.sign(_signed_bytes(body,"aidp-attestation-v1")); envelope=AIDPSignatureV1("aidp-attestation-v1","Ed25519",req["key_id"],hashlib.sha256(body).hexdigest(),base64.urlsafe_b64encode(sig).decode()).encoded()
         return canonical_bytes({**payload, "signature": json.loads(envelope)}), envelope
