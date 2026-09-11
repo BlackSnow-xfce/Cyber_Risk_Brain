@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,10 @@ def validate_timestamp(value: str) -> str:
         raise ValueError("timestamp must be UTC with six fractional digits")
     if value[17:19] == "60":
         raise ValueError("leap seconds are forbidden")
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError:
+        raise ValueError("timestamp is not a valid UTC date") from None
     return value
 
 
