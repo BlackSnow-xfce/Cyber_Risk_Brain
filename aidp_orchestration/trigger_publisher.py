@@ -852,10 +852,13 @@ def serialize_contract_inbox_item(value: ContractInboxItem) -> str:
         else "architect_review_recovery" if isinstance(value.contract, ArchitectReviewRecoveryAuthorityV1)
         else "product_owner_gate_dependency"
     )
+    contract = asdict(value.contract)
+    if isinstance(value.contract, ProductOwnerGateDependencyAuthorityV1) and value.contract.supersedes_authority_id is None:
+        contract.pop("supersedes_authority_id")
     return _json({"contract_inbox_item": {
         "contract_id": value.contract_id,
         "contract_type": contract_type,
-        "contract": value.contract,
+        "contract": contract,
         "received_at": value.received_at,
     }})
 
@@ -919,7 +922,7 @@ def _product_owner_gate_dependency_authority(v: dict[str, object]) -> ProductOwn
         "repository_id", "git_common_id", "repository_remote_id", "branch", "expected_head", "allowed_scope", "prohibited_actions",
         "validation_requirements", "acceptance_criteria", "issued_by", "issued_at", "expires_at",
     }
-    if set(v) != expected:
+    if set(v) not in (expected, expected | {"supersedes_authority_id"}):
         raise ValueError("invalid ProductOwnerGateDependencyAuthorityV1 schema")
     return ProductOwnerGateDependencyAuthorityV1(
         schema_version=_string(v, "schema_version"), authority_id=_string(v, "authority_id"),
@@ -932,6 +935,9 @@ def _product_owner_gate_dependency_authority(v: dict[str, object]) -> ProductOwn
         acceptance_criteria=_strings(v, "acceptance_criteria"), issued_by=_string(v, "issued_by"),
         issued_at=datetime.fromisoformat(_string(v, "issued_at")),
         expires_at=datetime.fromisoformat(_string(v, "expires_at")),
+        supersedes_authority_id=(
+            _string(v, "supersedes_authority_id") if "supersedes_authority_id" in v else None
+        ),
     )
 
 

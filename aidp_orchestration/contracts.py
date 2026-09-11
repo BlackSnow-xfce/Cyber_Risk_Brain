@@ -446,6 +446,7 @@ class ProductOwnerGateDependencyAuthorityV1:
     issued_by: str
     issued_at: datetime
     expires_at: datetime
+    supersedes_authority_id: str | None = None
 
     PURPOSE = "DEPLOY_PRODUCT_OWNER_CONFIRMATION_BOUNDARY"
 
@@ -485,11 +486,15 @@ class ProductOwnerGateDependencyAuthorityV1:
         _aware(self.issued_at, "issued_at"); _aware(self.expires_at, "expires_at")
         if self.expires_at <= self.issued_at:
             raise ValueError("gate dependency authority expiry is invalid")
+        if self.supersedes_authority_id is not None:
+            _sha256(self.supersedes_authority_id, "supersedes_authority_id")
         if self.authority_id != self.expected_id():
             raise ValueError("gate dependency authority identity mismatch")
 
     def expected_id(self) -> str:
         values = {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authority_id"}
+        if self.supersedes_authority_id is None:
+            values.pop("supersedes_authority_id")
         return canonical_digest(values)
 
     @staticmethod

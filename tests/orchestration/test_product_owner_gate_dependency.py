@@ -339,3 +339,43 @@ def test_ambiguous_unclaimed_authorities_block_without_claim(tmp_path: Path) -> 
     assert result.state is ProductOwnerGateDependencyState.BLOCKED
     assert not runner.store.product_owner_gate_dependency_claimed(first.authority_id)
     assert not runner.store.product_owner_gate_dependency_claimed(second.authority_id)
+
+
+def test_replacement_lineage_round_trip_and_legacy_bytes() -> None:
+    value = authority(supersedes_authority_id="a" * 64)
+    item = ContractInboxItem(value.authority_id, value, utc_now())
+    encoded = serialize_contract_inbox_item(item)
+    assert LocalContractInbox.parse(encoded.encode()) == item
+    legacy = authority()
+    encoded_legacy = serialize_contract_inbox_item(ContractInboxItem(legacy.authority_id, legacy, utc_now()))
+    assert "supersedes_authority_id" not in encoded_legacy
+    assert LocalContractInbox.parse(encoded_legacy.encode()).contract.authority_id == legacy.authority_id
+
+
+@pytest.mark.parametrize("lineage", [None, "", "bad", "A" * 64, "a" * 63, 42, {}, []])
+def test_malformed_replacement_lineage_is_rejected(lineage) -> None:
+    value = authority()
+    payload = json.loads(serialize_contract_inbox_item(ContractInboxItem(value.authority_id, value, utc_now())))
+    contract = payload["contract_inbox_item"]["contract"]
+    contract["supersedes_authority_id"] = lineage
+    identifier = canonical_digest({k: v for k, v in contract.items() if k != "authority_id"})
+    contract["authority_id"] = payload["contract_inbox_item"]["contract_id"] = identifier
+    with pytest.raises(ValueError):
+        LocalContractInbox.parse(json.dumps(payload).encode())
+
+
+def test_replacement_lineage_rejects_unknown_missing_duplicate_and_tampered_fields() -> None:
+    value = authority(supersedes_authority_id="a" * 64)
+    encoded = serialize_contract_inbox_item(ContractInboxItem(value.authority_id, value, utc_now()))
+    for field, replacement in (("unknown", True), ("supersedes_authority_id", "b" * 64)):
+        payload = json.loads(encoded)
+        payload["contract_inbox_item"]["contract"][field] = replacement
+        with pytest.raises(ValueError):
+            LocalContractInbox.parse(json.dumps(payload).encode())
+    payload = json.loads(encoded)
+    del payload["contract_inbox_item"]["contract"]["expected_head"]
+    with pytest.raises(ValueError):
+        LocalContractInbox.parse(json.dumps(payload).encode())
+    duplicate = encoded.replace('"supersedes_authority_id":', '"supersedes_authority_id":"' + "a" * 64 + '","supersedes_authority_id":')
+    with pytest.raises(ValueError, match="duplicate JSON field"):
+        LocalContractInbox.parse(duplicate.encode())

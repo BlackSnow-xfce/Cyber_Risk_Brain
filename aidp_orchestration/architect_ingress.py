@@ -24,7 +24,7 @@ from .validators import ValidatorRegistry
 
 CONTRACT_PATH = ".ai/orchestration/architect-contracts"
 LOCAL_FETCH_REF = "refs/aidp-orchestration/architect-contracts"
-PARSER_POLICY = "utf8-sig-v2-review-recovery"
+PARSER_POLICY = "utf8-sig-v3-dependency-replacement-lineage"
 
 
 class ArchitectGitIngress:

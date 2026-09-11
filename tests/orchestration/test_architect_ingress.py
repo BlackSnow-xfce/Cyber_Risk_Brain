@@ -370,3 +370,52 @@ def test_acceptance_preserves_fixture_on_failure(tmp_path: Path):
     finally:
         from aidp_orchestration.acceptance import AcceptanceHarness
         AcceptanceHarness.remove_fixture(Path(result.temporary_repository).parent)
+
+
+def test_unchanged_replacement_blob_recovers_only_after_policy_upgrade(tmp_path: Path, monkeypatch):
+    from unittest.mock import Mock
+
+    repository, _remote, architect, runtime, _contract = _setup(tmp_path)
+    ingress = ArchitectGitIngress(AIDPRepository(repository), branch=INGRESS_E2E_BRANCH, runtime_root=runtime)
+    assert ingress.run_once().status is IngressStatus.MATERIALIZED
+    content = (Path(__file__).parent / "fixtures/rejected_dependency_replacement.json").read_bytes()
+    authority_id = "1ef9542a2e374babb79ca093bd9fae82f89d57427c2efc0b74c34738d08dc00f"
+    relative = f".ai/orchestration/architect-contracts/{authority_id}.json"
+    target = architect / relative
+    target.write_bytes(content)
+    _git(architect, "add", "--", relative)
+    _git(architect, "commit", "-m", "immutable replacement fixture")
+    _git(architect, "push", "origin", INGRESS_E2E_BRANCH)
+    commit = _git(architect, "rev-parse", "HEAD")
+    blob = _git(architect, "rev-parse", f"{commit}:{relative}")
+    assert blob == "3531790cea24240cee06ded3e4d34a6c42d6ad95"
+    state = runtime / "architect-ingress.jsonl"
+    rejection = {"architect_ingress_event": {
+        "contract_id": "rejected-path-sha256:cbc98c82116bfe7243f56d696d3bb7312064514e320643ef10e0145d08524a5e",
+        "remote_commit": commit, "blob_id": blob, "status": "BLOCKED",
+        "timestamp": "2026-09-10T12:57:03.087099+00:00",
+        "reason": "remote contract rejected: ValueError", "identity_kind": "rejection",
+        "remote_path": relative, "parser_policy": "utf8-sig-v2-review-recovery",
+    }}
+    with state.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(rejection) + "\n")
+    before = state.read_bytes()
+    parse = Mock(wraps=LocalContractInbox.parse)
+    monkeypatch.setattr(LocalContractInbox, "parse", parse)
+    with monkeypatch.context() as old_policy:
+        old_policy.setattr("aidp_orchestration.architect_ingress.PARSER_POLICY", "utf8-sig-v2-review-recovery")
+        assert ingress.run_once().status is IngressStatus.NO_ACTION
+        assert not any(call.args == (content,) for call in parse.call_args_list)
+        assert state.read_bytes() == before
+    parse.reset_mock()
+    result = ingress.run_once()
+    assert result.status is IngressStatus.MATERIALIZED
+    assert result.contract_id == authority_id and result.blob_id == blob
+    assert any(call.args == (content,) for call in parse.call_args_list)
+    assert state.read_bytes().startswith(before)
+    assert target.read_bytes() == content
+    item = next(item for item in LocalContractInbox(runtime).pending() if item.contract_id == authority_id)
+    assert item.contract.supersedes_authority_id == "217c6f1a17cd943134a522afdb81b39577ee66004c8b83d4201ffbf0108b553d"
+    materialized = state.read_bytes()
+    assert ingress.run_once().status is IngressStatus.NO_ACTION
+    assert state.read_bytes() == materialized
