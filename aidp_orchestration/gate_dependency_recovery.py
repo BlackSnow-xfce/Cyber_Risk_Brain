@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import fields
 from pathlib import Path
 
-from .contracts import ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyResult
+from .contracts import ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyRecoveryAuthorityV1, ProductOwnerGateDependencyResult, ProductOwnerGateDependencyState
 from .trigger_publisher import ProductOwnerGateDependencyRunner
 
 
@@ -54,11 +54,33 @@ class _SelectedAuthorityInboxProxy:
 class RecoveringProductOwnerGateDependencyRunner(ProductOwnerGateDependencyRunner):
     """Resume orphaned bootstrap work and arbitrate equivalent immutable successor authorities."""
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, recovery_evidence_verifier=None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.recovery_evidence_verifier = recovery_evidence_verifier
         self._recovering_authority_id: str | None = None
 
     def run_once(self) -> ProductOwnerGateDependencyResult:
+        from .terminal_gate_dependency_recovery import dependency_consumption_lock
+
+        try:
+            with dependency_consumption_lock(self.store.root):
+                return self._recover_once()
+        except (OSError, ValueError, RuntimeError) as exc:
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED, reason=str(exc))
+
+    def _recover_once(self) -> ProductOwnerGateDependencyResult:
+        from .terminal_gate_dependency_recovery import GateDependencyRecoveryJournal, TerminalGateDependencyRecovery
+
+        if GateDependencyRecoveryJournal(self.store).reservations():
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
+                                                    reason="recovery already reserved; automatic relaunch prohibited")
+        items = self.inbox.pending()
+        recoveries = [item.contract for item in items if isinstance(item.contract, ProductOwnerGateDependencyRecoveryAuthorityV1)]
+        if recoveries:
+            if len(recoveries) != 1:
+                return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
+                                                        reason="ambiguous terminal recovery authorities")
+            return TerminalGateDependencyRecovery(self, getattr(self, "recovery_evidence_verifier", None)).run_once(recoveries[0], items)
         all_candidates = tuple(
             item
             for item in self.inbox.pending()

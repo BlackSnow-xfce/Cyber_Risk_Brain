@@ -514,6 +514,82 @@ class ProductOwnerGateDependencyAuthorityV1:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductOwnerGateDependencyRecoveryAuthorityV1:
+    """Explicit one-shot recovery; hashes bind evidence but never authenticate it."""
+
+    schema_version: str
+    authority_id: str
+    predecessor_authority_id: str
+    predecessor_authority_digest: str
+    predecessor_claim_digest: str
+    predecessor_execution_id: str
+    claim_state: str
+    terminal_status_digest: str
+    terminal_state: str
+    terminal_reason: str
+    dependency_id: str
+    parent_task_id: str
+    parent_lifecycle_digest: str
+    execution_source_authority_id: str
+    execution_source_digest: str
+    execution_terms_digest: str
+    evidence_digest: str
+    product_owner_decision_digest: str
+    advancement_evidence_digest: str
+    repository_id: str
+    git_common_id: str
+    repository_remote_id: str
+    branch: str
+    original_expected_head: str
+    expected_head: str
+    retry_budget: int
+    issued_by: str
+    issued_at: datetime
+    expires_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "aidp-product-owner-gate-dependency-recovery-authority-v1":
+            raise ValueError("unsupported gate dependency recovery schema")
+        if self.claim_state != "CONSUMED" or self.terminal_state != "BLOCKED":
+            raise ValueError("recovery requires a consumed blocked predecessor")
+        if type(self.retry_budget) is not int or self.retry_budget != 1:
+            raise ValueError("recovery grants exactly one attempt")
+        validate_task_id(self.parent_task_id)
+        if not self.parent_task_id.startswith("AIDP-INFRA-") or re.fullmatch(r"AIDP-PO-DEP-\d{4}", self.dependency_id) is None:
+            raise ValueError("invalid recovery dependency or parent")
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if name.endswith("_digest") or name in {
+                "authority_id", "predecessor_authority_id", "execution_source_authority_id",
+                "repository_id", "git_common_id", "repository_remote_id",
+            }:
+                if not isinstance(value, str):
+                    raise ValueError(f"{name} must be a SHA-256 identity")
+                _sha256(value, name)
+        for name in ("predecessor_execution_id", "terminal_reason", "branch", "issued_by"):
+            _single_line(getattr(self, name), name)
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", self.predecessor_execution_id) is None:
+            raise ValueError("invalid predecessor execution identity")
+        for name in ("original_expected_head", "expected_head"):
+            _git_identity(getattr(self, name), name)
+        _aware(self.issued_at, "issued_at"); _aware(self.expires_at, "expires_at")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("recovery authority must expire after issuance")
+        if self.predecessor_authority_id == self.execution_source_authority_id:
+            raise ValueError("recovery requires a distinct execution source")
+        if self.authority_id != self.expected_id():
+            raise ValueError("recovery authority identity mismatch")
+
+    def expected_id(self) -> str:
+        return canonical_digest({name: getattr(self, name) for name in self.__dataclass_fields__ if name != "authority_id"})
+
+    def proposal_digest(self) -> str:
+        # The decision approves this proposal; exclude its own digest to avoid a cycle.
+        return canonical_digest({name: getattr(self, name) for name in self.__dataclass_fields__
+                                 if name not in {"authority_id", "product_owner_decision_digest"}})
+
+
+@dataclass(frozen=True, slots=True)
 class ProductOwnerGateDependencyResult:
     authority_id: str | None
     dependency_id: str | None
@@ -1175,7 +1251,7 @@ class WriterControlPlaneAcceptanceResult:
 @dataclass(frozen=True, slots=True)
 class ContractInboxItem:
     contract_id: str
-    contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1
+    contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1 | ProductOwnerGateDependencyRecoveryAuthorityV1
     received_at: datetime
 
     def __post_init__(self) -> None:
@@ -1187,7 +1263,7 @@ class ContractInboxItem:
         ):
             raise ValueError("review recovery contract_id must equal its canonical authority_id")
         if (
-            isinstance(self.contract, ProductOwnerGateDependencyAuthorityV1)
+            isinstance(self.contract, (ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyRecoveryAuthorityV1))
             and self.contract_id != self.contract.authority_id
         ):
             raise ValueError("gate dependency contract_id must equal its canonical authority_id")

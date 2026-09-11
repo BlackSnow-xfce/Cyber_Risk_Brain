@@ -20,7 +20,7 @@ from .contracts import (
     ControlPlaneResult, ExecutionStatus, ProductOwnerGateDependencyResult, ProductOwnerGateDependencyState,
     PublishResult, ReworkContract, ReviewEnvelope, ScopeCompliance, TriggerResult,
     TriggerStatus, WriterAction, WriterResult, LegacyRecoveryAuthorizationV1, RecoveryAuthorizationV1,
-    ProductOwnerGateDependencyAuthorityV1,
+    ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyRecoveryAuthorityV1,
     canonical_digest, utc_now,
 )
 from .control_plane import AIDPControlPlane
@@ -62,6 +62,20 @@ class ProductOwnerGateDependencyRunner:
         self.timeout_seconds = timeout_seconds
 
     def run_once(self) -> ProductOwnerGateDependencyResult:
+        from .terminal_gate_dependency_recovery import dependency_consumption_lock
+
+        try:
+            with dependency_consumption_lock(self.store.root):
+                return self._consume_once()
+        except (OSError, ValueError, RuntimeError) as exc:
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED, reason=str(exc))
+
+    def _consume_once(self) -> ProductOwnerGateDependencyResult:
+        from .terminal_gate_dependency_recovery import GateDependencyRecoveryJournal
+
+        if GateDependencyRecoveryJournal(self.store).reservations():
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
+                                                    reason="dependency recovery reservation requires explicit assessment")
         all_candidates = tuple(item for item in self.inbox.pending() if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1))
         claimed = tuple(item for item in all_candidates if self.store.product_owner_gate_dependency_claimed(item.contract_id))
         candidates = tuple(item for item in all_candidates if item not in claimed)
@@ -77,13 +91,15 @@ class ProductOwnerGateDependencyRunner:
             return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED, reason="gate dependency authority is ambiguous")
         item = candidates[0]
         authority = item.contract
-        execution_id = str(uuid4())
+        return self._execute_dependency(authority, str(uuid4()))
+
+    def _execute_dependency(self, authority, execution_id: str) -> ProductOwnerGateDependencyResult:
         try:
             self._validate(authority)
             parent_snapshot = self._parent_snapshot(authority.parent_task_id)
-            self.store.claim_product_owner_gate_dependency(authority, execution_id)
-            self.store.persist_product_owner_gate_dependency_status(
-                authority.authority_id, authority.dependency_id, "EXECUTING",
+            self._claim_dependency(authority, execution_id)
+            self._dependency_status(
+                authority, "EXECUTING",
                 "one-shot dependency authority consumed", execution_id=execution_id,
             )
             workspace, dependency_branch = self._prepare_workspace(authority)
@@ -100,9 +116,9 @@ class ProductOwnerGateDependencyRunner:
                 execution_id=execution_id, authority_instructions=authority.acceptance_criteria,
             )
             runner = AIDPRunner(workspace_repository, timeout_seconds=self.timeout_seconds)
-            result = runner.execute_authorized(
-                request, contract_id=authority.authority_id, namespace="product-owner-gate-dependency",
-            )
+            self._execution_event("LAUNCH_INTENT")
+            result = self._run_authorized(runner, request, authority)
+            self._execution_event("RESULT_RECORDED", evidence_digest=canonical_digest(asdict(result)))
             if result.status is not ExecutionStatus.SUCCESS or result.scope_compliance is not ScopeCompliance.COMPLIANT:
                 raise RuntimeError("dependency execution did not produce compliant success")
             if not result.validation_results or any(not value.passed for value in result.validation_results):
@@ -131,7 +147,7 @@ class ProductOwnerGateDependencyRunner:
                 task_id=authority.dependency_id, review_iteration=0, execution_id=result.execution_id,
                 repository=identity["repository"], git_common_dir=identity["git_common_dir"],
                 branch=identity["branch"], remote_url=identity["remote_url"],
-                authority_contract_id=authority.authority_id, authority_contract_digest=authority.expected_id(),
+                authority_contract_id=self._execution_authority_id(authority), authority_contract_digest=self._execution_authority_digest(authority),
                 original_allowed_scope=authority.allowed_scope,
                 original_prohibited_actions=authority.prohibited_actions,
                 original_validation_requirements=authority.validation_requirements,
@@ -154,6 +170,7 @@ class ProductOwnerGateDependencyRunner:
             architect_result = architect.review(review_request, schema_path=schema_path)
             architect.revalidate(review_request)
             self.store.persist_architect_result(architect_result)
+            self._execution_event("REVIEWED", evidence_digest=canonical_digest(asdict(architect_result)))
             self._assert_parent_unchanged(authority, parent_snapshot)
             state = (
                 ProductOwnerGateDependencyState.BLOCKED_PENDING_PROVISIONING
@@ -161,21 +178,44 @@ class ProductOwnerGateDependencyRunner:
                 else ProductOwnerGateDependencyState.BLOCKED
             )
             reason = "independent review passed; administrator provisioning remains required" if state is ProductOwnerGateDependencyState.BLOCKED_PENDING_PROVISIONING else "independent review did not pass"
-            self.store.persist_product_owner_gate_dependency_status(
-                authority.authority_id, authority.dependency_id, state.value, reason,
+            self._dependency_status(
+                authority, state.value, reason,
                 execution_id=execution_id, architect_result_id=architect_result.review_result_id,
             )
-            return ProductOwnerGateDependencyResult(authority.authority_id, authority.dependency_id, state, execution_id, architect_result.review_result_id, reason)
+            return ProductOwnerGateDependencyResult(self._execution_authority_id(authority), authority.dependency_id, state, execution_id, architect_result.review_result_id, reason)
         except Exception as exc:
             reason = f"gate dependency blocked: {exc.__class__.__name__}"
             try:
-                self.store.persist_product_owner_gate_dependency_status(
-                    authority.authority_id, authority.dependency_id, "BLOCKED", reason,
+                self._dependency_status(
+                    authority, "BLOCKED", reason,
                     execution_id=execution_id,
                 )
             except Exception:
                 pass
-            return ProductOwnerGateDependencyResult(authority.authority_id, authority.dependency_id, ProductOwnerGateDependencyState.BLOCKED, execution_id, reason=reason)
+            return ProductOwnerGateDependencyResult(self._execution_authority_id(authority), authority.dependency_id, ProductOwnerGateDependencyState.BLOCKED, execution_id, reason=reason)
+
+    def _claim_dependency(self, authority, execution_id: str) -> None:
+        self.store.claim_product_owner_gate_dependency(authority, execution_id)
+
+    def _dependency_status(self, authority, state: str, reason: str, **metadata) -> None:
+        self.store.persist_product_owner_gate_dependency_status(authority.authority_id, authority.dependency_id,
+                                                                state, reason, **metadata)
+
+    def _execution_authority_id(self, authority) -> str:
+        return authority.authority_id
+
+    def _execution_authority_digest(self, authority) -> str:
+        return authority.expected_id()
+
+    def _workspace_key(self, authority) -> str:
+        return authority.authority_id
+
+    def _execution_event(self, kind: str, **metadata) -> None:
+        pass
+
+    def _run_authorized(self, runner, request, authority):
+        return runner.execute_authorized(request, contract_id=authority.authority_id,
+                                         namespace="product-owner-gate-dependency")
 
     def _validate(self, authority: ProductOwnerGateDependencyAuthorityV1) -> None:
         decision = self.repository.inspect()
@@ -217,10 +257,10 @@ class ProductOwnerGateDependencyRunner:
             raise RuntimeError("dependency execution changed parent branch or HEAD")
 
     def _prepare_workspace(self, authority: ProductOwnerGateDependencyAuthorityV1) -> tuple[Path, str]:
-        workspace = Path(tempfile.gettempdir()).resolve() / f"aidp-gate-dependency-{authority.authority_id[:12]}"
+        workspace = Path(tempfile.gettempdir()).resolve() / f"aidp-gate-dependency-{self._workspace_key(authority)[:12]}"
         if workspace.exists(): raise RuntimeError("gate dependency workspace already exists")
         workspace.parent.mkdir(parents=True, exist_ok=True)
-        branch = f"aidp/gate-dependency-{authority.authority_id[:12]}"
+        branch = f"aidp/gate-dependency-{self._workspace_key(authority)[:12]}"
         self._git_at(self.repository.root, "worktree", "add", "-b", branch, str(workspace), authority.expected_head)
         self._git_at(workspace, "push", "-u", "origin", branch)
         return workspace, branch
@@ -303,7 +343,10 @@ class LocalContractInbox:
                 _architect_review_recovery_authority(contract_value)
                 if contract_type == "architect_review_recovery" else (
                     _product_owner_gate_dependency_authority(contract_value)
-                    if contract_type == "product_owner_gate_dependency" else None
+                    if contract_type == "product_owner_gate_dependency" else (
+                        _gate_dependency_recovery_authority(contract_value)
+                        if contract_type == "product_owner_gate_dependency_recovery" else None
+                    )
                 )
             )
         )
@@ -850,6 +893,7 @@ def serialize_contract_inbox_item(value: ContractInboxItem) -> str:
         "architect_task" if isinstance(value.contract, ArchitectTaskContract)
         else "rework" if isinstance(value.contract, ReworkContract)
         else "architect_review_recovery" if isinstance(value.contract, ArchitectReviewRecoveryAuthorityV1)
+        else "product_owner_gate_dependency_recovery" if isinstance(value.contract, ProductOwnerGateDependencyRecoveryAuthorityV1)
         else "product_owner_gate_dependency"
     )
     contract = asdict(value.contract)
@@ -939,6 +983,23 @@ def _product_owner_gate_dependency_authority(v: dict[str, object]) -> ProductOwn
             _string(v, "supersedes_authority_id") if "supersedes_authority_id" in v else None
         ),
     )
+
+
+def _gate_dependency_recovery_authority(v: dict[str, object]) -> ProductOwnerGateDependencyRecoveryAuthorityV1:
+    expected = set(ProductOwnerGateDependencyRecoveryAuthorityV1.__dataclass_fields__)
+    if set(v) != expected:
+        raise ValueError("invalid ProductOwnerGateDependencyRecoveryAuthorityV1 schema")
+    values = {}
+    for name in expected:
+        if name == "retry_budget":
+            if type(v[name]) is not int:
+                raise ValueError("retry_budget must be integer")
+            values[name] = v[name]
+        elif name in {"issued_at", "expires_at"}:
+            values[name] = datetime.fromisoformat(_string(v, name))
+        else:
+            values[name] = _string(v, name)
+    return ProductOwnerGateDependencyRecoveryAuthorityV1(**values)
 
 
 def _string(v: dict[str, object], name: str) -> str:

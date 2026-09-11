@@ -26,6 +26,7 @@ from .architect_review import (
 )
 
 from .contracts import (
+    ProductOwnerGateDependencyRecoveryAuthorityV1,
     AIDPState,
     AcceptanceResult,
     AcceptanceStatus,
@@ -141,6 +142,7 @@ from .product_owner_confirmation import (
 )
 
 __all__ = [
+    "ProductOwnerGateDependencyRecoveryAuthorityV1",
     "AIDPRepository",
     "AIDPState",
     "AcceptanceHarness",

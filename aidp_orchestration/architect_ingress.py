@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .contracts import (
     ArchitectIngressResult, ArchitectReviewRecoveryAuthorityV1, ArchitectTaskContract, IngressStatus,
-    ProductOwnerGateDependencyAuthorityV1, ReworkContract,
+    ProductOwnerGateDependencyAuthorityV1, ProductOwnerGateDependencyRecoveryAuthorityV1, ReworkContract,
     utc_now,
 )
 from .repository import AIDPRepository
@@ -24,7 +24,7 @@ from .validators import ValidatorRegistry
 
 CONTRACT_PATH = ".ai/orchestration/architect-contracts"
 LOCAL_FETCH_REF = "refs/aidp-orchestration/architect-contracts"
-PARSER_POLICY = "utf8-sig-v3-dependency-replacement-lineage"
+PARSER_POLICY = "utf8-sig-v4-terminal-dependency-recovery"
 
 
 class ArchitectGitIngress:
@@ -137,8 +137,8 @@ class ArchitectGitIngress:
             values.append((path, blob, content))
         return tuple(values)
 
-    def _validate(self, contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1) -> None:
-        if isinstance(contract, ArchitectReviewRecoveryAuthorityV1):
+    def _validate(self, contract: ArchitectTaskContract | ReworkContract | ArchitectReviewRecoveryAuthorityV1 | ProductOwnerGateDependencyAuthorityV1 | ProductOwnerGateDependencyRecoveryAuthorityV1) -> None:
+        if isinstance(contract, (ArchitectReviewRecoveryAuthorityV1, ProductOwnerGateDependencyRecoveryAuthorityV1)):
             return
         requirements = contract.validation_requirements if isinstance(
             contract, (ArchitectTaskContract, ProductOwnerGateDependencyAuthorityV1)

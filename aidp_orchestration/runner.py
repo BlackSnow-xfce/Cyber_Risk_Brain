@@ -10,7 +10,7 @@ from datetime import datetime
 from dataclasses import replace
 from enum import Enum
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .contracts import (
     AIDPState,
@@ -76,6 +76,7 @@ class AIDPRunner:
 
     def execute_authorized(
         self, request: CodexExecutionRequest, *, contract_id: str, namespace: str,
+        on_attempt_persisted: Callable[[], None] | None = None,
     ) -> CodexExecutionResult:
         """Execute an already-validated non-task authority with normal durable supervision."""
         attempt = ExecutionAttemptV1(
@@ -86,6 +87,8 @@ class AIDPRunner:
             0, 0, utc_now(),
         )
         self.runtime_store.persist_execution_attempt(attempt)
+        if on_attempt_persisted is not None:
+            on_attempt_persisted()
         stop_heartbeat, supervision_failure = threading.Event(), threading.Event()
         heartbeat_failure: list[str] = []
 
