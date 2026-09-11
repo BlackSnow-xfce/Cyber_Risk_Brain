@@ -16,11 +16,15 @@ _TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 
 
 def foundation_status() -> dict[str, str]:
+    try:
+        from .ed25519 import Ed25519PublicKey
+        ed25519_ready = Ed25519PublicKey is not None
+    except ImportError:
+        ed25519_ready = False
     return {
         "CANONICALIZATION_READY": "READY",
         "CAS_READY": "READY",
-        "ED25519_READY": "BLOCKED",
-        "ED25519_DEPENDENCY_BLOCKED": "cryptography dependency is not approved/configured",
+        "ED25519_READY": "READY" if ed25519_ready else "BLOCKED",
         "SUPERVISOR_ADMISSION_NOT_IMPLEMENTED": "BLOCKED",
         "PRODUCTION_RECOVERY_BLOCKED": "BLOCKED",
     }
