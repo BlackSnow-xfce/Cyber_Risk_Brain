@@ -54,7 +54,7 @@ def _pipeline_inputs():
     request = {"source_identity":"src","category":"cat","schema":"sch","environment":"test",
         "endpoint_identity":"ep","audience":"aud","key_namespace":"ns","key_id":"kid",
         "algorithm":"Ed25519","trust_store_id":"ts","minimum_epoch":1,"payload_schema":"payload-v1"}
-    policy = SimpleNamespace(payload={"domain":"aidp-source-authorization","environment":"test",
+    policy = SimpleNamespace(payload={"schema_version": POLICY_SCHEMA, "domain":"aidp-source-authorization","environment":"test",
         "issued_at":NOW,"valid_until":"2026-09-11T13:00:00.000000Z","rows":[dict(request)]})
     return policy, request
 
@@ -122,3 +122,22 @@ def test_complete_cryptographic_authorization_chain_and_single_mutations(monkeyp
             envelope=signature, public_key=public, payload_schema="payload-v1", lineage=lineage,
             expected_lineage=lineage, now=NOW)
         assert result.authorized is False and result.code == expected
+
+
+@pytest.mark.parametrize("schema", ["payload-v2", "payload-v10", "PAYLOAD-V1", "", "payload-v1-extra"])
+def test_unknown_payload_schema_is_denied_at_stage_ten(schema, monkeypatch):
+    policy, request = _pipeline_inputs(); request["payload_schema"] = schema; policy.payload["rows"][0]["payload_schema"] = schema
+    monkeypatch.setattr("aidp_orchestration.trust_policy.verify", lambda *args, **kwargs: None)
+    result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+        trust_store={"trust_store_id":"ts", "monotonic_epoch":1}, revoked_key_ids=set(), payload=canonical_bytes({"v":1}),
+        envelope=b"ignored", public_key=b"ignored", payload_schema=schema, lineage=None, expected_lineage=None, now=NOW)
+    assert result == AuthorizationResult(False, 10, "PAYLOAD_SCHEMA")
+
+
+@pytest.mark.parametrize("schema", ["aidp-source-authorization-policy-v0", "aidp-source-authorization-policy-v2", 1])
+def test_wrong_policy_schema_version_denied_at_stage_two(schema):
+    policy, request = _pipeline_inputs(); policy.payload["schema_version"] = schema
+    result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+        trust_store=None, revoked_key_ids=None, payload=canonical_bytes({"v":1}), envelope=b"bad", public_key=b"bad",
+        payload_schema="payload-v1", lineage=None, expected_lineage=None, now=NOW)
+    assert result == AuthorizationResult(False, 2, "SCHEMA_OR_DOMAIN")
