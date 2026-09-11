@@ -7,7 +7,7 @@ from .trust_policy import authorize_source, AuthorizationResult
 
 ATTESTATION_SCHEMA = "aidp-source-attestation-v1"
 CATEGORIES = frozenset({"product-owner-recovery-decision", "execution-evidence", "process-lineage", "workspace-ref", "repository-advancement", "execution-source-authority", "trusted-time"})
-COMMON = {"schema_version","domain","source_category","source_identity","environment","endpoint_identity","audience","key_namespace","key_id","trust_store_id","trust_store_epoch","observation_sequence","issued_at","valid_until","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest","payload_schema","payload_digest","signature"}
+COMMON = {"schema_version","domain","source_category","source_identity","environment","endpoint_identity","audience","key_namespace","key_id","algorithm","trust_store_id","trust_store_epoch","observation_sequence","issued_at","valid_until","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest","payload_schema","payload_digest","signature"}
 
 EXTRA = {
  "product-owner-recovery-decision": {"principal","operation","approval_context_id","approval_context_digest","decision_id","nonce","selected_source_digest","selected_source_authority_id"},

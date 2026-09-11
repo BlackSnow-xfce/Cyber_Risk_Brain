@@ -1,0 +1,40 @@
+import base64, hashlib, json
+from dataclasses import dataclass
+from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from aidp_orchestration.attestations import ATTESTATION_SCHEMA, CATEGORIES, EXTRA, AttestationBundleVerifier
+from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
+from aidp_orchestration.foundation import canonical_bytes
+from aidp_orchestration.trust_policy import POLICY_SCHEMA
+
+@dataclass
+class Stage3TestTrustHarness:
+    root: Path
+    policies: dict
+    requests: dict
+    keys: dict
+    public_keys: dict
+    lineage: dict
+    now: str = "2026-09-11T12:00:00.000000Z"
+
+    @classmethod
+    def create(cls, root: Path):
+        keys={}; public={}; policies={}; requests={}
+        for category in sorted(CATEGORIES):
+            name=category.replace("-", "-")+"-test"; key_id=name+"-key"; key=Ed25519PrivateKey.generate()
+            keys[category]=key; public[key_id]=key.public_key().public_bytes_raw()
+            requests[category]={"source_identity":name,"category":category,"schema":"aidp-source-attestation-v1","environment":"test","endpoint_identity":name+"-endpoint","audience":"aidp-recovery-test","key_namespace":name+"-namespace","key_id":key_id,"algorithm":"Ed25519","trust_store_id":"stage3-test-store","minimum_epoch":1,"payload_schema":"payload-v1"}
+            policies[category]=type("Policy",(),{"payload":{"schema_version":POLICY_SCHEMA,"domain":"aidp-source-authorization","environment":"test","rows":[requests[category]],"issued_at":"2026-09-11T12:00:00.000000Z","valid_until":"2026-09-11T13:00:00.000000Z"}})()
+        lineage={"dependency_id":"dep-test","parent_task_id":"parent-test","predecessor_authority_id":"pred-test","predecessor_claim_digest":"claim-test","predecessor_execution_id":"exec-test","proposal_digest":"proposal-test"}
+        return cls(root,policies,requests,keys,public,lineage)
+
+    def build(self, category):
+        req=self.requests[category]; payload={"schema_version":ATTESTATION_SCHEMA,"domain":"aidp-source-attestation","source_category":category,**{k:v for k,v in req.items() if k not in {"category","schema","minimum_epoch"}},"trust_store_epoch":1,"observation_sequence":1,"issued_at":self.now,"valid_until":"2026-09-11T13:00:00.000000Z",**self.lineage,"payload_digest":"placeholder"}
+        for field in EXTRA[category]: payload[field] = "valid"
+        body=canonical_bytes(payload); payload["payload_digest"]=hashlib.sha256(body).hexdigest(); body=canonical_bytes(payload)
+        key=self.keys[category]; sig=key.sign(_signed_bytes(body,"aidp-attestation-v1")); envelope=AIDPSignatureV1("aidp-attestation-v1","Ed25519",req["key_id"],hashlib.sha256(body).hexdigest(),base64.urlsafe_b64encode(sig).decode()).encoded()
+        return canonical_bytes({**payload, "signature": json.loads(envelope)}), envelope
+
+    def verify(self):
+        members=[self.build(category) for category in sorted(CATEGORIES)]
+        return AttestationBundleVerifier().verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store={"trust_store_id":"stage3-test-store","monotonic_epoch":1}, revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
