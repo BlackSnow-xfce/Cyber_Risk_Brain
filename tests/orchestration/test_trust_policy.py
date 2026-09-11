@@ -93,3 +93,32 @@ def test_pipeline_never_authorizes_with_invalid_tuple_or_trust():
         trust_store=None, revoked_key_ids=set(), payload=canonical_bytes({"v":1}), envelope=b"bad", public_key=b"bad",
         payload_schema="payload-v1", lineage=None, expected_lineage=None, now=NOW)
     assert result == AuthorizationResult(False, 4, "SOURCE_OR_CATEGORY")
+
+
+def test_complete_cryptographic_authorization_chain_and_single_mutations(monkeypatch):
+    from aidp_orchestration import trust_policy
+    key = Ed25519PrivateKey.generate(); public = key.public_key().public_bytes_raw()
+    policy, request = _pipeline_inputs()
+    policy.payload.update(issued_at=NOW, valid_until="2026-09-11T13:00:00.000000Z")
+    payload = canonical_bytes({"evidence": "valid"})
+    signature = _signed({"evidence": "valid"}, key, "kid")
+    trust_policy.verify(payload, signature, key_id="kid", public_key=public, schema_version="aidp-attestation-v1")
+    lineage = {"predecessor": "pred", "execution": "exec", "dependency": "dep", "parent": "parent", "source": "src-auth"}
+    # The pipeline consumes policy freshness and explicit lineage independently.
+    monkeypatch.setattr("aidp_orchestration.trust_policy.verify", lambda *args, **kwargs: None)
+    result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+        trust_store={"trust_store_id":"ts", "monotonic_epoch":1}, revoked_key_ids=set(), payload=payload,
+        envelope=signature, public_key=public, payload_schema="payload-v1", lineage=lineage,
+        expected_lineage=lineage, now=NOW)
+    assert result == AuthorizationResult(True, 12, "AUTHORIZED")
+    for mutation, expected in ((lambda: request.update(category="other"), "SOURCE_OR_CATEGORY"),
+                               (lambda: request.update(audience="other"), "ENVIRONMENT_OR_AUDIENCE"),
+                               (lambda: request.update(minimum_epoch=2), "TRUST_STORE"),
+                               (lambda: request.update(key_id="revoked"), "SOURCE_OR_CATEGORY")):
+        policy, request = _pipeline_inputs(); policy.payload.update(issued_at=NOW, valid_until="2026-09-11T13:00:00.000000Z")
+        mutation()
+        result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+            trust_store={"trust_store_id":"ts", "monotonic_epoch":1}, revoked_key_ids={"revoked"}, payload=payload,
+            envelope=signature, public_key=public, payload_schema="payload-v1", lineage=lineage,
+            expected_lineage=lineage, now=NOW)
+        assert result.authorized is False and result.code == expected
