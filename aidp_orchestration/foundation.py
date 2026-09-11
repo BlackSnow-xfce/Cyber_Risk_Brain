@@ -15,6 +15,17 @@ _INT_MIN, _INT_MAX = -(2**63 - 1), 2**63 - 1
 _TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 
 
+def foundation_status() -> dict[str, str]:
+    return {
+        "CANONICALIZATION_READY": "READY",
+        "CAS_READY": "READY",
+        "ED25519_READY": "BLOCKED",
+        "ED25519_DEPENDENCY_BLOCKED": "cryptography dependency is not approved/configured",
+        "SUPERVISOR_ADMISSION_NOT_IMPLEMENTED": "BLOCKED",
+        "PRODUCTION_RECOVERY_BLOCKED": "BLOCKED",
+    }
+
+
 def _normalize(value: Any) -> Any:
     if isinstance(value, str):
         normalized = unicodedata.normalize("NFC", value)
