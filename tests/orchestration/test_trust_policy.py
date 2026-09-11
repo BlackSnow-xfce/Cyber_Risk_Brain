@@ -113,8 +113,8 @@ def test_complete_cryptographic_authorization_chain_and_single_mutations(monkeyp
     assert result == AuthorizationResult(True, 12, "AUTHORIZED")
     for mutation, expected in ((lambda: request.update(category="other"), "SOURCE_OR_CATEGORY"),
                                (lambda: request.update(audience="other"), "ENVIRONMENT_OR_AUDIENCE"),
-                               (lambda: request.update(minimum_epoch=2), "TRUST_STORE"),
-                               (lambda: request.update(key_id="revoked"), "SOURCE_OR_CATEGORY")):
+                               (lambda: (request.update(minimum_epoch=2), policy.payload["rows"][0].update(minimum_epoch=2)), "TRUST_STORE"),
+                               (lambda: (request.update(key_id="revoked"), policy.payload["rows"][0].update(key_id="revoked")), "REVOCATION")):
         policy, request = _pipeline_inputs(); policy.payload.update(issued_at=NOW, valid_until="2026-09-11T13:00:00.000000Z")
         mutation()
         result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
