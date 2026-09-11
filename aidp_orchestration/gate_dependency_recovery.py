@@ -66,26 +66,50 @@ class RecoveringProductOwnerGateDependencyRunner(ProductOwnerGateDependencyRunne
             with dependency_consumption_lock(self.store.root):
                 return self._recover_once()
         except (OSError, ValueError, RuntimeError) as exc:
+            try:
+                from .terminal_gate_dependency_recovery import GateDependencyRecoveryJournal
+                if GateDependencyRecoveryJournal(self.store).reservations():
+                    return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
+                                                            reason="recovery already reserved; automatic relaunch prohibited")
+            except (OSError, ValueError, RuntimeError):
+                pass
             return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED, reason=str(exc))
 
     def _recover_once(self) -> ProductOwnerGateDependencyResult:
         from .terminal_gate_dependency_recovery import GateDependencyRecoveryJournal, TerminalGateDependencyRecovery
 
-        if GateDependencyRecoveryJournal(self.store).reservations():
-            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
-                                                    reason="recovery already reserved; automatic relaunch prohibited")
         items = self.inbox.pending()
         recoveries = [item.contract for item in items if isinstance(item.contract, ProductOwnerGateDependencyRecoveryAuthorityV1)]
         if recoveries:
             if len(recoveries) != 1:
                 return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
                                                         reason="ambiguous terminal recovery authorities")
+            journal = GateDependencyRecoveryJournal(self.store)
+            reservations = journal.reservations(dependency_id=recoveries[0].dependency_id)
+            if reservations:
+                reservation = reservations[0]
+                try:
+                    status = journal.reconcile_uncertain(recoveries[0], reservation)
+                except (OSError, RuntimeError, ValueError):
+                    return ProductOwnerGateDependencyResult(
+                        recoveries[0].authority_id, recoveries[0].dependency_id,
+                        ProductOwnerGateDependencyState.BLOCKED,
+                        execution_id=str(reservation["execution_id"]),
+                        reason="recovery already reserved; automatic relaunch prohibited",
+                    )
+                if status and status.get("kind") == "BLOCKED":
+                    return ProductOwnerGateDependencyResult(
+                        recoveries[0].authority_id, recoveries[0].dependency_id,
+                        ProductOwnerGateDependencyState.BLOCKED,
+                        execution_id=str(reservation["execution_id"]), reason=str(status.get("reason", "")),
+                    )
             return TerminalGateDependencyRecovery(self, getattr(self, "recovery_evidence_verifier", None)).run_once(recoveries[0], items)
-        all_candidates = tuple(
-            item
-            for item in self.inbox.pending()
-            if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1)
-        )
+        candidates = tuple(item for item in items if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1))
+        reservations = GateDependencyRecoveryJournal(self.store).reservations()
+        if any(any(r.get("dependency_id") == item.contract.dependency_id for r in reservations) for item in candidates):
+            return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
+                                                    reason="recovery already reserved; automatic relaunch prohibited")
+        all_candidates = candidates
         claimed = tuple(
             item
             for item in all_candidates

@@ -97,31 +97,35 @@ class GateDependencyRecoveryJournal:
         self.store = store
         self.root = store.root / "gate-dependency-recovery"
 
-    def reservations(self) -> tuple[dict[str, object], ...]:
+    def reservations(self, *, dependency_id: str | None = None,
+                     source_authority_id: str | None = None) -> tuple[dict[str, object], ...]:
         values = []
         for path in sorted((self.root / "reservations").glob("*.json")):
             value = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(value, dict) or set(value) != {
                 "reservation_id", "recovery_authority_id", "predecessor_authority_id",
-                "predecessor_execution_id", "execution_source_authority_id", "execution_id", "reserved_at",
+                "predecessor_execution_id", "execution_source_authority_id", "dependency_id", "execution_id", "reserved_at",
             }:
                 raise ValueError("malformed recovery reservation")
             expected = canonical_digest((value["predecessor_authority_id"], value["predecessor_execution_id"]))
             if path.stem != expected or value["reservation_id"] != expected:
                 raise ValueError("recovery reservation identity mismatch")
-            values.append(value)
+            if (dependency_id is None or value.get("dependency_id") == dependency_id) and \
+                    (source_authority_id is None or value.get("execution_source_authority_id") == source_authority_id):
+                values.append(value)
         return tuple(values)
 
     def reserve(self, authority: ProductOwnerGateDependencyRecoveryAuthorityV1) -> dict[str, object]:
         with dependency_consumption_lock(self.store.root):
             # This lane admits no concurrent or automatic follow-on recovery.
-            if self.reservations():
+            if self.reservations(dependency_id=authority.dependency_id):
                 raise RuntimeError("recovery reservation already exists; explicit assessment required")
             key = canonical_digest((authority.predecessor_authority_id, authority.predecessor_execution_id))
             value = dict(reservation_id=key, recovery_authority_id=authority.authority_id,
                          predecessor_authority_id=authority.predecessor_authority_id,
                          predecessor_execution_id=authority.predecessor_execution_id,
                          execution_source_authority_id=authority.execution_source_authority_id,
+                         dependency_id=authority.dependency_id,
                          execution_id=str(uuid4()), reserved_at=utc_now().isoformat())
             path = self.root / "reservations" / f"{key}.json"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,6 +156,15 @@ class GateDependencyRecoveryJournal:
             raise ValueError("invalid recovery identity")
         paths = sorted((self.root / "events" / authority_id).glob("*.json"))
         return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None
+
+    def reconcile_uncertain(self, authority, reservation: dict[str, object]) -> dict[str, object] | None:
+        current = self.status(authority.authority_id)
+        if current is None or current.get("kind") in {"TERMINAL", "BLOCKED"}:
+            return current
+        if current.get("kind") in {"RESERVED", "LAUNCH_INTENT", "STARTED", "RESULT_RECORDED", "REVIEWED"}:
+            self.event(authority, "BLOCKED", execution_id=str(reservation["execution_id"]),
+                       reason="UNKNOWN_EXECUTION_OUTCOME: interrupted recovery; automatic relaunch prohibited")
+        return self.status(authority.authority_id)
 
 
 class TerminalGateDependencyRecovery:
@@ -201,8 +214,15 @@ class TerminalGateDependencyRecovery:
             raise ValueError("recovery head binding mismatch")
         if execution_terms_digest(source) != authority.execution_terms_digest or execution_terms_digest(predecessor) != authority.execution_terms_digest:
             raise ValueError("recovery execution terms changed")
-        claimed = [item.contract_id for item in items if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1)
-                   and self.runner.store.product_owner_gate_dependency_claimed(item.contract_id)]
+        claim_root = self.runner.store.root / "product-owner-gate-dependency-claims"
+        claimed = []
+        for path in sorted(claim_root.glob("*.json")):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))["product_owner_gate_dependency_claim"]
+            except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("malformed persisted dependency claim") from exc
+            if value.get("dependency_id") == authority.dependency_id and value.get("state") in {"CONSUMED", "EXECUTING"}:
+                claimed.append(value.get("authority_id"))
         if claimed != [authority.predecessor_authority_id]:
             raise ValueError("conflicting dependency claim")
         claim = self._snapshot("product-owner-gate-dependency-claims", authority.predecessor_authority_id, authority.predecessor_claim_digest)
@@ -276,13 +296,23 @@ class TerminalGateDependencyRecovery:
                     or result.get("start_commit") != authority.original_expected_head
                     or ExecutionStatus(result.get("status")) in {ExecutionStatus.SUCCESS, ExecutionStatus.RUNNING}):
                 raise ValueError("persisted failure does not bind predecessor execution")
+        self._assert_dispatch_state(authority, source)
         return source, evidence
+
+    def _assert_dispatch_state(self, authority, source) -> None:
+        self.runner._validate(source)
+        if self.runner._parent_snapshot(authority.parent_task_id) != authority.parent_lifecycle_digest:
+            raise ValueError("recovery parent lifecycle changed before dispatch")
+        if self.runner._git_at(self.runner.repository.root, "status", "--porcelain=v1", "--untracked-files=all"):
+            raise ValueError("recovery baseline changed before dispatch")
+        subprocess.run(("git", "merge-base", "--is-ancestor", authority.original_expected_head, authority.expected_head),
+                       cwd=self.runner.repository.root, check=True, capture_output=True)
 
     def run_once(self, authority, items) -> ProductOwnerGateDependencyResult:
         execution_id = None
         try:
             with dependency_consumption_lock(self.runner.store.root):
-                if self.journal.reservations():
+                if self.journal.reservations(dependency_id=authority.dependency_id):
                     raise RuntimeError("recovery already reserved; automatic relaunch prohibited")
                 source, evidence = self.validate(authority, items)
                 assessment = json.dumps(asdict(evidence), default=str, sort_keys=True)
@@ -325,6 +355,8 @@ class TerminalGateDependencyRecovery:
 
                     def _execution_event(self, kind, **metadata):
                         if kind == "LAUNCH_INTENT":
+                            coordinator._source_for_dispatch = source
+                            coordinator._assert_dispatch_state(authority, source)
                             _, refreshed = coordinator.validate(authority, coordinator.runner.inbox.pending())
                             coordinator._same_execution_assessment(evidence, refreshed)
                         coordinator.journal.event(authority, kind, execution_id=execution_id,

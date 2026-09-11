@@ -73,10 +73,13 @@ class ProductOwnerGateDependencyRunner:
     def _consume_once(self) -> ProductOwnerGateDependencyResult:
         from .terminal_gate_dependency_recovery import GateDependencyRecoveryJournal
 
-        if GateDependencyRecoveryJournal(self.store).reservations():
+        all_candidates = tuple(item for item in self.inbox.pending() if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1))
+        journal = GateDependencyRecoveryJournal(self.store)
+        if any(journal.reservations(dependency_id=item.contract.dependency_id,
+                                    source_authority_id=item.contract.authority_id)
+               for item in all_candidates):
             return ProductOwnerGateDependencyResult(None, None, ProductOwnerGateDependencyState.BLOCKED,
                                                     reason="dependency recovery reservation requires explicit assessment")
-        all_candidates = tuple(item for item in self.inbox.pending() if isinstance(item.contract, ProductOwnerGateDependencyAuthorityV1))
         claimed = tuple(item for item in all_candidates if self.store.product_owner_gate_dependency_claimed(item.contract_id))
         candidates = tuple(item for item in all_candidates if item not in claimed)
         if claimed:

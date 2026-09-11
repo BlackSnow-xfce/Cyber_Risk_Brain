@@ -252,7 +252,9 @@ def test_audit_failure_blocks_and_never_relaunches_reserved_work(scenario, monke
         assert not s.coordinator.journal.reservations()
     else:
         assert s.coordinator.journal.reservations()
-        assert "relaunch prohibited" in s.runner.run_once().reason
+        replay = s.runner.run_once()
+        assert replay.state is ProductOwnerGateDependencyState.BLOCKED
+        assert replay.execution_id
 
 
 def install_successful_execution(s, monkeypatch):
@@ -410,6 +412,64 @@ def test_independent_review_failure_does_not_accept_parent(scenario, monkeypatch
     assert result.state is ProductOwnerGateDependencyState.BLOCKED
     assert s.coordinator.journal.status(s.authority.authority_id)["kind"] == "BLOCKED"
     assert s.runner._parent_snapshot(s.source.parent_task_id) == before
+
+
+def test_dispatch_boundary_rechecks_repository_after_verifier(scenario, monkeypatch):
+    s = scenario
+    calls = []
+    def verify(*args, **kwargs):
+        calls.append(1)
+        if len(calls) >= 3:
+            _git(s.root, "commit", "--allow-empty", "-m", "unapproved concurrent advancement")
+        return s.evidence
+    s.verifier.verify = verify
+    publish(s)
+    result = s.runner.run_once()
+    assert result.state is ProductOwnerGateDependencyState.BLOCKED
+    assert not tuple(s.store.root.glob("execution-attempts/*.json"))
+
+
+def test_persisted_claims_outside_inbox_block_recovery(scenario):
+    s = scenario
+    conflicting = _bound_authority(s.root, supersedes_authority_id="f" * 64)
+    s.store.claim_product_owner_gate_dependency(conflicting, "other-execution")
+    with pytest.raises(ValueError, match="conflicting dependency claim"):
+        s.coordinator.validate(s.authority, s.inbox.pending())
+
+
+def test_uncertain_recovery_reconciles_once_with_lineage_ids(scenario, monkeypatch):
+    s = scenario
+    install_successful_execution(s, monkeypatch)
+    original = GateDependencyRecoveryJournal.event
+    def event(self, authority, kind, **kwargs):
+        original(self, authority, kind, **kwargs)
+        if kind == "STARTED":
+            raise SystemExit("simulated crash")
+    monkeypatch.setattr(GateDependencyRecoveryJournal, "event", event)
+    publish(s)
+    with pytest.raises(SystemExit):
+        s.runner.run_once()
+    result = s.runner.run_once()
+    assert result.authority_id == s.authority.authority_id
+    assert result.execution_id
+    assert "UNKNOWN_EXECUTION_OUTCOME" in result.reason
+    assert s.coordinator.journal.status(s.authority.authority_id)["kind"] == "BLOCKED"
+    count = len(tuple((s.coordinator.journal.root / "events" / s.authority.authority_id).glob("*.json")))
+    s.runner.run_once()
+    assert len(tuple((s.coordinator.journal.root / "events" / s.authority.authority_id).glob("*.json"))) == count
+
+
+def test_unrelated_reservation_does_not_short_circuit_dependency_selection(scenario, monkeypatch):
+    s = scenario
+    unrelated = reidentify(s.authority, predecessor_authority_id="f" * 64,
+                           predecessor_execution_id="unrelated-execution",
+                           execution_source_authority_id="e" * 64,
+                           dependency_id="AIDP-PO-DEP-0003", parent_task_id="AIDP-INFRA-0003")
+    s.coordinator.journal.reserve(unrelated)
+    calls = []
+    monkeypatch.setattr(s.runner, "_bootstrap_recovery_authorized", lambda value: calls.append(value) or False)
+    s.runner.run_once()
+    assert calls
 
 
 def test_ingress_reconsiders_unchanged_recovery_object_under_new_policy(scenario, tmp_path, monkeypatch):
