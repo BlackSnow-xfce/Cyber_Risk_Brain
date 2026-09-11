@@ -29,3 +29,14 @@ def test_process_semantic_denials(tmp_path,field,value):
 def test_batch_b_positive_control(tmp_path):
     h,members=_setup(tmp_path)
     assert _verify(h,members)[0].categories == tuple(sorted(CATEGORIES))
+
+@pytest.mark.parametrize("category", ["product-owner-recovery-decision", "execution-evidence", "process-lineage"])
+def test_each_batch_b_category_positive(tmp_path, category):
+    h,members=_setup(tmp_path)
+    assert _verify(h,members)[0].categories == tuple(sorted(CATEGORIES))
+
+@pytest.mark.parametrize("category", ["product-owner-recovery-decision", "execution-evidence", "process-lineage"])
+@pytest.mark.parametrize("field", ["dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest"])
+def test_cross_member_binding_mutation_denies(tmp_path, category, field):
+    h,members=_setup(tmp_path); idx=sorted(CATEGORIES).index(category); obj=json.loads(members[idx]); obj[field]="cross-member-mismatch"; members[idx]=json.dumps(obj,separators=(",",":"),sort_keys=True).encode()
+    with pytest.raises(ValueError): _verify(h,members)
