@@ -2,7 +2,7 @@ import pytest
 from aidp_orchestration.attestations import ATTESTATION_SCHEMA, CATEGORIES, EXTRA, SourceAttestation, AttestationBundleVerifier
 from aidp_orchestration.foundation import canonical_bytes, foundation_status
 
-COMMON = {"schema_version": ATTESTATION_SCHEMA, "domain":"aidp-source-attestation", "source_identity":"src", "environment":"test", "endpoint_identity":"ep", "audience":"aud", "key_namespace":"ns", "key_id":"kid", "trust_store_id":"ts", "trust_store_epoch":1, "observation_sequence":1, "issued_at":"2026-09-11T12:00:00.000000Z", "valid_until":"2026-09-11T13:00:00.000000Z", "dependency_id":"dep", "parent_task_id":"parent", "predecessor_authority_id":"pred", "predecessor_claim_digest":"claim", "predecessor_execution_id":"exec", "proposal_digest":"proposal", "payload_schema":"payload-v1", "payload_digest":"digest"}
+COMMON = {"schema_version": ATTESTATION_SCHEMA, "domain":"aidp-source-attestation", "source_identity":"src", "environment":"test", "endpoint_identity":"ep", "audience":"aud", "key_namespace":"ns", "key_id":"kid", "algorithm":"Ed25519", "trust_store_id":"ts", "trust_store_epoch":1, "observation_sequence":1, "issued_at":"2026-09-11T12:00:00.000000Z", "valid_until":"2026-09-11T13:00:00.000000Z", "dependency_id":"dep", "parent_task_id":"parent", "predecessor_authority_id":"pred", "predecessor_claim_digest":"claim", "predecessor_execution_id":"exec", "proposal_digest":"proposal", "payload_schema":"payload-v1", "payload_digest":"digest"}
 
 def _raw(category):
     value = {**COMMON, "source_category":category}
