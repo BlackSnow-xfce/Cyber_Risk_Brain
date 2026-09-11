@@ -26,7 +26,7 @@ class Stage3TestTrustHarness:
             keys[category]=key; public[key_id]=key.public_key().public_bytes_raw()
             requests[category]={"source_identity":name,"category":category,"schema":"aidp-source-attestation-v1","environment":"test","endpoint_identity":name+"-endpoint","audience":"aidp-recovery-test","key_namespace":name+"-namespace","key_id":key_id,"algorithm":"Ed25519","trust_store_id":"stage3-test-store","minimum_epoch":1,"payload_schema":"payload-v1"}
             policies[category]=type("Policy",(),{"payload":{"schema_version":POLICY_SCHEMA,"domain":"aidp-source-authorization","environment":"test","rows":[requests[category]],"issued_at":"2026-09-11T12:00:00.000000Z","valid_until":"2026-09-11T13:00:00.000000Z"}})()
-        lineage={"dependency_id":"dep-test","parent_task_id":"parent-test","predecessor_authority_id":"pred-test","predecessor_claim_digest":"claim-test","predecessor_execution_id":"exec-test","proposal_digest":"proposal-test"}
+        lineage={"dependency_id":"dep-test","parent_task_id":"parent-test","predecessor_authority_id":"pred-test","predecessor_claim_digest":"claim-test","predecessor_execution_id":"exec-test","proposal_digest":"proposal-test","selected_source_authority_id":"source-test"}
         harness=cls(root,policies,requests,keys,public,lineage)
         root.mkdir(parents=True, exist_ok=True)
         trust=DurableCAS(root/"trust.cas")
@@ -36,8 +36,11 @@ class Stage3TestTrustHarness:
         return harness
 
     def build(self, category):
-        req=self.requests[category]; payload={"schema_version":ATTESTATION_SCHEMA,"domain":"aidp-source-attestation","source_category":category,**{k:v for k,v in req.items() if k not in {"category","schema","minimum_epoch"}},"trust_store_epoch":1,"observation_sequence":1,"issued_at":self.now,"valid_until":"2026-09-11T13:00:00.000000Z",**self.lineage,"payload_digest":"placeholder"}
+        req=self.requests[category]; payload={"schema_version":ATTESTATION_SCHEMA,"domain":"aidp-source-attestation","source_category":category,**{k:v for k,v in req.items() if k not in {"category","schema","minimum_epoch"}},"trust_store_epoch":1,"observation_sequence":1,"issued_at":self.now,"valid_until":"2026-09-11T13:00:00.000000Z",**{k:v for k,v in self.lineage.items() if k != "selected_source_authority_id"},"payload_digest":"placeholder"}
         for field in EXTRA[category]: payload[field] = "valid"
+        if category == "product-owner-recovery-decision": payload.update(principal="po-test", operation="RECOVER_GATE_DEPENDENCY", approval_context_id="ctx", approval_context_digest="a"*64, decision_id="decision", nonce="nonce", selected_source_authority_id="source-test", selected_source_digest="b"*64)
+        if category == "execution-evidence": payload.update(attempt_count="1", result_count="1", execution_outcome="FAILED", heartbeat_continuity="true", execution_store_manifest_digest="c"*64)
+        if category == "process-lineage": payload.update(completeness_result="true", topology_snapshot_digest="d"*64)
         body=canonical_bytes(payload); payload["payload_digest"]=hashlib.sha256(body).hexdigest(); body=canonical_bytes(payload)
         key=self.keys[category]; sig=key.sign(_signed_bytes(body,"aidp-attestation-v1")); envelope=AIDPSignatureV1("aidp-attestation-v1","Ed25519",req["key_id"],hashlib.sha256(body).hexdigest(),base64.urlsafe_b64encode(sig).decode()).encoded()
         return canonical_bytes({**payload, "signature": json.loads(envelope)}), envelope

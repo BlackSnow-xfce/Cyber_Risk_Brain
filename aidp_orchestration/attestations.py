@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from .foundation import canonical_bytes, canonical_digest, parse_canonical_utf8
 from .trust_policy import authorize_source, AuthorizationResult
+import re
 
 ATTESTATION_SCHEMA = "aidp-source-attestation-v1"
 CATEGORIES = frozenset({"product-owner-recovery-decision", "execution-evidence", "process-lineage", "workspace-ref", "repository-advancement", "execution-source-authority", "trusted-time"})
@@ -57,14 +58,28 @@ class AttestationBundleVerifier:
         parsed = [SourceAttestation.parse(raw) for raw in attestations]
         categories = [item.category for item in parsed]
         if len(categories) != len(set(categories)) or set(categories) != CATEGORIES: raise ValueError("incomplete or duplicate attestation bundle")
-        common = {k: parsed[0].payload[k] for k in ("environment","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest")}
+        common = {k: parsed[0].payload[k] for k in ("environment","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest","selected_source_authority_id") if k in parsed[0].payload}
         for item in parsed:
             if any(item.payload[k] != v for k,v in common.items()): raise ValueError("attestation lineage mismatch")
             result: AuthorizationResult = authorize_source(policy=policies[item.category], request=requests[item.category], environment=environment, audience=audience, endpoint_identity=endpoint_identities[item.category], trust_store=trust_store, revoked_key_ids=revoked_key_ids, payload=canonical_bytes(item.payload), envelope=item.signature, public_key=public_keys[item.payload["key_id"]], payload_schema=payload_schema, lineage=common, expected_lineage=common, now=now)
             if not result.authorized: raise ValueError(f"attestation denied: {result.code}")
+            self._validate_semantics(item.payload, common)
         ordered = tuple(sorted(categories)); digests = {item.category: canonical_digest(item.payload) for item in parsed}
         computed = AttestationBundleManifestV1(ordered, digests, canonical_digest(common), common["proposal_digest"], trust_store["monotonic_epoch"], 0, min(item.payload["issued_at"] for item in parsed), max(item.payload["valid_until"] for item in parsed))
         if manifest is not None:
             if manifest != computed:
                 raise ValueError("attestation manifest mismatch")
         return computed, tuple(parsed)
+
+    @staticmethod
+    def _validate_semantics(payload: dict[str, Any], common: dict[str, Any]) -> None:
+        category = payload["source_category"]
+        digest = lambda v: isinstance(v, str) and bool(re.fullmatch(r"[0-9a-f]{64}", v))
+        if category == "product-owner-recovery-decision":
+            if payload.get("operation") != "RECOVER_GATE_DEPENDENCY" or not payload.get("principal") or not payload.get("approval_context_id") or not digest(payload.get("approval_context_digest")) or not payload.get("decision_id") or not payload.get("nonce"): raise ValueError("invalid recovery decision semantics")
+            if not digest(payload.get("selected_source_digest")): raise ValueError("invalid recovery decision semantics")
+        elif category == "execution-evidence":
+            if payload.get("execution_outcome") not in {"FAILED", "BLOCKED"} or not payload.get("attempt_identity") or payload.get("attempt_count") != "1" or not payload.get("result_identity") or payload.get("result_count") != "1" or not payload.get("heartbeat_continuity") or not payload.get("supervisor_ledger_identity") or not digest(payload.get("execution_store_manifest_digest")): raise ValueError("invalid execution evidence semantics")
+        elif category == "process-lineage":
+            required=("topology_snapshot_digest","host_identity","supervisor_identity","launcher_identity","descendants","job_process_groups","detached_orphan_state","containers","remote_executors")
+            if payload.get("completeness_result") != "true" or any(not payload.get(k) for k in required): raise ValueError("invalid process lineage semantics")
