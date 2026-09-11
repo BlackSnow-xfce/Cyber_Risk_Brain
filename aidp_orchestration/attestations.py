@@ -53,7 +53,7 @@ class AttestationBundleManifestV1:
     def digest(self) -> str: return canonical_digest(parse_canonical_utf8(self.encoded()))
 
 class AttestationBundleVerifier:
-    def verify(self, attestations: list[bytes], *, policies: dict[str, Any], requests: dict[str, dict[str, Any]], environment: str, audience: str, endpoint_identities: dict[str, str], trust_store: dict[str, Any], revoked_key_ids: set[str], public_keys: dict[str, bytes], payload_schema: str, now: str) -> tuple[AttestationBundleManifestV1, tuple[SourceAttestation, ...]]:
+    def verify(self, attestations: list[bytes], *, policies: dict[str, Any], requests: dict[str, dict[str, Any]], environment: str, audience: str, endpoint_identities: dict[str, str], trust_store: dict[str, Any], revoked_key_ids: set[str], public_keys: dict[str, bytes], payload_schema: str, now: str, manifest: AttestationBundleManifestV1 | None = None) -> tuple[AttestationBundleManifestV1, tuple[SourceAttestation, ...]]:
         parsed = [SourceAttestation.parse(raw) for raw in attestations]
         categories = [item.category for item in parsed]
         if len(categories) != len(set(categories)) or set(categories) != CATEGORIES: raise ValueError("incomplete or duplicate attestation bundle")
@@ -63,5 +63,8 @@ class AttestationBundleVerifier:
             result: AuthorizationResult = authorize_source(policy=policies[item.category], request=requests[item.category], environment=environment, audience=audience, endpoint_identity=endpoint_identities[item.category], trust_store=trust_store, revoked_key_ids=revoked_key_ids, payload=canonical_bytes(item.payload), envelope=item.signature, public_key=public_keys[item.payload["key_id"]], payload_schema=payload_schema, lineage=common, expected_lineage=common, now=now)
             if not result.authorized: raise ValueError(f"attestation denied: {result.code}")
         ordered = tuple(sorted(categories)); digests = {item.category: canonical_digest(item.payload) for item in parsed}
-        manifest = AttestationBundleManifestV1(ordered, digests, canonical_digest(common), common["proposal_digest"], trust_store["monotonic_epoch"], 0, min(item.payload["issued_at"] for item in parsed), max(item.payload["valid_until"] for item in parsed))
-        return manifest, tuple(parsed)
+        computed = AttestationBundleManifestV1(ordered, digests, canonical_digest(common), common["proposal_digest"], trust_store["monotonic_epoch"], 0, min(item.payload["issued_at"] for item in parsed), max(item.payload["valid_until"] for item in parsed))
+        if manifest is not None:
+            if manifest != computed:
+                raise ValueError("attestation manifest mismatch")
+        return computed, tuple(parsed)

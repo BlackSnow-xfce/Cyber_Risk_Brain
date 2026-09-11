@@ -33,3 +33,17 @@ def test_manifest_mutations_change_identity(tmp_path):
       manifest.__class__(manifest.categories,{**manifest.attestation_digests,"trusted-time":"0"*64},manifest.common_lineage_digest,manifest.proposal_digest,manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
       manifest.__class__(manifest.categories,manifest.attestation_digests,"other",manifest.proposal_digest,manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until)]
     assert all(item.digest!=original for item in mutations)
+
+def test_manifest_is_authoritative_field_by_field(tmp_path):
+    h,members=_bundle(tmp_path); manifest,_=_verify(h,members)
+    variants=[manifest.__class__(tuple(c for c in manifest.categories if c!="trusted-time"),manifest.attestation_digests,manifest.common_lineage_digest,manifest.proposal_digest,manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
+      manifest.__class__(manifest.categories,{**manifest.attestation_digests,"trusted-time":"0"*64},manifest.common_lineage_digest,manifest.proposal_digest,manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
+      manifest.__class__(manifest.categories,manifest.attestation_digests,"bad",manifest.proposal_digest,manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
+      manifest.__class__(manifest.categories,manifest.attestation_digests,manifest.common_lineage_digest,"bad",manifest.trust_store_epoch,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
+      manifest.__class__(manifest.categories,manifest.attestation_digests,manifest.common_lineage_digest,manifest.proposal_digest,2,manifest.policy_epoch,manifest.issued_at,manifest.valid_until),
+      manifest.__class__(manifest.categories,manifest.attestation_digests,manifest.common_lineage_digest,manifest.proposal_digest,manifest.trust_store_epoch,1,manifest.issued_at,manifest.valid_until)]
+    for variant in variants:
+        with pytest.raises(ValueError): _verify_manifest(h,members,variant)
+
+def _verify_manifest(h,members,manifest):
+    return AttestationBundleVerifier().verify(members, policies=h.policies, requests=h.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:h.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store={"trust_store_id":"stage3-test-store","monotonic_epoch":1}, revoked_key_ids=set(), public_keys=h.public_keys, payload_schema="payload-v1", now=h.now, manifest=manifest)
