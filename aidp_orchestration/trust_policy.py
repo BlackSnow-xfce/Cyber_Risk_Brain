@@ -129,6 +129,6 @@ def authorize_source(*, policy: SourceAuthorizationPolicyV1, request: dict[str, 
     except Exception: return AuthorizationResult.deny(9, "SIGNATURE")
     if request.get("payload_schema") != payload_schema: return AuthorizationResult.deny(10, "PAYLOAD_SCHEMA")
     if expected_lineage is not None and lineage != expected_lineage: return AuthorizationResult.deny(11, "LINEAGE_BINDING")
-    try: _fresh({"issued_at": request["issued_at"], "valid_until": request["valid_until"]}, now)
+    try: _fresh({"issued_at": policy.payload["issued_at"], "valid_until": policy.payload["valid_until"]}, now)
     except Exception: return AuthorizationResult.deny(12, "FRESHNESS")
     return AuthorizationResult(True, 12, "AUTHORIZED")

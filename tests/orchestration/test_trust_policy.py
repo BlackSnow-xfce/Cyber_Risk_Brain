@@ -2,6 +2,7 @@ import hashlib
 import json
 
 import pytest
+from types import SimpleNamespace
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
@@ -47,3 +48,48 @@ def test_authorization_pipeline_denies_at_first_failed_stage():
         trust_store=None, revoked_key_ids=None, payload=b"{", envelope=b"", public_key=b"", payload_schema="p",
         lineage=None, expected_lineage=None, now=NOW)
     assert result == AuthorizationResult(False, 1, "NONCANONICAL_INPUT")
+
+
+def _pipeline_inputs():
+    request = {"source_identity":"src","category":"cat","schema":"sch","environment":"test",
+        "endpoint_identity":"ep","audience":"aud","key_namespace":"ns","key_id":"kid",
+        "algorithm":"Ed25519","trust_store_id":"ts","minimum_epoch":1,"payload_schema":"payload-v1"}
+    policy = SimpleNamespace(payload={"domain":"aidp-source-authorization","environment":"test",
+        "issued_at":NOW,"valid_until":"2026-09-11T13:00:00.000000Z","rows":[dict(request)]})
+    return policy, request
+
+
+@pytest.mark.parametrize(("stage", "mutate", "code"), [
+    (2, lambda p,r: p.payload.update(domain="wrong"), "SCHEMA_OR_DOMAIN"),
+    (3, lambda p,r: r.update(audience="wrong"), "ENVIRONMENT_OR_AUDIENCE"),
+    (4, lambda p,r: r.update(source_identity="other"), "SOURCE_OR_CATEGORY"),
+    (5, lambda p,r: (r.update(endpoint_identity="other"), p.payload["rows"][0].update(endpoint_identity="other")), "ENDPOINT_IDENTITY"),
+    (6, lambda p,r: (r.update(algorithm="RSA"), p.payload["rows"][0].update(algorithm="RSA")), "KEY_BINDING"),
+    (7, lambda p,r: None, "TRUST_STORE"),
+    (8, lambda p,r: None, "REVOCATION"),
+    (9, lambda p,r: None, "SIGNATURE"),
+    (10, lambda p,r: (r.update(payload_schema="other"), p.payload["rows"][0].update(payload_schema="other")), "PAYLOAD_SCHEMA"),
+    (11, lambda p,r: None, "LINEAGE_BINDING"),
+    (12, lambda p,r: p.payload.update(issued_at="2026-09-10T12:00:00.000000Z", valid_until="2026-09-10T13:00:00.000000Z"), "FRESHNESS"),
+])
+def test_pipeline_failure_matrix(stage, mutate, code, monkeypatch):
+    policy, request = _pipeline_inputs(); mutate(policy, request)
+    if stage > 9:
+        monkeypatch.setattr("aidp_orchestration.trust_policy.verify", lambda *args, **kwargs: None)
+    result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+        trust_store=None if stage == 7 else {"trust_store_id":"ts","monotonic_epoch":1},
+        revoked_key_ids=None if stage == 8 else set(), payload=canonical_bytes({"v":1}), envelope=b"bad",
+        public_key=b"bad", payload_schema="payload-v1", lineage=None,
+        expected_lineage={} if stage == 11 else None, now=NOW)
+    assert result.code == code
+    assert result.stage == stage
+    assert result.authorized is False
+
+
+def test_pipeline_never_authorizes_with_invalid_tuple_or_trust():
+    policy, request = _pipeline_inputs()
+    request["category"] = "other"
+    result = authorize_source(policy=policy, request=request, environment="test", audience="aud", endpoint_identity="ep",
+        trust_store=None, revoked_key_ids=set(), payload=canonical_bytes({"v":1}), envelope=b"bad", public_key=b"bad",
+        payload_schema="payload-v1", lineage=None, expected_lineage=None, now=NOW)
+    assert result == AuthorizationResult(False, 4, "SOURCE_OR_CATEGORY")
