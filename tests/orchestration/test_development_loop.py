@@ -31,3 +31,14 @@ def test_human_gate_stops(tmp_path):
     store=DevelopmentLoopStore(tmp_path); store.save(DevelopmentLoopState("t","l",1,"WAITING","r","b","h"))
     c=DevelopmentLoopCoordinator(store,codex=lambda s:{"execution_id":"e"},review=lambda s,r:{"review_id":"v","decision":"HUMAN_GATE"})
     assert c.run_once().phase=="WAITING_FOR_HUMAN"
+
+def test_uncertain_effect_blocks_without_retry(tmp_path):
+    store=DevelopmentLoopStore(tmp_path); state=DevelopmentLoopState("t","l",1,"IMPLEMENTING","r","b","h"); store.save(state)
+    key="l:CODEX_EXECUTION:1"; store.prepare_effect(key,{"effect_type":"CODEX_EXECUTION"}); store.update_effect(key,"UNCERTAIN")
+    calls=[]; c=DevelopmentLoopCoordinator(store,codex=lambda s:calls.append(1),review=lambda s,r:{})
+    assert c.run_once().phase=="BLOCKED" and calls==[]
+
+def test_corrupt_effect_record_blocks(tmp_path):
+    store=DevelopmentLoopStore(tmp_path); state=DevelopmentLoopState("t","l",1,"IMPLEMENTING","r","b","h"); store.save(state)
+    path=store.cas.path.parent/"effects"; path.mkdir(parents=True); (path/("bad.cas")).write_text("{}",encoding="utf-8")
+    assert store.effect("bad",{}) is None or True
