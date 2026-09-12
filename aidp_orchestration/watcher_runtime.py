@@ -144,6 +144,18 @@ class PersistentWatcherStatusPublisher:
         }
         self._write_payload(payload)
 
+    def publish_development_loop(self, state) -> None:
+        """Project coordinator state as informational status only."""
+        payload = self._read_or_initial()
+        payload["development_loop"] = {
+            "task_id": state.task_id, "task_lineage_id": state.task_lineage_id,
+            "iteration": state.iteration, "phase": state.phase,
+            "automation_state": state.phase if state.phase in {"WORKING","REVIEWING","REWORKING","WAITING_FOR_HUMAN","BLOCKED","DONE"} else ("WORKING" if state.phase == "IMPLEMENTING" else "BLOCKED"),
+            "last_result": state.last_result, "next_action": state.next_action,
+            "terminal_reason": state.terminal_reason,
+        }
+        self._write_payload(payload)
+
     def _read_or_initial(self) -> dict[str, object]:
         try:
             value = json.loads(self.json_path.read_text(encoding="utf-8"))
