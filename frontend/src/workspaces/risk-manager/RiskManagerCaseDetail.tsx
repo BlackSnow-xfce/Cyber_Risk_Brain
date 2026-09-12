@@ -76,7 +76,7 @@ export default function RiskManagerCaseDetail({ record }: { record: RiskManagerR
                                 <Box key={`${effect.cve_identifier}:${effect.source_reference}`} sx={{ p: 1.25, border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}>
                                     <Typography variant="body2" sx={{ fontWeight: 700 }}>{effect.cve_identifier}</Typography>
                                     <Typography variant="caption" color="text.secondary">C {effect.confidentiality} · I {effect.integrity} · A {effect.availability}</Typography>
-                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ overflowWrap: "anywhere" }}>{effect.source_reference}</Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>{effect.source_reference}</Typography>
                                 </Box>
                             ))}
                         </Stack>
