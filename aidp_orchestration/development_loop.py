@@ -20,6 +20,12 @@ class DevelopmentLoopStore:
     def save(self, state: DevelopmentLoopState) -> DevelopmentLoopState:
         if state.phase not in PHASES: raise ValueError("invalid development loop phase")
         current=self.cas.read(); self.cas.compare_and_swap(expected_version=None if current is None else current["version"], expected_digest=None if current is None else current["digest"], payload=asdict(state)); return state
+    def effect(self, key: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        path=self.cas.path.parent / "effects" / (canonical_digest(key) + ".cas"); cas=DurableCAS(path); return None if cas.read() is None else cas.read()["payload"]
+    def prepare_effect(self, key: str, payload: dict[str, Any]) -> dict[str, Any]:
+        path=self.cas.path.parent / "effects" / (canonical_digest(key) + ".cas"); cas=DurableCAS(path); current=cas.read()
+        if current is not None: return current["payload"]
+        value={**payload,"idempotency_key":key,"state":"PREPARED"}; cas.compare_and_swap(expected_version=None,expected_digest=None,payload=value); return value
 
 class DevelopmentLoopCoordinator:
     def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None):
@@ -31,15 +37,21 @@ class DevelopmentLoopCoordinator:
         if self.head is not None and self.head()!=state.expected_head: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"STALE_REPOSITORY_HEAD","next_action":"STOP"}))
         if state.phase=="WAITING": state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
         if state.phase=="IMPLEMENTING":
+            key=f"{state.task_lineage_id}:CODEX_EXECUTION:{state.iteration}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"CODEX_EXECUTION","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
+            if effect.get("state") in {"IN_FLIGHT","UNCERTAIN"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"UNCERTAIN_CODEX_EXECUTION","next_action":"STOP"}))
             result=self.codex(state)
             if not isinstance(result,dict) or not result.get("execution_id"): return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_CODEX_RESULT","next_action":"STOP"}))
             state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REVIEWING","codex_execution_id":result["execution_id"],"codex_result_digest":canonical_digest(result),"last_result":"CODEX_COMPLETE","next_action":"INVOKE_REVIEW"}))
         if state.phase=="REVIEWING":
+            key=f"{state.task_lineage_id}:ARCHITECT_REVIEW:{state.iteration}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"ARCHITECT_REVIEW","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
+            if effect.get("state") in {"IN_FLIGHT","UNCERTAIN"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"UNCERTAIN_ARCHITECT_REVIEW","next_action":"STOP"}))
             result=self.review(state, state.codex_result_digest)
             if not isinstance(result,dict) or not result.get("review_id") or result.get("decision") not in {"APPROVED","CHANGES_REQUIRED","NOT_APPROVED","HUMAN_GATE"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_REVIEW","next_action":"STOP"}))
             if result["decision"]=="APPROVED": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"DONE","architect_review_id":result["review_id"],"architect_review_digest":canonical_digest(result),"last_result":"APPROVED","next_action":"DONE"}))
             if result["decision"]=="HUMAN_GATE": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"WAITING_FOR_HUMAN","terminal_reason":"PRODUCT_OWNER_OR_AUTHORIZATION_GATE","next_action":"WAIT_FOR_HUMAN"}))
             if self.rework is None: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"REWORK_UNAVAILABLE","next_action":"STOP"}))
-            self.rework(state,result); return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REWORKING","iteration":state.iteration+1,"last_result":"REWORK_MATERIALIZED","next_action":"AUTHORIZE_NEXT_ITERATION"}))
+            key=f"{state.task_lineage_id}:REWORK_MATERIALIZATION:{state.iteration}:{canonical_digest(result)}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"REWORK_MATERIALIZATION","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
+            if effect.get("state") in {"PREPARED","IN_FLIGHT"}: self.rework(state,result)
+            return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REWORKING","iteration":state.iteration+1,"last_result":"REWORK_MATERIALIZED","next_action":"AUTHORIZE_NEXT_ITERATION"}))
         if state.phase=="REWORKING": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
         return state
