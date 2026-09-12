@@ -1,4 +1,4 @@
-import base64, hashlib, json
+import base64, hashlib, json, uuid
 from dataclasses import dataclass
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -7,15 +7,13 @@ from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
 from aidp_orchestration.foundation import canonical_bytes
 from aidp_orchestration.foundation import DurableCAS
 from aidp_orchestration.trust_policy import POLICY_SCHEMA
-from aidp_orchestration.stage3ra import Stage3RAVerifier, DecisionNonceReplayStore
-
-class _HarnessStage3RAVerifier(Stage3RAVerifier):
-    def verify(self, *args, **kwargs):
-        return {"status": "VERIFIED_3RA"}
+from aidp_orchestration.stage3ra import Stage3RAVerifier, DecisionNonceReplayStore, AuthoritativeDecisionRecord, AuthoritativeSourceRecord
 
 class _Allow:
-    def verify_recovery_decision(self, value): return True
-    def verify_source_authority(self, value): return True
+    def verify_recovery_decision(self, value):
+        return AuthoritativeDecisionRecord({"principal":value["authenticated_principal_ref"],"approval_context_id":value["approval_context_ref"],**{k:v for k,v in value.items() if k not in ("authenticated_principal_ref","approval_context_ref","schema_version","domain")}})
+    def verify_source_authority(self, value):
+        return AuthoritativeSourceRecord({"terms_digest":value["terms_digest"],"lifecycle":value["lifecycle"],**{k:v for k,v in value.items() if k not in ("schema_version","domain","terms_digest","lifecycle")}})
 
 @dataclass
 class Stage3TestTrustHarness:
@@ -62,4 +60,4 @@ class Stage3TestTrustHarness:
         trust=DurableCAS(self.root/"trust.cas").read()
         if trust is None: raise ValueError("test trust store unavailable")
         members=[self.build(category) for category in sorted(CATEGORIES)]
-        return AttestationBundleVerifier(_HarnessStage3RAVerifier(), decision_source=_Allow(), authority_source=_Allow(), replay_store=DecisionNonceReplayStore(self.root), trusted_now=self.now).verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store=trust["payload"], revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
+        return AttestationBundleVerifier(Stage3RAVerifier(), decision_source=_Allow(), authority_source=_Allow(), replay_store=DecisionNonceReplayStore(self.root / ("replay-" + uuid.uuid4().hex)), trusted_now=self.now).verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store=trust["payload"], revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)

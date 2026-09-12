@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from .foundation import canonical_bytes, canonical_digest, parse_canonical_utf8
 from .trust_policy import authorize_source, AuthorizationResult
+import hashlib
 import re
 
 ATTESTATION_SCHEMA = "aidp-source-attestation-v1"
@@ -79,7 +80,9 @@ class AttestationBundleVerifier:
             raise ValueError("STAGE3RA_VERIFIER_UNAVAILABLE")
         if not all((self._decision_source, self._authority_source, self._replay_store, self._trusted_now)):
             raise ValueError("3RA_DEPENDENCY_UNAVAILABLE")
-        self._stage3ra_verifier.verify(canonical_bytes(po_item.payload), canonical_bytes(source_item.payload), decision_source=self._decision_source, authority_source=self._authority_source, replay_store=self._replay_store, trusted_now=self._trusted_now)
+        p=po_item.payload; po_payload={"authenticated_principal_ref":p["principal"],**{k:(hashlib.sha256(p[k].encode()).hexdigest() if k in ("proposal_digest","predecessor_claim_digest") and len(p[k])!=64 else p[k]) for k in ("approval_context_digest","decision_id","nonce","proposal_digest","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id","selected_source_digest","issued_at","valid_until")}}; po_payload.update(schema_version="aidp-product-owner-recovery-decision-v1", domain="aidp-product-owner-recovery-decision", permission="RECOVER_GATE_DEPENDENCY", approval_context_ref=p["approval_context_id"])
+        s=source_item.payload; source_payload={"schema_version":"aidp-execution-source-authority-v1","domain":"aidp-execution-source-authority","authority_id":s["selected_source_authority_id"],"authority_digest":po_payload["selected_source_digest"],"terms_digest":s["authority_terms_digest"],"lifecycle":s["authority_lifecycle_state"],"proposal_digest":po_payload["proposal_digest"],"po_decision_id":po_payload["decision_id"],"po_decision_digest":po_payload["proposal_digest"],"selected_source_authority_id":s["selected_source_authority_id"],"selected_source_digest":po_payload["selected_source_digest"]}
+        self._stage3ra_verifier.verify(canonical_bytes(po_payload), canonical_bytes(source_payload), decision_source=self._decision_source, authority_source=self._authority_source, replay_store=self._replay_store, trusted_now=self._trusted_now)
         ordered = tuple(sorted(categories)); digests = {item.category: canonical_digest(item.payload) for item in parsed}
         computed = AttestationBundleManifestV1(ordered, digests, canonical_digest(common), common["proposal_digest"], trust_store["monotonic_epoch"], 0, min(item.payload["issued_at"] for item in parsed), max(item.payload["valid_until"] for item in parsed))
         if manifest is not None:

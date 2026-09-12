@@ -44,9 +44,9 @@ class ExecutionSourceAuthorityPayloadV1:
         return cls(v)
 
 class AuthoritativeDecisionSource(Protocol):
-    def verify_recovery_decision(self, value: dict[str,Any]) -> bool: ...
+    def verify_recovery_decision(self, value: dict[str,Any]) -> Any: ...
 class AuthoritativeSourceStore(Protocol):
-    def verify_source_authority(self, value: dict[str,Any]) -> bool: ...
+    def verify_source_authority(self, value: dict[str,Any]) -> Any: ...
 
 class DecisionNonceReplayStore:
     def __init__(self, root: Path): self.store=DurableCAS(root/"decision-nonce-reservation.cas")
@@ -72,13 +72,25 @@ class AuthoritativeDecisionRecord:
 class AuthoritativeSourceRecord:
     value: dict[str,Any]
 
+AuthoritativeProductOwnerDecisionRecordV1 = AuthoritativeDecisionRecord
+AuthoritativeExecutionSourceRecordV1 = AuthoritativeSourceRecord
+
 class Stage3RAVerifier:
     def verify(self, po_raw: bytes, source_raw: bytes, *, decision_source: AuthoritativeDecisionSource|None, authority_source: AuthoritativeSourceStore|None, replay_store: DecisionNonceReplayStore|None, trusted_now: str|None) -> dict[str,Any]:
         if not all((decision_source, authority_source, replay_store, trusted_now)): raise ValueError("3RA_DEPENDENCY_UNAVAILABLE")
         po=ProductOwnerRecoveryDecisionPayloadV1.parse(po_raw).value; source=ExecutionSourceAuthorityPayloadV1.parse(source_raw).value
-        _ = decision_source.verify_recovery_decision(po); _ = authority_source.verify_source_authority(source)
-        if not _ or not decision_source.verify_recovery_decision(po) or not authority_source.verify_source_authority(source): raise ValueError("authoritative evidence denied")
+        po_record=decision_source.verify_recovery_decision(po); source_record=authority_source.verify_source_authority(source)
+        if not isinstance(po_record, AuthoritativeDecisionRecord) or not isinstance(source_record, AuthoritativeSourceRecord): raise ValueError("authoritative evidence denied")
+        for key, value in po.items():
+            if key in {"schema_version","domain"}: continue
+            mapped = {"authenticated_principal_ref":"principal","approval_context_ref":"approval_context_id"}.get(key,key)
+            if po_record.value.get(mapped) != value: raise ValueError("authoritative PO binding denied")
+        for key, value in source.items():
+            if key in {"schema_version","domain"}: continue
+            mapped = {"authority_terms_digest":"terms_digest","authority_lifecycle_state":"lifecycle"}.get(key,key)
+            if source_record.value.get(mapped) != value: raise ValueError("authoritative source binding denied")
         if source["po_decision_id"]!=po["decision_id"] or source["proposal_digest"]!=po["proposal_digest"] or source["selected_source_authority_id"]!=po["selected_source_authority_id"] or source["selected_source_digest"]!=po["selected_source_digest"]: raise ValueError("cross-binding denied")
+        if po_record.value.get("decision_digest") not in (None, po.get("payload_digest")) and source_record.value.get("po_decision_digest") != po_record.value.get("decision_digest"): raise ValueError("decision digest binding denied")
         validate_timestamp(trusted_now); now=datetime.strptime(trusted_now,"%Y-%m-%dT%H:%M:%S.%fZ"); issued=datetime.strptime(po["issued_at"],"%Y-%m-%dT%H:%M:%S.%fZ"); valid=datetime.strptime(po["valid_until"],"%Y-%m-%dT%H:%M:%S.%fZ")
         if not issued<=now<=valid: raise ValueError("3RA freshness denied")
         reservation_id=replay_store.reserve(po["decision_id"],po["nonce"], proposal_digest=po["proposal_digest"], created_at=trusted_now)
