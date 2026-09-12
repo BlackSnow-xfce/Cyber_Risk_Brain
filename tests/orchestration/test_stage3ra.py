@@ -34,3 +34,20 @@ def test_source_lifecycle_matrix():
     for lifecycle in ("EXPIRED","REVOKED","TERMINAL","BLOCKED","UNKNOWN"):
         mutated={**value,"lifecycle":lifecycle}
         with pytest.raises(ValueError): ExecutionSourceAuthorityPayloadV1.parse(canonical_bytes(mutated))
+
+@pytest.mark.parametrize("field", ["authenticated_principal_ref","approval_context_ref","decision_id","nonce","proposal_digest","predecessor_authority_id","dependency_id","parent_task_id","selected_source_authority_id"])
+def test_po_missing_typed_field_denied(field):
+    value=po(); value.pop(field)
+    with pytest.raises(ValueError): ProductOwnerRecoveryDecisionPayloadV1.parse(canonical_bytes(value))
+
+def test_source_missing_typed_field_denied():
+    value={"schema_version":"aidp-execution-source-authority-v1","domain":"aidp-execution-source-authority","authority_id":"a","authority_digest":"a"*64,"terms_digest":"b"*64,"lifecycle":"ELIGIBLE","proposal_digest":"c"*64,"po_decision_id":"d","po_decision_digest":"e"*64,"selected_source_authority_id":"a","selected_source_digest":"f"*64}
+    value.pop("terms_digest")
+    with pytest.raises(ValueError): ExecutionSourceAuthorityPayloadV1.parse(canonical_bytes(value))
+
+def test_authoritative_record_type_required(tmp_path):
+    class BoolAdapter:
+        def verify_recovery_decision(self, value): return True
+        def verify_source_authority(self, value): return True
+    source={"schema_version":"aidp-execution-source-authority-v1","domain":"aidp-execution-source-authority","authority_id":"a","authority_digest":"a"*64,"terms_digest":"b"*64,"lifecycle":"ELIGIBLE","proposal_digest":"c"*64,"po_decision_id":"decision","po_decision_digest":"e"*64,"selected_source_authority_id":"a","selected_source_digest":"f"*64}
+    with pytest.raises(ValueError): Stage3RAVerifier().verify(canonical_bytes(po()), canonical_bytes(source), decision_source=BoolAdapter(), authority_source=BoolAdapter(), replay_store=DecisionNonceReplayStore(tmp_path), trusted_now="2026-09-11T12:30:00.000000Z")
