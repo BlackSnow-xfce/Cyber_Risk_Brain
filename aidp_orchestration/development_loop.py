@@ -1,6 +1,6 @@
 """Fail-closed autonomous implementation/review loop for one task lineage."""
 from __future__ import annotations
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 from typing import Callable, Any
 from .foundation import DurableCAS, canonical_digest
@@ -41,6 +41,8 @@ class DevelopmentLoopStore:
 class DevelopmentLoopCoordinator:
     def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None, ownership_id: str="default", status: Callable[[DevelopmentLoopState], None]|None=None):
         self.store,self.codex,self.review,self.rework,self.head,self.ownership_id,self.status=store,codex,review,rework,head,ownership_id,status
+    def _publish(self, state, automation):
+        if self.status: self.status(replace(state, phase=automation))
     def run_once(self) -> DevelopmentLoopState:
         state=self.store.load()
         if state is None: raise ValueError("development loop state unavailable")
@@ -52,7 +54,7 @@ class DevelopmentLoopCoordinator:
             key=f"{state.task_lineage_id}:CODEX_EXECUTION:{state.iteration}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"CODEX_EXECUTION","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
             if effect.get("state") in {"IN_FLIGHT","UNCERTAIN"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"UNCERTAIN_CODEX_EXECUTION","next_action":"STOP"}))
             self.store.update_effect(key,"IN_FLIGHT");
-            if self.status: self.status(state)
+            self._publish(state, "WORKING")
             result=self.codex(state)
             if not isinstance(result,dict) or not result.get("execution_id"): return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_CODEX_RESULT","next_action":"STOP"}))
             digest=canonical_digest(result); self.store.update_effect(key,"COMPLETED",external_id=result["execution_id"],result_digest=digest); state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REVIEWING","codex_execution_id":result["execution_id"],"codex_result_digest":digest,"last_result":"CODEX_COMPLETE","next_action":"INVOKE_REVIEW"}))
@@ -60,17 +62,18 @@ class DevelopmentLoopCoordinator:
             key=f"{state.task_lineage_id}:ARCHITECT_REVIEW:{state.iteration}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"ARCHITECT_REVIEW","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
             if effect.get("state") in {"IN_FLIGHT","UNCERTAIN"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"UNCERTAIN_ARCHITECT_REVIEW","next_action":"STOP"}))
             self.store.update_effect(key,"IN_FLIGHT");
-            if self.status: self.status(state)
+            self._publish(state, "REVIEWING")
             result=self.review(state, state.codex_result_digest)
             if not isinstance(result,dict) or not result.get("review_id") or result.get("decision") not in {"APPROVED","CHANGES_REQUIRED","NOT_APPROVED","HUMAN_GATE"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_REVIEW","next_action":"STOP"}))
             review_digest=canonical_digest(result); self.store.update_effect(key,"COMPLETED",external_id=result["review_id"],result_digest=review_digest)
-            if result["decision"]=="APPROVED": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"DONE","architect_review_id":result["review_id"],"architect_review_digest":review_digest,"last_result":"APPROVED","next_action":"DONE"}))
+            if result["decision"]=="APPROVED":
+                done=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"DONE","architect_review_id":result["review_id"],"architect_review_digest":review_digest,"last_result":"APPROVED","next_action":"DONE"})); self._publish(done,"DONE"); return done
             if result["decision"]=="HUMAN_GATE": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"WAITING_FOR_HUMAN","terminal_reason":"PRODUCT_OWNER_OR_AUTHORIZATION_GATE","next_action":"WAIT_FOR_HUMAN"}))
             if self.rework is None: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"REWORK_UNAVAILABLE","next_action":"STOP"}))
             key=f"{state.task_lineage_id}:REWORK_MATERIALIZATION:{state.iteration}:{canonical_digest(result)}"; effect=self.store.prepare_effect(key,{"task_lineage_id":state.task_lineage_id,"iteration":state.iteration,"effect_type":"REWORK_MATERIALIZATION","repository":state.repository,"branch":state.branch,"expected_head":state.expected_head})
             if effect.get("state") in {"PREPARED","IN_FLIGHT"}:
                 self.store.update_effect(key,"IN_FLIGHT");
-                if self.status: self.status(state)
+                self._publish(state, "REWORKING")
                 materialized=self.rework(state,result); self.store.update_effect(key,"COMPLETED",external_id=str(materialized or "rework"),result_digest=canonical_digest(result))
             return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REWORKING","iteration":state.iteration+1,"last_result":"REWORK_MATERIALIZED","next_action":"AUTHORIZE_NEXT_ITERATION"}))
         if state.phase=="REWORKING": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
