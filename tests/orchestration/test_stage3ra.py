@@ -1,5 +1,5 @@
 import pytest
-from aidp_orchestration.stage3ra import ProductOwnerRecoveryDecisionPayloadV1, ExecutionSourceAuthorityPayloadV1, DecisionNonceReplayStore
+from aidp_orchestration.stage3ra import ProductOwnerRecoveryDecisionPayloadV1, ExecutionSourceAuthorityPayloadV1, DecisionNonceReplayStore, Stage3RAVerifier
 from aidp_orchestration.foundation import canonical_bytes
 
 def po():
@@ -12,3 +12,7 @@ def test_typed_po_and_replay(tmp_path):
 def test_po_rejects_accept():
     v=po(); v["permission"]="ACCEPT"
     with pytest.raises(ValueError): ProductOwnerRecoveryDecisionPayloadV1.parse(canonical_bytes(v))
+
+def test_integrated_verifier_requires_all_dependencies(tmp_path):
+    with pytest.raises(ValueError, match="3RA_DEPENDENCY_UNAVAILABLE"):
+        Stage3RAVerifier().verify(canonical_bytes(po()), canonical_bytes({}), decision_source=None, authority_source=None, replay_store=None, trusted_now=None)

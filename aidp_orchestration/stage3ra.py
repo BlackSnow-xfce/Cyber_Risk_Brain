@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 from .foundation import DurableCAS, canonical_bytes, parse_canonical_utf8, validate_timestamp
+from datetime import datetime
 
 _DIGEST=re.compile(r"^[0-9a-f]{64}$")
 PO_FIELDS={"schema_version","domain","authenticated_principal_ref","permission","approval_context_ref","approval_context_digest","decision_id","nonce","proposal_digest","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id","selected_source_digest","issued_at","valid_until"}
@@ -47,12 +48,30 @@ class AuthoritativeSourceStore(Protocol):
     def verify_source_authority(self, value: dict[str,Any]) -> bool: ...
 
 class DecisionNonceReplayStore:
-    def __init__(self, root: Path): self.decision=DurableCAS(root/"decision.cas"); self.nonce=DurableCAS(root/"nonce.cas")
+    def __init__(self, root: Path): self.store=DurableCAS(root/"decision-nonce-reservation.cas")
     def consume(self, decision_id: str, nonce: str) -> None:
-        for store,key in ((self.decision,decision_id),(self.nonce,nonce)):
-            current=store.read()
-            if current is not None and current["payload"].get("value")==key: raise ValueError("replay detected")
-            store.compare_and_swap(expected_version=None if current is None else current["version"],expected_digest=None if current is None else current["digest"],payload={"value":key})
+        current=self.store.read()
+        if current is not None and (current["payload"].get("decision_id")==decision_id or current["payload"].get("nonce")==nonce): raise ValueError("replay detected")
+        self.store.compare_and_swap(expected_version=None if current is None else current["version"],expected_digest=None if current is None else current["digest"],payload={"decision_id":decision_id,"nonce":nonce,"state":"CONSUMED"})
+
+@dataclass(frozen=True, slots=True)
+class AuthoritativeDecisionRecord:
+    value: dict[str,Any]
+@dataclass(frozen=True, slots=True)
+class AuthoritativeSourceRecord:
+    value: dict[str,Any]
+
+class Stage3RAVerifier:
+    def verify(self, po_raw: bytes, source_raw: bytes, *, decision_source: AuthoritativeDecisionSource|None, authority_source: AuthoritativeSourceStore|None, replay_store: DecisionNonceReplayStore|None, trusted_now: str|None) -> dict[str,Any]:
+        if not all((decision_source, authority_source, replay_store, trusted_now)): raise ValueError("3RA_DEPENDENCY_UNAVAILABLE")
+        po=ProductOwnerRecoveryDecisionPayloadV1.parse(po_raw).value; source=ExecutionSourceAuthorityPayloadV1.parse(source_raw).value
+        _ = decision_source.verify_recovery_decision(po); _ = authority_source.verify_source_authority(source)
+        if not _ or not decision_source.verify_recovery_decision(po) or not authority_source.verify_source_authority(source): raise ValueError("authoritative evidence denied")
+        if source["po_decision_id"]!=po["decision_id"] or source["proposal_digest"]!=po["proposal_digest"] or source["selected_source_authority_id"]!=po["selected_source_authority_id"] or source["selected_source_digest"]!=po["selected_source_digest"]: raise ValueError("cross-binding denied")
+        validate_timestamp(trusted_now); now=datetime.strptime(trusted_now,"%Y-%m-%dT%H:%M:%S.%fZ"); issued=datetime.strptime(po["issued_at"],"%Y-%m-%dT%H:%M:%S.%fZ"); valid=datetime.strptime(po["valid_until"],"%Y-%m-%dT%H:%M:%S.%fZ")
+        if not issued<=now<=valid: raise ValueError("3RA freshness denied")
+        replay_store.consume(po["decision_id"],po["nonce"])
+        return {"status":"VERIFIED_3RA","decision_id":po["decision_id"],"source_authority_id":source["authority_id"]}
 
 def verify_cross_binding(po: dict[str,Any], source: dict[str,Any], decision_source: AuthoritativeDecisionSource, authority_source: AuthoritativeSourceStore) -> None:
     if not decision_source.verify_recovery_decision(po) or not authority_source.verify_source_authority(source): raise ValueError("authoritative evidence unavailable or denied")
