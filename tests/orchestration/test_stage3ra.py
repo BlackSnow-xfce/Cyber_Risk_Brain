@@ -2,6 +2,7 @@ import pytest
 from aidp_orchestration.stage3ra import ProductOwnerRecoveryDecisionPayloadV1, ExecutionSourceAuthorityPayloadV1, DecisionNonceReplayStore, Stage3RAVerifier
 from aidp_orchestration.foundation import canonical_bytes
 from copy import deepcopy
+import threading
 
 def po():
     return {"schema_version":"aidp-product-owner-recovery-decision-v1","domain":"aidp-product-owner-recovery-decision","authenticated_principal_ref":"po","permission":"RECOVER_GATE_DEPENDENCY","approval_context_ref":"ctx","approval_context_digest":"a"*64,"decision_id":"decision","nonce":"nonce","proposal_digest":"b"*64,"predecessor_authority_id":"pred","predecessor_claim_digest":"c"*64,"predecessor_execution_id":"exec","dependency_id":"dep","parent_task_id":"parent","selected_source_authority_id":"source","selected_source_digest":"d"*64,"issued_at":"2026-09-11T12:00:00.000000Z","valid_until":"2026-09-11T13:00:00.000000Z"}
@@ -51,3 +52,28 @@ def test_authoritative_record_type_required(tmp_path):
         def verify_source_authority(self, value): return True
     source={"schema_version":"aidp-execution-source-authority-v1","domain":"aidp-execution-source-authority","authority_id":"a","authority_digest":"a"*64,"terms_digest":"b"*64,"lifecycle":"ELIGIBLE","proposal_digest":"c"*64,"po_decision_id":"decision","po_decision_digest":"e"*64,"selected_source_authority_id":"a","selected_source_digest":"f"*64}
     with pytest.raises(ValueError): Stage3RAVerifier().verify(canonical_bytes(po()), canonical_bytes(source), decision_source=BoolAdapter(), authority_source=BoolAdapter(), replay_store=DecisionNonceReplayStore(tmp_path), trusted_now="2026-09-11T12:30:00.000000Z")
+
+def test_replay_reserved_survives_restart(tmp_path):
+    first=DecisionNonceReplayStore(tmp_path); rid=first.reserve("d","n", proposal_digest="a"*64)
+    second=DecisionNonceReplayStore(tmp_path)
+    with pytest.raises(ValueError, match="replay"):
+        second.reserve("d","n")
+    second.consume("d","n",rid)
+    with pytest.raises(ValueError): second.reserve("d","n")
+
+def test_replay_concurrent_reservation_single_winner(tmp_path):
+    results=[]; lock=threading.Lock()
+    def worker():
+        try: DecisionNonceReplayStore(tmp_path).reserve("d","n")
+        except Exception as exc:
+            with lock: results.append(type(exc).__name__)
+        else:
+            with lock: results.append("ok")
+    threads=[threading.Thread(target=worker) for _ in range(2)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert results.count("ok")==1
+
+def test_replay_corruption_fails_closed(tmp_path):
+    store=DecisionNonceReplayStore(tmp_path); store.store.path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="corrupt"):
+        store.reserve("d","n")
