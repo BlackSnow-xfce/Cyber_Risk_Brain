@@ -32,3 +32,14 @@ def test_bundle_requires_exact_category_set_and_readiness_stays_blocked():
     assert status["ATTESTATION_BUNDLE_VERIFIER_READY"] == "READY"
     assert status["SOURCE_ATTESTATION_PROVIDERS_UNCONFIGURED"] == "BLOCKED"
     assert status["PRODUCTION_RECOVERY_BLOCKED"] == "BLOCKED"
+
+def test_bundle_po_source_requires_stage3ra_verifier(tmp_path):
+    from stage3_harness import Stage3TestTrustHarness
+    h=Stage3TestTrustHarness.create(tmp_path)
+    members=[h.build(c)[0] for c in sorted(CATEGORIES)]
+    with pytest.raises(ValueError, match="STAGE3RA_VERIFIER_UNAVAILABLE"):
+        AttestationBundleVerifier().verify(members, policies=h.policies, requests=h.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:h.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store={"trust_store_id":"stage3-test-store","monotonic_epoch":1}, revoked_key_ids=set(), public_keys=h.public_keys, payload_schema="payload-v1", now=h.now)
+
+def test_bundle_verifier_accepts_stage3ra_dependency_slot():
+    sentinel=object()
+    assert AttestationBundleVerifier(stage3ra_verifier=sentinel)._stage3ra_verifier is sentinel

@@ -54,10 +54,15 @@ class AttestationBundleManifestV1:
     def digest(self) -> str: return canonical_digest(parse_canonical_utf8(self.encoded()))
 
 class AttestationBundleVerifier:
+    def __init__(self, stage3ra_verifier=None):
+        self._stage3ra_verifier = stage3ra_verifier
+
     def verify(self, attestations: list[bytes], *, policies: dict[str, Any], requests: dict[str, dict[str, Any]], environment: str, audience: str, endpoint_identities: dict[str, str], trust_store: dict[str, Any], revoked_key_ids: set[str], public_keys: dict[str, bytes], payload_schema: str, now: str, manifest: AttestationBundleManifestV1 | None = None) -> tuple[AttestationBundleManifestV1, tuple[SourceAttestation, ...]]:
         parsed = [SourceAttestation.parse(raw) for raw in attestations]
         categories = [item.category for item in parsed]
         if len(categories) != len(set(categories)) or set(categories) != CATEGORIES: raise ValueError("incomplete or duplicate attestation bundle")
+        if {"product-owner-recovery-decision", "execution-source-authority"}.issubset(categories) and self._stage3ra_verifier is None:
+            raise ValueError("STAGE3RA_VERIFIER_UNAVAILABLE")
         common = {k: parsed[0].payload[k] for k in ("environment","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest","selected_source_authority_id") if k in parsed[0].payload}
         for item in parsed:
             if any(item.payload[k] != v for k,v in common.items()): raise ValueError("attestation lineage mismatch")
