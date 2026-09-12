@@ -1,6 +1,7 @@
 """Stage 3R-A typed decision/source bindings and replay state."""
 from __future__ import annotations
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -49,10 +50,20 @@ class AuthoritativeSourceStore(Protocol):
 
 class DecisionNonceReplayStore:
     def __init__(self, root: Path): self.store=DurableCAS(root/"decision-nonce-reservation.cas")
-    def consume(self, decision_id: str, nonce: str) -> None:
+    def reserve(self, decision_id: str, nonce: str, *, environment="test", proposal_digest="", predecessor_lineage_digest="", selected_source_authority_id="", created_at="") -> str:
         current=self.store.read()
-        if current is not None and (current["payload"].get("decision_id")==decision_id or current["payload"].get("nonce")==nonce): raise ValueError("replay detected")
-        self.store.compare_and_swap(expected_version=None if current is None else current["version"],expected_digest=None if current is None else current["digest"],payload={"decision_id":decision_id,"nonce":nonce,"state":"CONSUMED"})
+        if current is not None:
+            p=current["payload"]
+            if p.get("decision_id")==decision_id and p.get("nonce")==nonce and p.get("state")=="RESERVED": raise ValueError("replay reservation already exists")
+            if p.get("decision_id")==decision_id or p.get("nonce")==nonce: raise ValueError("replay detected")
+        reservation_id=uuid.uuid4().hex
+        self.store.compare_and_swap(expected_version=None if current is None else current["version"],expected_digest=None if current is None else current["digest"],payload={"environment":environment,"decision_id":decision_id,"nonce":nonce,"proposal_digest":proposal_digest,"predecessor_lineage_digest":predecessor_lineage_digest,"selected_source_authority_id":selected_source_authority_id,"reservation_id":reservation_id,"state":"RESERVED","created_at":created_at,"updated_at":created_at})
+        return reservation_id
+    def consume(self, decision_id: str, nonce: str, reservation_id: str|None=None) -> None:
+        current=self.store.read()
+        if current is None or current["payload"].get("state")!="RESERVED" or current["payload"].get("decision_id")!=decision_id or current["payload"].get("nonce")!=nonce or (reservation_id is not None and current["payload"].get("reservation_id")!=reservation_id): raise ValueError("replay reservation unavailable")
+        payload=dict(current["payload"]); payload["state"]="CONSUMED"
+        self.store.compare_and_swap(expected_version=current["version"],expected_digest=current["digest"],payload=payload)
 
 @dataclass(frozen=True, slots=True)
 class AuthoritativeDecisionRecord:
@@ -70,7 +81,8 @@ class Stage3RAVerifier:
         if source["po_decision_id"]!=po["decision_id"] or source["proposal_digest"]!=po["proposal_digest"] or source["selected_source_authority_id"]!=po["selected_source_authority_id"] or source["selected_source_digest"]!=po["selected_source_digest"]: raise ValueError("cross-binding denied")
         validate_timestamp(trusted_now); now=datetime.strptime(trusted_now,"%Y-%m-%dT%H:%M:%S.%fZ"); issued=datetime.strptime(po["issued_at"],"%Y-%m-%dT%H:%M:%S.%fZ"); valid=datetime.strptime(po["valid_until"],"%Y-%m-%dT%H:%M:%S.%fZ")
         if not issued<=now<=valid: raise ValueError("3RA freshness denied")
-        replay_store.consume(po["decision_id"],po["nonce"])
+        reservation_id=replay_store.reserve(po["decision_id"],po["nonce"], proposal_digest=po["proposal_digest"], created_at=trusted_now)
+        replay_store.consume(po["decision_id"],po["nonce"], reservation_id)
         return {"status":"VERIFIED_3RA","decision_id":po["decision_id"],"source_authority_id":source["authority_id"]}
 
 def verify_cross_binding(po: dict[str,Any], source: dict[str,Any], decision_source: AuthoritativeDecisionSource, authority_source: AuthoritativeSourceStore) -> None:
