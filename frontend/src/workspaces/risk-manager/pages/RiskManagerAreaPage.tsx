@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -9,6 +11,7 @@ import Typography from "@mui/material/Typography";
 
 import Panel from "@/ui/panel/Panel";
 
+import RiskManagerCaseDetail from "../RiskManagerCaseDetail";
 import {
     businessService,
     evidenceStatus,
@@ -34,11 +37,35 @@ function bandColor(band: string): "error" | "warning" | "info" | "default" {
     return "default";
 }
 
-function FindingRow({ record }: { record: RiskManagerRecord }) {
+function FindingRow({ record, selected, onSelect }: { record: RiskManagerRecord; selected: boolean; onSelect: () => void }) {
     const band = technicalBand(record);
     const missing = missingEvidence(record);
     return (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(280px,2fr) 110px 80px minmax(170px,1fr) 130px" }, gap: 1.5, py: 1.5, borderBottom: "1px solid", borderColor: "divider", alignItems: "center" }}>
+        <Box
+            component="button"
+            type="button"
+            onClick={onSelect}
+            aria-pressed={selected}
+            sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", lg: "minmax(280px,2fr) 110px 80px minmax(170px,1fr) 130px" },
+                gap: 1.5,
+                width: "100%",
+                py: 1.5,
+                px: 1,
+                border: 0,
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+                alignItems: "center",
+                textAlign: "left",
+                font: "inherit",
+                color: "text.primary",
+                backgroundColor: selected ? "action.selected" : "transparent",
+                cursor: "pointer",
+                "&:hover": { backgroundColor: "action.hover" },
+            }}
+        >
             <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{record.finding.title}</Typography>
                 <Typography variant="caption" color="text.secondary">{record.finding.asset} · {record.finding.source}</Typography>
@@ -54,9 +81,9 @@ function FindingRow({ record }: { record: RiskManagerRecord }) {
     );
 }
 
-function FindingList({ records }: { records: readonly RiskManagerRecord[] }) {
+function FindingList({ records, selectedId, onSelect }: { records: readonly RiskManagerRecord[]; selectedId: string | null; onSelect: (id: string) => void }) {
     if (!records.length) return <Typography variant="body2" color="text.secondary">No matching findings are available.</Typography>;
-    return <Box>{records.map((record) => <FindingRow key={record.finding.id} record={record} />)}</Box>;
+    return <Box>{records.map((record) => <FindingRow key={record.finding.id} record={record} selected={record.finding.id === selectedId} onSelect={() => onSelect(record.finding.id)} />)}</Box>;
 }
 
 function ServiceView({ records }: { records: readonly RiskManagerRecord[] }) {
@@ -127,10 +154,15 @@ const workflowLabels: Partial<Record<RiskManagerAreaId, readonly string[]>> = {
 
 export default function RiskManagerAreaPage({ areaId, title, description }: RiskManagerAreaPageProps) {
     const { projection, loading, error, reload } = useRiskManagerProjection();
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const records = projection?.records ?? [];
     const criticalRecords = records.filter((record) => ["CRITICAL", "HIGH"].includes(technicalBand(record)));
     const crownJewels = records.filter((record) => record.context?.asset_context.criticality?.toUpperCase() === "CRITICAL" || serviceCriticality(record) === "CRITICAL");
     const workflowFields = workflowLabels[areaId];
+    const selectableRecords = areaId === "critical-risks" ? criticalRecords : areaId === "crown-jewels" ? crownJewels : records;
+    const effectiveSelectedId = selectedId && selectableRecords.some((record) => record.finding.id === selectedId) ? selectedId : selectableRecords[0]?.finding.id ?? null;
+    const selectedRecord = selectableRecords.find((record) => record.finding.id === effectiveSelectedId) ?? null;
+    const showCaseWorkspace = areaId === "risk-register" || areaId === "critical-risks" || areaId === "crown-jewels";
 
     return (
         <Stack spacing={3}>
@@ -148,10 +180,20 @@ export default function RiskManagerAreaPage({ areaId, title, description }: Risk
 
             {projection && (
                 <>
-                    {(areaId === "risk-register") && <Panel component="section"><Typography variant="h6">Risk register</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>Canonical findings enriched with the existing evidence-gated risk and business context.</Typography><Divider /><FindingList records={records} /></Panel>}
-                    {(areaId === "critical-risks") && <Panel component="section"><Typography variant="h6">Critical and high technical risk</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>Uses the existing technical priority projection; no client-side governance priority is derived.</Typography><Divider /><FindingList records={criticalRecords} /></Panel>}
+                    {showCaseWorkspace && (
+                        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "minmax(0,1.7fr) minmax(360px,0.9fr)" }, gap: 2, alignItems: "start" }}>
+                            <Panel component="section">
+                                <Typography variant="h6">{areaId === "risk-register" ? "Risk register" : areaId === "critical-risks" ? "Critical and high technical risk" : "Critical assets and services"}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
+                                    {areaId === "risk-register" ? "Canonical findings enriched with the existing evidence-gated risk and business context." : areaId === "critical-risks" ? "Uses the existing technical priority projection; no client-side governance priority is derived." : "Only authoritatively resolved criticality is shown."}
+                                </Typography>
+                                <Divider />
+                                <FindingList records={selectableRecords} selectedId={effectiveSelectedId} onSelect={setSelectedId} />
+                            </Panel>
+                            {selectedRecord && <RiskManagerCaseDetail record={selectedRecord} />}
+                        </Box>
+                    )}
                     {(areaId === "business-services") && <ServiceView records={records} />}
-                    {(areaId === "crown-jewels") && <Panel component="section"><Typography variant="h6">Critical assets and services</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>Only authoritatively resolved criticality is shown.</Typography><Divider /><FindingList records={crownJewels} /></Panel>}
                     {(areaId === "business-impact") && <BusinessImpactView records={records.slice(0, 20)} />}
                     {workflowFields && (
                         <Panel component="section">
