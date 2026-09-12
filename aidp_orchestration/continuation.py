@@ -89,25 +89,15 @@ class TopologyAwareLineageContinuation:
         prior_state = task_store.load()
         if prior_state is None:
             raise ValueError("CONTINUATION_STATE_UNAVAILABLE")
-        if (
-            prior_state.task_id != topology_binding["task_id"]
-            or prior_state.task_lineage_id != topology_binding["task_lineage"]
-        ):
+        if prior_state.task_id != topology_binding["task_id"] or prior_state.task_lineage_id != topology_binding["task_lineage"]:
             raise ValueError("CONTINUATION_LINEAGE_MISMATCH")
 
         owner = self._owner()
-        if (
-            owner.get("ownership_id") != topology_binding["ownership_id"]
-            or owner.get("task_id") != prior_state.task_id
-            or owner.get("task_lineage_id") != prior_state.task_lineage_id
-        ):
+        if owner.get("ownership_id") != topology_binding["ownership_id"] or owner.get("task_id") != prior_state.task_id or owner.get("task_lineage_id") != prior_state.task_lineage_id:
             raise ValueError("CONTINUATION_OWNERSHIP_MISMATCH")
 
         effects = self._effect_payloads(prior_state.task_lineage_id)
-        highest_used = max(
-            [prior_state.iteration, *(int(item.get("iteration", 0)) for item in effects)],
-            default=prior_state.iteration,
-        )
+        highest_used = max([prior_state.iteration, *(int(item.get("iteration", 0)) for item in effects)], default=prior_state.iteration)
         history_digest = canonical_digest(effects)
         if topology_binding["prior_effect_history_digest"] != history_digest:
             raise ValueError("CONTINUATION_HISTORY_DIGEST_MISMATCH")
@@ -128,31 +118,49 @@ class TopologyAwareLineageContinuation:
             "authorization_scope_digest": authorization_scope_digest,
         }
         continuation_id = canonical_digest(identity_payload)
-        checkpoint = TopologyAwareContinuationCheckpointV1(
-            task_id=prior_state.task_id,
-            task_lineage=prior_state.task_lineage_id,
-            topology_binding_id=topology_binding["topology_binding_id"],
-            automation_head=topology_binding["automation_head"],
-            task_head=topology_binding["task_head"],
-            source_task_runtime_identity=canonical_digest(str(self.task_runtime_root.resolve())),
-            prior_state_digest=prior_state_digest,
-            prior_effect_history_digest=history_digest,
-            highest_used_iteration=highest_used,
-            next_iteration=next_iteration,
-            continuation_id=continuation_id,
-            ownership_id=topology_binding["ownership_id"],
-            authorization_scope_digest=authorization_scope_digest,
-            created_at=datetime.now(timezone.utc).isoformat(),
-        )
-
         path = self.automation_store.cas.path.parent / "continuations" / f"{continuation_id}.cas"
         cas = DurableCAS(path)
         existing = cas.read()
-        payload = asdict(checkpoint)
-        if existing is None:
-            cas.compare_and_swap(expected_version=None, expected_digest=None, payload=payload)
-        elif existing.get("payload") != payload:
-            raise ValueError("CONTINUATION_CONFLICT")
+
+        if existing is not None:
+            stored = existing.get("payload")
+            if not isinstance(stored, dict):
+                raise ValueError("CONTINUATION_CONFLICT")
+            stable = {key: stored.get(key) for key in identity_payload}
+            expected_stable = {
+                "task_id": prior_state.task_id,
+                "task_lineage": prior_state.task_lineage_id,
+                "topology_binding_id": topology_binding["topology_binding_id"],
+                "automation_head": topology_binding["automation_head"],
+                "task_head": topology_binding["task_head"],
+                "prior_state_digest": prior_state_digest,
+                "prior_effect_history_digest": history_digest,
+                "highest_used_iteration": highest_used,
+                "next_iteration": next_iteration,
+                "ownership_id": topology_binding["ownership_id"],
+                "authorization_scope_digest": authorization_scope_digest,
+            }
+            if stable != expected_stable or stored.get("continuation_id") != continuation_id:
+                raise ValueError("CONTINUATION_CONFLICT")
+            checkpoint = TopologyAwareContinuationCheckpointV1(**stored)
+        else:
+            checkpoint = TopologyAwareContinuationCheckpointV1(
+                task_id=prior_state.task_id,
+                task_lineage=prior_state.task_lineage_id,
+                topology_binding_id=topology_binding["topology_binding_id"],
+                automation_head=topology_binding["automation_head"],
+                task_head=topology_binding["task_head"],
+                source_task_runtime_identity=canonical_digest(str(self.task_runtime_root.resolve())),
+                prior_state_digest=prior_state_digest,
+                prior_effect_history_digest=history_digest,
+                highest_used_iteration=highest_used,
+                next_iteration=next_iteration,
+                continuation_id=continuation_id,
+                ownership_id=topology_binding["ownership_id"],
+                authorization_scope_digest=authorization_scope_digest,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            cas.compare_and_swap(expected_version=None, expected_digest=None, payload=asdict(checkpoint))
 
         state = DevelopmentLoopState(
             prior_state.task_id,
