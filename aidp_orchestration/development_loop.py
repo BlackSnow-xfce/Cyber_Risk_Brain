@@ -1,0 +1,45 @@
+"""Fail-closed autonomous implementation/review loop for one task lineage."""
+from __future__ import annotations
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Callable, Any
+from .foundation import DurableCAS, canonical_digest
+
+PHASES = frozenset({"WAITING","IMPLEMENTING","REVIEWING","REWORKING","DONE","WAITING_FOR_HUMAN","BLOCKED"})
+
+@dataclass(frozen=True, slots=True)
+class DevelopmentLoopState:
+    task_id: str; task_lineage_id: str; iteration: int; phase: str; repository: str; branch: str; expected_head: str
+    codex_execution_id: str|None = None; codex_result_digest: str|None = None; architect_review_id: str|None = None
+    architect_review_digest: str|None = None; last_result: str|None = None; next_action: str|None = None; terminal_reason: str|None = None
+
+class DevelopmentLoopStore:
+    def __init__(self, root: Path): self.cas = DurableCAS(root / "development-loop.cas")
+    def load(self) -> DevelopmentLoopState|None:
+        record=self.cas.read(); return None if record is None else DevelopmentLoopState(**record["payload"])
+    def save(self, state: DevelopmentLoopState) -> DevelopmentLoopState:
+        if state.phase not in PHASES: raise ValueError("invalid development loop phase")
+        current=self.cas.read(); self.cas.compare_and_swap(expected_version=None if current is None else current["version"], expected_digest=None if current is None else current["digest"], payload=asdict(state)); return state
+
+class DevelopmentLoopCoordinator:
+    def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None):
+        self.store,self.codex,self.review,self.rework,self.head=store,codex,review,rework,head
+    def run_once(self) -> DevelopmentLoopState:
+        state=self.store.load()
+        if state is None: raise ValueError("development loop state unavailable")
+        if state.phase in {"DONE","BLOCKED","WAITING_FOR_HUMAN"}: return state
+        if self.head is not None and self.head()!=state.expected_head: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"STALE_REPOSITORY_HEAD","next_action":"STOP"}))
+        if state.phase=="WAITING": state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
+        if state.phase=="IMPLEMENTING":
+            result=self.codex(state)
+            if not isinstance(result,dict) or not result.get("execution_id"): return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_CODEX_RESULT","next_action":"STOP"}))
+            state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REVIEWING","codex_execution_id":result["execution_id"],"codex_result_digest":canonical_digest(result),"last_result":"CODEX_COMPLETE","next_action":"INVOKE_REVIEW"}))
+        if state.phase=="REVIEWING":
+            result=self.review(state, state.codex_result_digest)
+            if not isinstance(result,dict) or not result.get("review_id") or result.get("decision") not in {"APPROVED","CHANGES_REQUIRED","NOT_APPROVED","HUMAN_GATE"}: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"MALFORMED_REVIEW","next_action":"STOP"}))
+            if result["decision"]=="APPROVED": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"DONE","architect_review_id":result["review_id"],"architect_review_digest":canonical_digest(result),"last_result":"APPROVED","next_action":"DONE"}))
+            if result["decision"]=="HUMAN_GATE": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"WAITING_FOR_HUMAN","terminal_reason":"PRODUCT_OWNER_OR_AUTHORIZATION_GATE","next_action":"WAIT_FOR_HUMAN"}))
+            if self.rework is None: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"REWORK_UNAVAILABLE","next_action":"STOP"}))
+            self.rework(state,result); return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"REWORKING","iteration":state.iteration+1,"last_result":"REWORK_MATERIALIZED","next_action":"AUTHORIZE_NEXT_ITERATION"}))
+        if state.phase=="REWORKING": return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
+        return state
