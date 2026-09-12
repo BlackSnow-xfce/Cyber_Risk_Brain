@@ -30,13 +30,21 @@ class DevelopmentLoopStore:
         path=self.cas.path.parent / "effects" / (canonical_digest(key) + ".cas"); cas=DurableCAS(path); current=cas.read()
         if current is None: raise ValueError("effect unavailable")
         payload={**current["payload"],"state":state,**values}; cas.compare_and_swap(expected_version=current["version"],expected_digest=current["digest"],payload=payload); return payload
+    def acquire_owner(self, state: DevelopmentLoopState, ownership_id: str) -> None:
+        path=self.cas.path.parent / "lineage-owner.cas"; cas=DurableCAS(path); current=cas.read(); owner={"task_lineage_id":state.task_lineage_id,"task_id":state.task_id,"repository":state.repository,"branch":state.branch,"expected_head":state.expected_head,"ownership_id":ownership_id}
+        if current is not None and current["payload"] != owner: raise ValueError("active lineage ownership conflict")
+        if current is None: cas.compare_and_swap(expected_version=None, expected_digest=None, payload=owner)
+    def verify_owner(self, state: DevelopmentLoopState, ownership_id: str) -> None:
+        current=self.cas.path.parent / "lineage-owner.cas"; record=DurableCAS(current).read()
+        if record is None or record["payload"].get("ownership_id") != ownership_id or any(record["payload"].get(k)!=getattr(state,k) for k in ("task_lineage_id","task_id","repository","branch","expected_head")): raise ValueError("lineage ownership mismatch")
 
 class DevelopmentLoopCoordinator:
-    def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None):
-        self.store,self.codex,self.review,self.rework,self.head=store,codex,review,rework,head
+    def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None, ownership_id: str="default"):
+        self.store,self.codex,self.review,self.rework,self.head,self.ownership_id=store,codex,review,rework,head,ownership_id
     def run_once(self) -> DevelopmentLoopState:
         state=self.store.load()
         if state is None: raise ValueError("development loop state unavailable")
+        self.store.acquire_owner(state, self.ownership_id); self.store.verify_owner(state, self.ownership_id)
         if state.phase in {"DONE","BLOCKED","WAITING_FOR_HUMAN"}: return state
         if self.head is not None and self.head()!=state.expected_head: return self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"BLOCKED","terminal_reason":"STALE_REPOSITORY_HEAD","next_action":"STOP"}))
         if state.phase=="WAITING": state=self.store.save(DevelopmentLoopState(**{**asdict(state),"phase":"IMPLEMENTING","next_action":"INVOKE_CODEX"}))
