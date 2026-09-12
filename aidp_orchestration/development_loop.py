@@ -38,6 +38,20 @@ class DevelopmentLoopStore:
         current=self.cas.path.parent / "lineage-owner.cas"; record=DurableCAS(current).read()
         if record is None or record["payload"].get("ownership_id") != ownership_id or any(record["payload"].get(k)!=getattr(state,k) for k in ("task_lineage_id","task_id","repository","branch","expected_head")): raise ValueError("lineage ownership mismatch")
 
+    def bind_autonomous_task_topology(self, binding: dict[str, Any]) -> dict[str, Any]:
+        required = ("task_id", "task_lineage", "automation_repository_identity", "automation_branch", "automation_head", "task_repository_identity", "task_worktree", "task_branch", "task_head", "ownership_id", "prior_lineage_state_digest", "prior_effect_history_digest", "authorization_scope_digest")
+        if any(not str(binding.get(k, "")).strip() for k in required):
+            raise ValueError("TOPOLOGY_BINDING_INVALID")
+        identity = canonical_digest(binding)
+        path = self.cas.path.parent / "topology-bindings" / (identity + ".cas")
+        cas = DurableCAS(path); existing = cas.read()
+        if existing is not None:
+            if existing["payload"] != binding: raise ValueError("TOPOLOGY_BINDING_CONFLICT")
+            return existing["payload"]
+        record = {**binding, "topology_binding_id": identity}
+        cas.compare_and_swap(expected_version=None, expected_digest=None, payload=record)
+        return record
+
 class DevelopmentLoopCoordinator:
     def __init__(self, store: DevelopmentLoopStore, *, codex: Callable[[DevelopmentLoopState], Any], review: Callable[[DevelopmentLoopState, Any], Any], rework: Callable[[DevelopmentLoopState, Any], Any]|None=None, head: Callable[[], str]|None=None, ownership_id: str="default", status: Callable[[DevelopmentLoopState], None]|None=None):
         self.store,self.codex,self.review,self.rework,self.head,self.ownership_id,self.status=store,codex,review,rework,head,ownership_id,status
