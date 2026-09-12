@@ -9,7 +9,7 @@ from .foundation import DurableCAS, canonical_bytes, parse_canonical_utf8, valid
 from datetime import datetime
 
 _DIGEST=re.compile(r"^[0-9a-f]{64}$")
-PO_FIELDS={"schema_version","domain","authenticated_principal_ref","permission","approval_context_ref","approval_context_digest","decision_id","nonce","proposal_digest","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id","selected_source_digest","issued_at","valid_until"}
+PO_FIELDS={"schema_version","domain","authenticated_principal_ref","permission","approval_context_ref","approval_context_digest","decision_id","decision_digest","nonce","proposal_digest","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id","selected_source_digest","issued_at","valid_until"}
 SOURCE_FIELDS={"schema_version","domain","authority_id","authority_digest","terms_digest","lifecycle","proposal_digest","po_decision_id","po_decision_digest","selected_source_authority_id","selected_source_digest"}
 
 def _digest(v):
@@ -26,7 +26,7 @@ class ProductOwnerRecoveryDecisionPayloadV1:
         if canonical_bytes(v)!=raw or not isinstance(v,dict) or set(v)!=PO_FIELDS or v.get("schema_version")!="aidp-product-owner-recovery-decision-v1" or v.get("domain")!="aidp-product-owner-recovery-decision": raise ValueError("invalid PO recovery payload")
         for k in ("authenticated_principal_ref","approval_context_ref","decision_id","nonce","predecessor_authority_id","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id"): _text(v[k])
         if v["permission"]!="RECOVER_GATE_DEPENDENCY": raise ValueError("invalid recovery permission")
-        for k in ("approval_context_digest","proposal_digest","predecessor_claim_digest","selected_source_digest"): _digest(v[k])
+        for k in ("approval_context_digest","decision_digest","proposal_digest","predecessor_claim_digest","selected_source_digest"): _digest(v[k])
         validate_timestamp(v["issued_at"]); validate_timestamp(v["valid_until"])
         if v["issued_at"]>=v["valid_until"]: raise ValueError("invalid recovery interval")
         return cls(v)
@@ -68,9 +68,15 @@ class DecisionNonceReplayStore:
 @dataclass(frozen=True, slots=True)
 class AuthoritativeDecisionRecord:
     value: dict[str,Any]
+    def __post_init__(self):
+        required={"schema_version","principal","permission","approval_context_id","approval_context_digest","decision_id","decision_digest","nonce","proposal_digest","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","dependency_id","parent_task_id","selected_source_authority_id","selected_source_digest","issued_at","valid_until"}
+        if set(self.value)!=required or self.value["permission"]!="RECOVER_GATE_DEPENDENCY": raise ValueError("invalid authoritative PO record")
 @dataclass(frozen=True, slots=True)
 class AuthoritativeSourceRecord:
     value: dict[str,Any]
+    def __post_init__(self):
+        required={"schema_version","authority_id","authority_digest","terms_digest","lifecycle","proposal_digest","po_decision_id","po_decision_digest","selected_source_authority_id","selected_source_digest","issued_at","valid_until"}
+        if set(self.value)!=required or self.value["lifecycle"]!="ELIGIBLE": raise ValueError("invalid authoritative source record")
 
 AuthoritativeProductOwnerDecisionRecordV1 = AuthoritativeDecisionRecord
 AuthoritativeExecutionSourceRecordV1 = AuthoritativeSourceRecord
