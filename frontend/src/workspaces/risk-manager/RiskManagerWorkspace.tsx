@@ -17,6 +17,7 @@ export default function RiskManagerWorkspace() {
         return (
             <RiskManagerLayout>
                 <RiskManagerAreaPage
+                    areaId={activeNavigationItemId}
                     title={area.title}
                     description={area.description}
                 />
