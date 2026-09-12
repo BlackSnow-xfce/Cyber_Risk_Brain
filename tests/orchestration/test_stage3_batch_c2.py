@@ -19,3 +19,20 @@ def test_c2_positive_and_replay_substitution_denies(tmp_path):
     h,m=setup(tmp_path); assert verify(h,m)[0].categories==tuple(sorted(CATEGORIES))
     i=sorted(CATEGORIES).index("trusted-time"); m[i]=m[sorted(CATEGORIES).index("execution-source-authority")]
     with pytest.raises(ValueError): verify(h,m)
+
+def test_two_bundle_replay_and_positive_controls(tmp_path):
+    h1,m1=setup(tmp_path/"a"); h2,m2=setup(tmp_path/"b")
+    assert verify(h1,m1)[0].categories==tuple(sorted(CATEGORIES)); assert verify(h2,m2)[0].categories==tuple(sorted(CATEGORIES))
+    for i in range(len(m1)):
+        mixed=list(m2); mixed[i]=m1[i]
+        with pytest.raises(ValueError): verify(h2,mixed)
+
+@pytest.mark.parametrize("field,value",[("selected_source_authority_id","other"),("selected_source_digest","bad"),("proposal_digest","bad")])
+def test_source_authority_binding_mutations_deny(tmp_path,field,value):
+    h,m=setup(tmp_path); i=sorted(CATEGORIES).index("execution-source-authority"); v=json.loads(m[i]); v[field]=value; m[i]=json.dumps(v,separators=(",",":"),sort_keys=True).encode()
+    with pytest.raises(ValueError): verify(h,m)
+
+@pytest.mark.parametrize("category,field,value",[("execution-source-authority","source_identity","wrong"),("execution-source-authority","endpoint_identity","wrong"),("execution-source-authority","audience","wrong"),("execution-source-authority","trust_store_epoch",2),("trusted-time","source_identity","wrong"),("trusted-time","endpoint_identity","wrong"),("trusted-time","audience","wrong"),("trusted-time","trust_store_epoch",2),("trusted-time","payload_schema","other")])
+def test_independent_c2_authorization_mutations_deny(tmp_path,category,field,value):
+    h,m=setup(tmp_path); i=sorted(CATEGORIES).index(category); v=json.loads(m[i]); v[field]=value; m[i]=json.dumps(v,separators=(",",":"),sort_keys=True).encode()
+    with pytest.raises(ValueError): verify(h,m)
