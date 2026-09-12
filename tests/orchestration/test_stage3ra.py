@@ -77,3 +77,32 @@ def test_replay_corruption_fails_closed(tmp_path):
     store=DecisionNonceReplayStore(tmp_path); store.store.path.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="corrupt"):
         store.reserve("d","n")
+
+def test_consume_requires_exact_reservation_binding(tmp_path):
+    store=DecisionNonceReplayStore(tmp_path); rid=store.reserve("d","n", proposal_digest="a"*64)
+    with pytest.raises(ValueError): store.consume("d","n","wrong")
+    with pytest.raises(ValueError): store.consume("other","n",rid)
+    with pytest.raises(ValueError): store.consume("d","other",rid)
+    store.consume("d","n",rid)
+
+def test_concurrent_consume_has_single_winner(tmp_path):
+    store=DecisionNonceReplayStore(tmp_path); rid=store.reserve("d","n")
+    results=[]; lock=threading.Lock()
+    def worker():
+        try: store.consume("d","n",rid)
+        except Exception:
+            with lock: results.append("denied")
+        else:
+            with lock: results.append("ok")
+    threads=[threading.Thread(target=worker) for _ in range(2)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert results.count("ok")==1
+
+def test_readback_failure_does_not_return_success(tmp_path, monkeypatch):
+    store=DecisionNonceReplayStore(tmp_path)
+    original=store.store.compare_and_swap
+    def fail_readback(**kwargs): raise RuntimeError("CAS readback failed")
+    monkeypatch.setattr(store.store, "compare_and_swap", fail_readback)
+    with pytest.raises(RuntimeError): store.reserve("d","n")
+    monkeypatch.setattr(store.store, "compare_and_swap", original)
+    assert store.store.read() is None
