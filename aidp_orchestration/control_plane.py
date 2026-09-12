@@ -214,6 +214,15 @@ class AIDPControlPlane:
         )
         return ControlPlaneResult(decision, final_action, runner_result, entry, str(inbox_path))
 
+    @staticmethod
+    def dispatch_development_automation(task_type: str, coordinator):
+        """Explicitly route only bounded development automation tasks."""
+        if task_type != "DEVELOPMENT_AUTOMATION":
+            raise ValueError("BLOCKED_AMBIGUOUS_TASK_CLASSIFICATION")
+        if coordinator is None:
+            raise ValueError("DEVELOPMENT_AUTOMATION_UNAVAILABLE")
+        return coordinator.run_once()
+
     def _ready_admission(self, task_id: str | None, *, state_dir: str, allow_authorized_dirty: bool = False) -> str | None:
         metadata = self._metadata(task_id, state_dir)
         if metadata is None:

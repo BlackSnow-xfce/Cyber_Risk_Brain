@@ -1,4 +1,5 @@
 from aidp_orchestration.development_loop import DevelopmentLoopState, DevelopmentLoopStore, DevelopmentLoopCoordinator
+from aidp_orchestration.control_plane import AIDPControlPlane
 
 def test_loop_approved(tmp_path):
     store=DevelopmentLoopStore(tmp_path); store.save(DevelopmentLoopState("t","l",1,"WAITING","r","b","h"))
@@ -31,6 +32,15 @@ def test_human_gate_stops(tmp_path):
     store=DevelopmentLoopStore(tmp_path); store.save(DevelopmentLoopState("t","l",1,"WAITING","r","b","h"))
     c=DevelopmentLoopCoordinator(store,codex=lambda s:{"execution_id":"e"},review=lambda s,r:{"review_id":"v","decision":"HUMAN_GATE"})
     assert c.run_once().phase=="WAITING_FOR_HUMAN"
+
+def test_control_plane_development_route_is_explicit():
+    class C:
+        def run_once(self): return "ok"
+    assert AIDPControlPlane.dispatch_development_automation("DEVELOPMENT_AUTOMATION", C())=="ok"
+    for kind in ("STAGE3RA", "RECOVERY", ""):
+        try: AIDPControlPlane.dispatch_development_automation(kind, C())
+        except ValueError: pass
+        else: raise AssertionError("ambiguous task routed")
 
 def test_uncertain_effect_blocks_without_retry(tmp_path):
     store=DevelopmentLoopStore(tmp_path); state=DevelopmentLoopState("t","l",1,"IMPLEMENTING","r","b","h"); store.save(state)
