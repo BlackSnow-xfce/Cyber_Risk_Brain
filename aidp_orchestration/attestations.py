@@ -54,8 +54,12 @@ class AttestationBundleManifestV1:
     def digest(self) -> str: return canonical_digest(parse_canonical_utf8(self.encoded()))
 
 class AttestationBundleVerifier:
-    def __init__(self, stage3ra_verifier=None):
+    def __init__(self, stage3ra_verifier=None, *, decision_source=None, authority_source=None, replay_store=None, trusted_now=None):
         self._stage3ra_verifier = stage3ra_verifier
+        self._decision_source = decision_source
+        self._authority_source = authority_source
+        self._replay_store = replay_store
+        self._trusted_now = trusted_now
 
     def verify(self, attestations: list[bytes], *, policies: dict[str, Any], requests: dict[str, dict[str, Any]], environment: str, audience: str, endpoint_identities: dict[str, str], trust_store: dict[str, Any], revoked_key_ids: set[str], public_keys: dict[str, bytes], payload_schema: str, now: str, manifest: AttestationBundleManifestV1 | None = None) -> tuple[AttestationBundleManifestV1, tuple[SourceAttestation, ...]]:
         parsed = [SourceAttestation.parse(raw) for raw in attestations]
@@ -64,11 +68,18 @@ class AttestationBundleVerifier:
         if {"product-owner-recovery-decision", "execution-source-authority"}.issubset(categories) and self._stage3ra_verifier is None:
             raise ValueError("STAGE3RA_VERIFIER_UNAVAILABLE")
         common = {k: parsed[0].payload[k] for k in ("environment","dependency_id","parent_task_id","predecessor_authority_id","predecessor_claim_digest","predecessor_execution_id","proposal_digest","selected_source_authority_id") if k in parsed[0].payload}
+        po_item = next(item for item in parsed if item.category == "product-owner-recovery-decision")
+        source_item = next(item for item in parsed if item.category == "execution-source-authority")
         for item in parsed:
             if any(item.payload[k] != v for k,v in common.items()): raise ValueError("attestation lineage mismatch")
             result: AuthorizationResult = authorize_source(policy=policies[item.category], request=requests[item.category], environment=environment, audience=audience, endpoint_identity=endpoint_identities[item.category], trust_store=trust_store, revoked_key_ids=revoked_key_ids, payload=canonical_bytes(item.payload), envelope=item.signature, public_key=public_keys[item.payload["key_id"]], payload_schema=payload_schema, lineage=common, expected_lineage=common, now=now)
             if not result.authorized: raise ValueError(f"attestation denied: {result.code}")
             self._validate_semantics(item.payload, common)
+        if self._stage3ra_verifier is None:
+            raise ValueError("STAGE3RA_VERIFIER_UNAVAILABLE")
+        if not all((self._decision_source, self._authority_source, self._replay_store, self._trusted_now)):
+            raise ValueError("3RA_DEPENDENCY_UNAVAILABLE")
+        self._stage3ra_verifier.verify(canonical_bytes(po_item.payload), canonical_bytes(source_item.payload), decision_source=self._decision_source, authority_source=self._authority_source, replay_store=self._replay_store, trusted_now=self._trusted_now)
         ordered = tuple(sorted(categories)); digests = {item.category: canonical_digest(item.payload) for item in parsed}
         computed = AttestationBundleManifestV1(ordered, digests, canonical_digest(common), common["proposal_digest"], trust_store["monotonic_epoch"], 0, min(item.payload["issued_at"] for item in parsed), max(item.payload["valid_until"] for item in parsed))
         if manifest is not None:

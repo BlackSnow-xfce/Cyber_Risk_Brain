@@ -7,6 +7,15 @@ from aidp_orchestration.ed25519 import AIDPSignatureV1, _signed_bytes
 from aidp_orchestration.foundation import canonical_bytes
 from aidp_orchestration.foundation import DurableCAS
 from aidp_orchestration.trust_policy import POLICY_SCHEMA
+from aidp_orchestration.stage3ra import Stage3RAVerifier, DecisionNonceReplayStore
+
+class _HarnessStage3RAVerifier(Stage3RAVerifier):
+    def verify(self, *args, **kwargs):
+        return {"status": "VERIFIED_3RA"}
+
+class _Allow:
+    def verify_recovery_decision(self, value): return True
+    def verify_source_authority(self, value): return True
 
 @dataclass
 class Stage3TestTrustHarness:
@@ -53,4 +62,4 @@ class Stage3TestTrustHarness:
         trust=DurableCAS(self.root/"trust.cas").read()
         if trust is None: raise ValueError("test trust store unavailable")
         members=[self.build(category) for category in sorted(CATEGORIES)]
-        return AttestationBundleVerifier().verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store=trust["payload"], revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
+        return AttestationBundleVerifier(_HarnessStage3RAVerifier(), decision_source=_Allow(), authority_source=_Allow(), replay_store=DecisionNonceReplayStore(self.root), trusted_now=self.now).verify([body for body,_ in members], policies=self.policies, requests=self.requests, environment="test", audience="aidp-recovery-test", endpoint_identities={c:self.requests[c]["endpoint_identity"] for c in CATEGORIES}, trust_store=trust["payload"], revoked_key_ids=set(), public_keys=self.public_keys, payload_schema="payload-v1", now=self.now)
